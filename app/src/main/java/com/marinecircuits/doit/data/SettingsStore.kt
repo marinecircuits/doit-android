@@ -30,6 +30,21 @@ class SettingsStore(
 
     val defaultProjectId: Flow<Long?> = dataStore.data.map { it[DEFAULT_PROJECT] }
 
+    /** Messages about changes the server rejected, kept until the user has seen them. */
+    val notices: Flow<List<String>> = dataStore.data.map { prefs ->
+        prefs[NOTICES]?.split('\n')?.filter { it.isNotEmpty() } ?: emptyList()
+    }
+
+    suspend fun addNotice(text: String) {
+        dataStore.edit { prefs ->
+            prefs[NOTICES] = listOfNotNull(prefs[NOTICES], text.replace('\n', ' ')).joinToString("\n")
+        }
+    }
+
+    suspend fun clearNotices() {
+        dataStore.edit { it.remove(NOTICES) }
+    }
+
     suspend fun credentials(): Credentials? = credentials.first()
 
     suspend fun saveCredentials(credentials: Credentials) {
@@ -58,5 +73,6 @@ class SettingsStore(
         val TOKEN = stringPreferencesKey("token")
         val TOKEN_REJECTED = booleanPreferencesKey("token_rejected")
         val DEFAULT_PROJECT = longPreferencesKey("default_project_id")
+        val NOTICES = stringPreferencesKey("notices")
     }
 }

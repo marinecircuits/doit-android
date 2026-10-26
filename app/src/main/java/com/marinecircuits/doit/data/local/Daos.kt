@@ -35,6 +35,9 @@ interface TaskDao {
     @Query("SELECT MIN(id) FROM tasks")
     suspend fun minId(): Long?
 
+    @Query("SELECT COALESCE(MAX(syncGeneration), 0) FROM tasks")
+    suspend fun maxSyncGeneration(): Long
+
     @Query("UPDATE tasks SET id = :newId WHERE id = :oldId")
     suspend fun changeId(oldId: Long, newId: Long)
 
@@ -68,6 +71,9 @@ interface ProjectDao {
 interface PendingChangeDao {
     @Query("SELECT * FROM pending_changes ORDER BY seq")
     suspend fun all(): List<PendingChangeEntity>
+
+    @Query("SELECT * FROM pending_changes ORDER BY seq LIMIT 1")
+    suspend fun first(): PendingChangeEntity?
 
     @Query("SELECT * FROM pending_changes WHERE taskId = :taskId")
     suspend fun forTask(taskId: Long): PendingChangeEntity?
