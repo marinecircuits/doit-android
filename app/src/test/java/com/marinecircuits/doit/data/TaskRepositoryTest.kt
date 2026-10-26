@@ -143,7 +143,7 @@ class TaskRepositoryTest {
 
         assertEquals(millis("2026-10-27T12:00"), db.tasks().get(10)!!.dueAt)
         assertEquals(millis("2026-10-27T09:30"), db.tasks().get(11)!!.dueAt)
-        assertEquals(JsonPrimitive("2026-10-27T08:30:00Z"), pendingFields(10)["due_date"])
+        assertEquals(JsonPrimitive("2026-10-27T11:00:00Z"), pendingFields(10)["due_date"])
     }
 
     @Test
@@ -184,6 +184,6 @@ class TaskRepositoryTest {
         assertEquals(millis("2026-10-27T09:30"), task.dueAt)
         assertEquals(JsonPrimitive("Revised task"), pendingFields(10)["title"])
         assertEquals(JsonPrimitive(2), pendingFields(10)["project_id"])
-        assertEquals(JsonPrimitive("2026-10-27T11:00:00Z"), pendingFields(10)["due_date"])
+        assertEquals(JsonPrimitive("2026-10-27T08:30:00Z"), pendingFields(10)["due_date"])
     }
 }
