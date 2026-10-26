@@ -1,0 +1,79 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Show the next version without pushing a branch or opening a pull request
+        type: boolean
+        default: false
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Commitizen
+        run: pip install -r requirements-release.txt
+
+      - name: Bump version files without creating a tag
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # --files-only updates .cz.toml, gradle.properties and CHANGELOG.md.
+          # Publish Release tags the merged commit; no tag is pushed here.
+          if [ "$DRY_RUN" = "true" ]; then
+            cz bump --yes --changelog --files-only --dry-run
+            exit 0
+          fi
+          cz bump --yes --changelog --files-only
+
+      - uses: actions/setup-java@v6
+        if: ${{ !inputs.dry_run }}
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v6
+        if: ${{ !inputs.dry_run }}
+
+      - name: Verify release
+        if: ${{ !inputs.dry_run }}
+        run: ./gradlew --stacktrace testDebugUnitTest
+
+      - name: Push release branch and open PR
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(cz version --project)
+          BRANCH="release/$VERSION"
+          git checkout -b "$BRANCH"
+          git add .cz.toml gradle.properties CHANGELOG.md
+          git commit -m "chore: release $VERSION"
+          git push origin "$BRANCH"
+          gh label create release \
+            --description "Release pull request; merging it publishes a release" \
+            --color 0E8A16 2>/dev/null || true
+          gh pr create --base main --head "$BRANCH" --label release \
+            --title "Release $VERSION" \
+            --body "Automated release PR. Review the version and changelog, then merge to tag $VERSION and publish the signed APK."

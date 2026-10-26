@@ -8,6 +8,9 @@ plugins {
 
 val appVersionName = providers.gradleProperty("doit.versionName").get()
 
+/** Path to the shared marinecircuits release keystore (PKCS#12); the Publish Release workflow sets it. */
+val releaseKeystore = providers.environmentVariable("ANDROID_SIGNING_KEYSTORE")
+
 /** major * 10000 + minor * 100 + patch, so 1.2.3 becomes 10203. Android rejects 0, hence the floor of 1. */
 fun versionCodeOf(versionName: String): Int {
     val (major, minor, patch) = versionName.substringBefore('-').split('.').map(String::toInt)
@@ -26,6 +29,18 @@ android {
         versionName = appVersionName
     }
 
+    signingConfigs {
+        if (releaseKeystore.isPresent) {
+            create("release") {
+                storeFile = file(releaseKeystore.get())
+                storeType = "pkcs12"
+                storePassword = providers.environmentVariable("ANDROID_SIGNING_STORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("ANDROID_SIGNING_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("ANDROID_SIGNING_KEY_PASSWORD").get()
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // The label comes from src/debug/res so a debug build installs next to the release build.
@@ -35,6 +50,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
@@ -46,6 +62,17 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 }
+
+// Never produce an unsigned or debug-signed release APK.
+val requireReleaseSigning by tasks.registering {
+    val signingConfigured = releaseKeystore.isPresent
+    doLast {
+        check(signingConfigured) {
+            "Release builds must be signed: set ANDROID_SIGNING_KEYSTORE and the other ANDROID_SIGNING_* variables."
+        }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(requireReleaseSigning) }
 
 tasks.withType<Test>().configureEach {
     testLogging {
