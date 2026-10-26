@@ -27,11 +27,14 @@ class DatabaseMigrationTest {
                 old.version = 1
             }
 
-            Room.databaseBuilder(context, DoitDatabase::class.java, name)
+            val upgraded = Room.databaseBuilder(context, DoitDatabase::class.java, name)
                 .addMigrations(DoitDatabase.MIGRATION_1_2)
-                .build().use { upgraded ->
-                    assertEquals(listOf(ProjectEntity(7, "Existing", false, 1.0, 0)), runBlocking { upgraded.projects().all() })
-                }
+                .build()
+            try {
+                assertEquals(listOf(ProjectEntity(7, "Existing", false, 1.0, 0)), runBlocking { upgraded.projects().all() })
+            } finally {
+                upgraded.close()
+            }
         } finally {
             context.deleteDatabase(name)
         }
