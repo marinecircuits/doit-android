@@ -49,11 +49,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handle(intent: Intent?) {
-        if (intent?.getBooleanExtra(EXTRA_FOCUS_CAPTURE, false) == true) focusCaptureRequests++
+        if (intent?.action == ACTION_CAPTURE) focusCaptureRequests++
     }
 
     companion object {
-        const val EXTRA_FOCUS_CAPTURE = "com.marinecircuits.doit.FOCUS_CAPTURE"
+        /** Opens the app with the capture box focused (the widget's + button). */
+        const val ACTION_CAPTURE = "com.marinecircuits.doit.CAPTURE"
     }
 }
 

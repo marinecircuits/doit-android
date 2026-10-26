@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.preferencesDataStoreFile
+import androidx.glance.appwidget.updateAll
 import com.marinecircuits.doit.data.Credentials
 import com.marinecircuits.doit.data.IdRemap
 import com.marinecircuits.doit.data.KeystoreCipher
@@ -13,12 +14,14 @@ import com.marinecircuits.doit.data.local.DoitDatabase
 import com.marinecircuits.doit.data.remote.VikunjaApi
 import com.marinecircuits.doit.data.sync.SyncEngine
 import com.marinecircuits.doit.data.sync.SyncScheduler
+import com.marinecircuits.doit.widget.DoitWidget
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class DoitApp : Application() {
@@ -63,6 +66,7 @@ class AppContainer(private val context: Context) {
 
     /** Redraws home-screen widgets after local data changed. */
     fun refreshWidgets() {
+        appScope.launch { DoitWidget().updateAll(context) }
     }
 }
 
