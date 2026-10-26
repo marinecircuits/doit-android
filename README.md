@@ -24,9 +24,10 @@ New tasks go to the default project set in Vikunja under **Settings → General*
 
 ## Using it
 
-- The main view lists every open task, with a tile for each top-level project underneath. Tap a tile to see that project's own tasks, with its subprojects as tiles below; back returns to the parent.
+- The main view shows top-level project tiles only. Tap a tile to see that project's tasks, with its subprojects as tiles below; back returns to the parent.
 - Tap a task's circle or swipe it right to complete it. It stays struck through until you leave the screen; tap the circle again to undo.
-- Swipe left to reschedule, or tap a task to edit its title, date and project.
+- Swipe left to reschedule, or tap a task to edit its title, date and project. Changes save as you make them; the title saves when you leave its field.
+- Tap the info icon beside the menu to see the installed app version.
 
 ## Installing
 
