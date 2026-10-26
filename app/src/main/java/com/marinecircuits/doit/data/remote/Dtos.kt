@@ -28,6 +28,8 @@ data class ProjectDto(
     val title: String = "",
     @SerialName("is_archived") val isArchived: Boolean = false,
     val position: Double = 0.0,
+    /** 0 for a top-level project. */
+    @SerialName("parent_project_id") val parentProjectId: Long = 0,
 )
 
 @Serializable

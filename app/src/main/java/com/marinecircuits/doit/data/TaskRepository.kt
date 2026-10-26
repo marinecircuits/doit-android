@@ -55,20 +55,23 @@ class TaskRepository(
         return projects.firstOrNull { it.id == configured }?.id ?: projects.firstOrNull()?.id
     }
 
-    /** Creates a task in the default project. Returns its (temporary) id, or null for a blank title. */
-    suspend fun capture(title: String, description: String? = null): Long? {
+    /**
+     * Creates a task in [projectId], or in the default project when it is null.
+     * Returns the task's (temporary) id, or null for a blank title.
+     */
+    suspend fun capture(title: String, description: String? = null, projectId: Long? = null): Long? {
         val trimmed = title.trim()
         if (trimmed.isEmpty()) return null
-        val projectId = defaultProjectId() ?: 0
+        val destination = projectId ?: defaultProjectId() ?: 0
         val id = db.withTransaction {
             val id = minOf(db.tasks().minId() ?: 0, 0) - 1
             db.tasks().upsert(
-                TaskEntity(id, trimmed, dueAt = null, projectId = projectId, done = false, createdAt = clock.millis()),
+                TaskEntity(id, trimmed, dueAt = null, projectId = destination, done = false, createdAt = clock.millis()),
             )
             val fields = buildJsonObject {
                 put("title", trimmed)
                 if (!description.isNullOrBlank()) put("description", description.trim())
-                if (projectId > 0) put("project_id", projectId)
+                if (destination > 0) put("project_id", destination)
             }
             db.pendingChanges().insert(
                 PendingChangeEntity(taskId = id, kind = PendingChangeEntity.CREATE, fields = fields.toString()),

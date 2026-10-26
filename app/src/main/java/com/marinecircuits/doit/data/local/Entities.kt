@@ -1,5 +1,6 @@
 package com.marinecircuits.doit.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -26,6 +27,8 @@ data class ProjectEntity(
     val title: String,
     val archived: Boolean,
     val position: Double,
+    /** 0 for a top-level project. */
+    @ColumnInfo(defaultValue = "0") val parentProjectId: Long = 0,
 )
 
 /**
