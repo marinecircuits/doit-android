@@ -1,3 +1,10 @@
+## 0.3.0 (2026-10-26)
+
+### Feat
+
+- browse projects as tiles with subprojects beneath the task list
+- store project parents and capture into a chosen project
+
 ## 0.2.0 (2026-10-26)
 
 ### Feat
