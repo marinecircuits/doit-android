@@ -105,6 +105,20 @@ class TaskRepository(
         write(task.id, fields(DUE_DATE to dueJson(dueAt))) { it.copy(dueAt = dueAt) }
     }
 
+    suspend fun rename(taskId: Long, title: String) {
+        val trimmed = title.trim()
+        if (trimmed.isEmpty()) return
+        val task = db.tasks().get(idRemap.resolve(taskId)) ?: return
+        if (trimmed == task.title) return
+        write(task.id, fields(TITLE to JsonPrimitive(trimmed))) { it.copy(title = trimmed) }
+    }
+
+    suspend fun move(taskId: Long, projectId: Long) {
+        val task = db.tasks().get(idRemap.resolve(taskId)) ?: return
+        if (projectId == task.projectId) return
+        write(task.id, fields(PROJECT_ID to JsonPrimitive(projectId))) { it.copy(projectId = projectId) }
+    }
+
     /** Applies the light edit sheet; only fields that actually changed are queued. */
     suspend fun edit(taskId: Long, title: String, dueAt: Long?, projectId: Long) {
         val task = db.tasks().get(idRemap.resolve(taskId)) ?: return

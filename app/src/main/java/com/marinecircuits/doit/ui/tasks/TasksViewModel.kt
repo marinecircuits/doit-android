@@ -2,14 +2,12 @@ package com.marinecircuits.doit.ui.tasks
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.marinecircuits.doit.data.DueDates
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.sync.SyncResult
 import java.time.Clock
-import java.time.Instant
 import java.time.LocalDate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -187,14 +185,12 @@ class TasksViewModel(
         viewModelScope.launch { repository.reschedule(task.id, date) }
     }
 
-    /** From the edit sheet, which only picks dates: an unchanged date keeps the exact due time. */
-    fun edit(task: TaskEntity, title: String, date: LocalDate?, projectId: Long) {
-        val dueAt = when {
-            date == null -> null
-            task.dueAt != null && DueDates.localDate(task.dueAt, clock.zone) == date -> task.dueAt
-            else -> DueDates.withDate(task.dueAt?.let(Instant::ofEpochMilli), date, clock.zone).toEpochMilli()
-        }
-        viewModelScope.launch { repository.edit(task.id, title, dueAt, projectId) }
+    fun rename(task: TaskEntity, title: String) {
+        viewModelScope.launch { repository.rename(task.id, title) }
+    }
+
+    fun move(task: TaskEntity, projectId: Long) {
+        viewModelScope.launch { repository.move(task.id, projectId) }
     }
 
     fun requestSignOut() {

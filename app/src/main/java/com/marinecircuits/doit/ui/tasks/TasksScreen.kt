@@ -271,10 +271,9 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             today = state.today,
             words = words,
             locale = locale,
-            onSave = { title, date, projectId ->
-                editTarget = null
-                viewModel.edit(task, title, date, projectId)
-            },
+            onTitleChange = { viewModel.rename(task, it) },
+            onDateChange = { viewModel.reschedule(task, it) },
+            onProjectChange = { viewModel.move(task, it) },
             onDismiss = { editTarget = null },
         )
     }
