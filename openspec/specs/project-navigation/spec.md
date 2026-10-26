@@ -8,6 +8,7 @@ Lets the user browse Vikunja's project hierarchy: top-level projects as tiles on
 
 ### Requirement: Top-level project tiles
 The main view SHALL show one tile for every non-archived top-level project, using the full content area and showing no task list. A project whose parent is archived or not accessible SHALL count as top-level. Nested projects SHALL NOT have tiles on the main view.
+Main-view tiles SHALL be roughly twice as tall as subproject tiles, while keeping the same width and text styles.
 
 #### Scenario: Only top-level projects
 - **WHEN** the user has the projects Work (with subproject Firmware) and Home

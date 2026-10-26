@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -177,7 +178,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 ) {
                     when {
-                        state.tiles.isNotEmpty() -> ProjectTiles(state.tiles, viewModel::openProject, Modifier.fillMaxSize())
+                        state.tiles.isNotEmpty() -> ProjectTiles(
+                            state.tiles,
+                            viewModel::openProject,
+                            Modifier.fillMaxSize(),
+                            largeTiles = true,
+                        )
                         !state.loaded || !state.syncedOnce -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                             CircularProgressIndicator()
                         }
@@ -386,7 +392,12 @@ private fun ProjectHeader(title: String, onBack: () -> Unit) {
 
 /** Project tiles: title and the number of open tasks directly in the project. Scrolls on its own. */
 @Composable
-private fun ProjectTiles(tiles: List<ProjectTile>, onOpen: (Long) -> Unit, modifier: Modifier = Modifier) {
+private fun ProjectTiles(
+    tiles: List<ProjectTile>,
+    onOpen: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+    largeTiles: Boolean = false,
+) {
     val navigationBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 140.dp),
@@ -397,7 +408,12 @@ private fun ProjectTiles(tiles: List<ProjectTile>, onOpen: (Long) -> Unit, modif
     ) {
         items(tiles, key = { it.project.id }) { tile ->
             OutlinedCard(onClick = { onOpen(tile.project.id) }) {
-                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().then(
+                        if (largeTiles) Modifier.heightIn(min = 120.dp) else Modifier
+                    ).padding(12.dp),
+                    verticalArrangement = if (largeTiles) Arrangement.Center else Arrangement.Top,
+                ) {
                     Text(
                         tile.project.title,
                         style = MaterialTheme.typography.titleSmall,
