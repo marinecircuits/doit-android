@@ -126,6 +126,24 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun completedRowKeepsItsPositionAfterTheDatabaseRemovesIt() {
+        runBlocking {
+            db.projects().insertAll(listOf(ProjectEntity(1, "Work", false, 0.0)))
+            db.tasks().upsertAll(listOf(
+                TaskEntity(1, "First", null, 1, false, 300),
+                TaskEntity(2, "Middle", null, 1, false, 200),
+                TaskEntity(3, "Last", null, 1, false, 100),
+            ))
+        }
+        waitUntil { viewModel.state.value.rows.size == 3 }
+        viewModel.complete(viewModel.state.value.rows[1].task)
+        waitUntil { runBlocking { db.tasks().get(2)?.done == true } }
+
+        assertEquals(listOf(1L, 2L, 3L), viewModel.state.value.rows.map { it.task.id })
+        assertTrue(viewModel.state.value.rows[1].task.done)
+    }
+
+    @Test
     fun projectNavigationDrillsIntoChildrenAndCaptureUsesSelectedProject() {
         runBlocking {
             db.projects().insertAll(listOf(

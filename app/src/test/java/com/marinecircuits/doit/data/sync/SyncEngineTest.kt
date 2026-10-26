@@ -76,7 +76,7 @@ class SyncEngineTest {
         }
 
         assertEquals(SyncResult.Synced, engine.sync())
-        assertEquals(listOf(0L, 1L), db.projects().all().map { it.parentProjectId })
+        assertEquals(mapOf(1L to 0L, 2L to 1L), db.projects().all().associate { it.id to it.parentProjectId })
     }
 
     @Test

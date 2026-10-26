@@ -1,6 +1,6 @@
 # doit
 
-A deliberately small Android app for a self-hosted [Vikunja](https://vikunja.io): one capture box, one list of everything that's still open, swipe to finish or reschedule. It works offline and syncs when it can.
+A deliberately small Android app for a self-hosted [Vikunja](https://vikunja.io): a capture box and project-based task lists, with swipe actions to finish or reschedule. It works offline and syncs when it can.
 
 ## Requirements
 
@@ -20,7 +20,9 @@ A deliberately small Android app for a self-hosted [Vikunja](https://vikunja.io)
    `other → user` is only used to read your *default project* (where new tasks go). Without it the app falls back to your first project.
 2. Open doit, enter the server address (e.g. `todo.example.com`) and paste the token.
 
-New tasks go to the default project set in Vikunja under **Settings → General**.
+The main view shows parent projects as tiles. Open a project to see its tasks; if it has subprojects, their tiles occupy the lower part of the screen. Both areas scroll independently. New tasks go to the open project, or to the default project set in Vikunja under **Settings → General** when captured from the main view.
+
+Completed tasks stay struck through until you leave the project. Tap the completed task's circle to undo while it remains visible.
 
 ## Installing
 
