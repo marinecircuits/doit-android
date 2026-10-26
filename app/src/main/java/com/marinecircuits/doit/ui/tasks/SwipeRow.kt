@@ -37,14 +37,16 @@ import kotlinx.coroutines.launch
 private const val SWIPE_THRESHOLD = 0.35f
 
 /**
- * A row that can be swiped right ([onSwipedRight], complete) or left ([onSwipedLeft], reschedule).
- * Built on plain drag gestures because Material's swipe-to-dismiss API keeps changing shape between releases.
+ * A row that can be swiped right ([onSwipedRight], complete) or left ([onSwipedLeft], reschedule); either way it
+ * slides back into place. Built on plain drag gestures because Material's swipe-to-dismiss API keeps changing shape
+ * between releases. A disabled row ignores swipes.
  */
 @Composable
 fun SwipeRow(
     onSwipedRight: () -> Unit,
     onSwipedLeft: () -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val offset = remember { Animatable(0f) }
@@ -79,7 +81,8 @@ fun SwipeRow(
         Box(
             Modifier
                 .offset { IntOffset(offset.value.roundToInt(), 0) }
-                .pointerInput(Unit) {
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             val value = offset.value
@@ -88,9 +91,8 @@ fun SwipeRow(
                             scope.launch {
                                 when {
                                     value > threshold -> {
-                                        offset.animateTo(width.toFloat())
+                                        offset.animateTo(0f)
                                         onSwipedRight()
-                                        offset.snapTo(0f)
                                     }
                                     value < -threshold -> {
                                         offset.animateTo(0f)

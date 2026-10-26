@@ -48,6 +48,26 @@ class TaskListModelTest {
     }
 
     @Test
+    fun completedTasksKeepTheirPlaceAndAreNeverOverdue() {
+        val rows = TaskListModel.rows(
+            listOf(
+                task(1, "late", "2026-10-20T12:00"),
+                task(2, "done late", "2026-10-21T12:00").copy(done = true),
+                task(3, "today", "2026-10-26T12:00"),
+            ),
+            emptyList(),
+            1,
+            today,
+            zone,
+        )
+        assertEquals(listOf("late", "done late", "today"), rows.map { it.task.title })
+        assertTrue(rows[1].completed)
+        assertFalse(rows[1].overdue)
+        assertFalse(rows[0].completed)
+        assertTrue(rows[0].overdue)
+    }
+
+    @Test
     fun dueTodayIsNotOverdueAfterItsTime() {
         val row = TaskListModel.rows(listOf(task(1, "a", "2026-10-26T00:30")), emptyList(), 1, today, zone).single()
         assertFalse(row.overdue)

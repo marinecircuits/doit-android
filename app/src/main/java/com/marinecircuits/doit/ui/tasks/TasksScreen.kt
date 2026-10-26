@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -40,7 +41,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,21 +50,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -73,7 +74,6 @@ import com.marinecircuits.doit.R
 import com.marinecircuits.doit.data.local.TaskEntity
 import java.time.LocalDate
 import java.util.Locale
-import kotlinx.coroutines.launch
 
 /**
  * The single screen: capture box, status line, the list of open tasks and the sheets for rescheduling and editing.
@@ -82,7 +82,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNewToken: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
     val words = DueWords(
         today = stringResource(R.string.due_today),
@@ -90,7 +89,6 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         yesterday = stringResource(R.string.due_yesterday),
     )
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val captureFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
@@ -101,9 +99,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var datePickTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
 
+    // Leaving the screen (or the app) is a view change: rows completed here are gone when the user returns.
     LifecycleStartEffect(viewModel) {
         viewModel.onForeground()
-        onStopOrDispose { }
+        onStopOrDispose { viewModel.onLeave() }
     }
 
     LaunchedEffect(focusCaptureRequests) {
@@ -126,19 +125,6 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         if (notices.isEmpty()) return@LaunchedEffect
         viewModel.clearNotices()
         notices.forEach { snackbarHostState.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long) }
-    }
-
-    fun complete(task: TaskEntity) {
-        viewModel.complete(task)
-        scope.launch {
-            snackbarHostState.currentSnackbarData?.dismiss()
-            val result = snackbarHostState.showSnackbar(
-                message = context.getString(R.string.completed_snackbar, task.title),
-                actionLabel = context.getString(R.string.undo),
-                duration = SnackbarDuration.Short,
-            )
-            if (result == SnackbarResult.ActionPerformed) viewModel.undoComplete(task)
-        }
     }
 
     fun capture() {
@@ -178,14 +164,17 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     ) {
                         items(state.rows, key = { it.task.id }) { row ->
                             SwipeRow(
-                                onSwipedRight = { complete(row.task) },
+                                onSwipedRight = { viewModel.complete(row.task) },
                                 onSwipedLeft = { rescheduleTarget = row.task },
+                                enabled = !row.completed,
                                 modifier = Modifier.animateItem(),
                             ) {
                                 TaskRowItem(
                                     row = row,
                                     dueLabel = row.dueDate?.let { DueLabels.label(it, state.today, words, locale) },
-                                    onComplete = { complete(row.task) },
+                                    onCheckedChange = { checked ->
+                                        if (checked) viewModel.complete(row.task) else viewModel.uncomplete(row.task)
+                                    },
                                     onOpen = { editTarget = row.task },
                                 )
                             }
@@ -347,24 +336,51 @@ private fun TokenRejectedBanner(onEnterNewToken: () -> Unit) {
 }
 
 @Composable
-private fun TaskRowItem(row: TaskRow, dueLabel: String?, onComplete: () -> Unit, onOpen: () -> Unit) {
+private fun TaskRowItem(row: TaskRow, dueLabel: String?, onCheckedChange: (Boolean) -> Unit, onOpen: () -> Unit) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = !row.completed, onClick = onOpen)
+                .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
                     .size(56.dp)
-                    .clickable(onClickLabel = stringResource(R.string.complete_task), role = Role.Checkbox, onClick = onComplete),
+                    .toggleable(value = row.completed, role = Role.Checkbox, onValueChange = onCheckedChange)
+                    .semantics { contentDescription = row.task.title },
                 contentAlignment = Alignment.Center,
             ) {
-                Box(Modifier.size(22.dp).border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
+                if (row.completed) {
+                    Box(
+                        Modifier.size(22.dp).background(MaterialTheme.colorScheme.primary, CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.ic_check),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                } else {
+                    Box(Modifier.size(22.dp).border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
+                }
             }
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
-                Text(row.task.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    row.task.title,
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        textDecoration = if (row.completed) TextDecoration.LineThrough else null,
+                    ),
+                    color = if (row.completed) muted else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 row.projectTitle?.let {
-                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = muted)
                 }
             }
             dueLabel?.let {
@@ -372,7 +388,7 @@ private fun TaskRowItem(row: TaskRow, dueLabel: String?, onComplete: () -> Unit,
                 Text(
                     it,
                     style = MaterialTheme.typography.labelLarge,
-                    color = if (row.overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (row.overdue) MaterialTheme.colorScheme.error else muted,
                 )
             }
         }
