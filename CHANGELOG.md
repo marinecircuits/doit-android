@@ -1,3 +1,13 @@
+## 0.5.0 (2026-10-26)
+
+### Feat
+
+- enlarge main-view project tiles
+
+### Fix
+
+- move app version into overflow menu
+
 ## 0.4.0 (2026-10-26)
 
 ### Feat
