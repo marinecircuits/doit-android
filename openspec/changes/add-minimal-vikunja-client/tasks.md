@@ -57,4 +57,4 @@
 
 ## Workflow follow-up
 
-- Archive the change with `/opsx:archive` once 0.1.0 is verified on the phone.
+- Its specs were synced into `openspec/specs/` on 2026-10-26 (0.1.0 shipped) so later changes can modify them. Archive it with `openspec archive add-minimal-vikunja-client --skip-specs` once 0.1.0 is verified on the phone; archiving without `--skip-specs` would overwrite those later modifications.

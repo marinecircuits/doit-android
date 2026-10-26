@@ -24,8 +24,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.marinecircuits.doit.R
 
@@ -57,14 +57,20 @@ fun SetupScreen(viewModel: SetupViewModel) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                 modifier = Modifier.fillMaxWidth(),
             )
+            // A plain field so a copied token can be pasted and checked; a password field brings up password
+            // managers instead of paste. Autocorrect and capitalisation would alter the token.
             OutlinedTextField(
                 value = viewModel.token,
                 onValueChange = { viewModel.token = it },
                 label = { Text(stringResource(R.string.setup_token)) },
                 placeholder = { Text(stringResource(R.string.setup_token_hint)) },
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrectEnabled = false,
+                    keyboardType = KeyboardType.Ascii,
+                    imeAction = ImeAction.Done,
+                ),
                 keyboardActions = KeyboardActions(onDone = { viewModel.connect() }),
                 modifier = Modifier.fillMaxWidth(),
             )
