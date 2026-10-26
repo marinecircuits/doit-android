@@ -1,0 +1,18 @@
+.gradle/
+.kotlin/
+build/
+/local.properties
+.idea/
+*.iml
+captures/
+.DS_Store
+
+# Build outputs and signing material never belong in the repo
+*.apk
+*.aab
+*.jks
+*.keystore
+*.p12
+
+# Written by the release workflows
+release_notes.md
