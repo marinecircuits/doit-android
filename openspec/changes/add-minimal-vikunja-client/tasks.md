@@ -49,7 +49,7 @@
 
 - [x] 8.1 Add `.cz.toml` (version 0.0.0, tags without prefix, `version_files = ["gradle.properties:doit.versionName"]`) and `requirements-release.txt`; verify `cz bump --dry-run --files-only --changelog` locally proposes 0.1.0
 - [x] 8.2 Add `prepare-release.yml` mirroring weekly-planner (dry run, files-only bump, unit tests, `release/<version>` PR with `release` label); verify a dry-run dispatch on GitHub prints 0.1.0
-- [ ] 8.3 Add release signing from `ANDROID_SIGNING_*` environment variables, with a check that fails the release build without them, and `publish-release.yml` (validate, test, build signed APK, tag, release with notes and `doit-<version>.apk`, idempotent); verify by publishing 0.1.0 and checking the APK signer's SHA-256 is `06:41:57:C9:…:0B:09`
+- [x] 8.3 Add release signing from `ANDROID_SIGNING_*` environment variables, with a check that fails the release build without them, and `publish-release.yml` (validate, test, build signed APK, tag, release with notes and `doit-<version>.apk`, idempotent); verify by publishing 0.1.0 and checking the APK signer's SHA-256 is `06:41:57:C9:…:0B:09`
 
 ## 9. End-to-end checks
 
