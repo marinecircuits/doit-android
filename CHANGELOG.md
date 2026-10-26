@@ -1,3 +1,13 @@
+## 0.2.0 (2026-10-26)
+
+### Feat
+
+- keep completed tasks struck through until the view changes
+
+### Fix
+
+- make the API token field a plain text field
+
 ## 0.1.0 (2026-10-26)
 
 ### Feat
