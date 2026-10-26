@@ -2,25 +2,31 @@
 
 package com.marinecircuits.doit.ui.tasks
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
@@ -36,6 +42,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -48,6 +55,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -76,8 +84,9 @@ import java.time.LocalDate
 import java.util.Locale
 
 /**
- * The single screen: capture box, status line, the list of open tasks and the sheets for rescheduling and editing.
- * [focusCaptureRequests] grows each time the widget's + button asks for the capture box.
+ * The main view and every project screen: capture box, status line, the task list with project tiles beneath it,
+ * and the sheets for rescheduling and editing. [focusCaptureRequests] grows each time the widget's + button asks
+ * for the capture box, which always opens the main view.
  */
 @Composable
 fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNewToken: () -> Unit) {
@@ -89,7 +98,9 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         yesterday = stringResource(R.string.due_yesterday),
     )
     val snackbarHostState = remember { SnackbarHostState() }
-    val listState = rememberLazyListState()
+    val currentProject = state.path.lastOrNull()
+    // Each view starts at the top of its own list.
+    val listState = key(currentProject?.id) { rememberLazyListState() }
     val captureFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -105,8 +116,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         onStopOrDispose { viewModel.onLeave() }
     }
 
+    BackHandler(enabled = currentProject != null) { viewModel.navigateUp() }
+
     LaunchedEffect(focusCaptureRequests) {
         if (focusCaptureRequests > 0) {
+            viewModel.navigateHome()
             captureFocus.requestFocus()
             keyboard?.show()
         }
@@ -140,7 +154,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         snackbarHost = { SnackbarHost(snackbarHostState, Modifier.navigationBarsPadding().imePadding()) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
+            currentProject?.let { ProjectHeader(it.title, onBack = viewModel::navigateUp) }
             CaptureBar(
+                hint = currentProject?.let { stringResource(R.string.capture_hint_project, it.title) }
+                    ?: stringResource(R.string.capture_hint),
+                belowStatusBar = currentProject == null,
                 text = captureText,
                 onTextChange = { captureText = it },
                 onSend = ::capture,
@@ -151,15 +169,17 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             if (state.tokenRejected) TokenRejectedBanner(onEnterNewToken)
             StatusLine(state.status)
 
+            // Tasks take the upper two thirds and tiles the lower third; without tiles the list gets everything.
+            val hasTiles = state.tiles.isNotEmpty()
             PullToRefreshBox(
                 isRefreshing = state.refreshing,
                 onRefresh = viewModel::refresh,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth().weight(if (hasTiles) 2f else 1f),
             ) {
                 when {
                     state.rows.isNotEmpty() -> LazyColumn(
                         state = listState,
-                        contentPadding = WindowInsets.navigationBars.asPaddingValues(),
+                        contentPadding = if (hasTiles) PaddingValues() else WindowInsets.navigationBars.asPaddingValues(),
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(state.rows, key = { it.task.id }) { row ->
@@ -186,12 +206,16 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     }
                     else -> LazyColumn(Modifier.fillMaxSize()) {
                         item {
-                            Box(Modifier.fillMaxWidth().padding(top = 96.dp), Alignment.Center) {
+                            Box(Modifier.fillMaxWidth().padding(top = 48.dp), Alignment.Center) {
                                 Text(stringResource(R.string.empty_list), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
                 }
+            }
+            if (hasTiles) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                ProjectTiles(state.tiles, onOpen = viewModel::openProject, modifier = Modifier.fillMaxWidth().weight(1f))
             }
         }
     }
@@ -251,6 +275,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
 
 @Composable
 private fun CaptureBar(
+    hint: String,
+    belowStatusBar: Boolean,
     text: String,
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
@@ -260,13 +286,16 @@ private fun CaptureBar(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     Row(
-        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (belowStatusBar) Modifier.statusBarsPadding() else Modifier)
+            .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         OutlinedTextField(
             value = text,
             onValueChange = onTextChange,
-            placeholder = { Text(stringResource(R.string.capture_hint)) },
+            placeholder = { Text(hint, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { onSend() }),
@@ -296,6 +325,51 @@ private fun CaptureBar(
                         onSignOut()
                     },
                 )
+            }
+        }
+    }
+}
+
+/** Title row of a project screen; the back arrow goes to the parent project or the main view. */
+@Composable
+private fun ProjectHeader(title: String, onBack: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 16.dp, top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = stringResource(R.string.back))
+        }
+        Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** Project tiles: title and the number of open tasks directly in the project. Scrolls on its own. */
+@Composable
+private fun ProjectTiles(tiles: List<ProjectTile>, onOpen: (Long) -> Unit, modifier: Modifier = Modifier) {
+    val navigationBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 140.dp),
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + navigationBar),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier,
+    ) {
+        items(tiles, key = { it.project.id }) { tile ->
+            OutlinedCard(onClick = { onOpen(tile.project.id) }) {
+                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                    Text(
+                        tile.project.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        pluralStringResource(R.plurals.tile_open_count, tile.openCount, tile.openCount),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

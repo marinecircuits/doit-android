@@ -2,8 +2,8 @@
 
 ## 1. Project hierarchy data
 
-- [ ] 1.1 Store `parent_project_id` (DTO, `ProjectEntity` column with default 0, sync mapping) and move the database to version 2 with an auto-migration; commit the generated `2.json`; verify with a Robolectric test that a version-1 database built from `1.json` keeps its tasks, projects and pending changes after upgrading, and a sync test that parent ids are stored
-- [ ] 1.2 Let `TaskRepository.capture` take a destination project (default project when none); verify with a repository test
+- [x] 1.1 Store `parent_project_id` (DTO, `ProjectEntity` column with default 0, sync mapping) and move the database to version 2 with an auto-migration; commit the generated `2.json`; verify with a Robolectric test that a version-1 database built from `1.json` keeps its tasks, projects and pending changes after upgrading, and a sync test that parent ids are stored
+- [x] 1.2 Let `TaskRepository.capture` take a destination project (default project when none); verify with a repository test
 
 ## 2. Navigation model
 
