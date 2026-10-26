@@ -10,21 +10,21 @@
 
 ## 2. Vikunja API v2 client
 
-- [ ] 2.1 Add DTOs (task, project, user settings, paginated envelope, problem details) and date conversion treating `0001-01-01T00:00:00Z` as no date; verify with unit tests for parsing, offsets and zero dates
-- [ ] 2.2 Implement server URL normalisation (scheme default, trailing slash, `/api/v1`/`/api/v2` suffix, reject `http://`); verify with unit tests for every scenario in the server-connection spec
-- [ ] 2.3 Implement the HTTP client (info, user, paged projects, paged open tasks, create, merge-patch update) with typed errors carrying status and problem detail; verify with MockWebServer tests for paging, PATCH content type, null-clearing a due date and 401/403/422 mapping
+- [x] 2.1 Add DTOs (task, project, user settings, paginated envelope, problem details) and date conversion treating `0001-01-01T00:00:00Z` as no date; verify with unit tests for parsing, offsets and zero dates
+- [x] 2.2 Implement server URL normalisation (scheme default, trailing slash, `/api/v1`/`/api/v2` suffix, reject `http://`); verify with unit tests for every scenario in the server-connection spec
+- [x] 2.3 Implement the HTTP client (info, user, paged projects, paged open tasks, create, merge-patch update) with typed errors carrying status and problem detail; verify with MockWebServer tests for paging, PATCH content type, null-clearing a due date and 401/403/422 mapping
 
 ## 3. Local storage and credentials
 
-- [ ] 3.1 Add the Room database (`tasks`, `projects`, `pending_changes`) with DAOs and exported schema; verify with Robolectric DAO tests for the open-task query and the mark-and-sweep delete
+- [x] 3.1 Add the Room database (`tasks`, `projects`, `pending_changes`) with DAOs and exported schema; verify with Robolectric DAO tests for the open-task query and the mark-and-sweep delete
 - [ ] 3.2 Add the settings DataStore with Keystore-encrypted token, backup and data-extraction rules excluding all data, and a network security config forbidding cleartext; verify the merged manifest in the CI build has `allowBackup=false` and the config attached
 
 ## 4. Offline sync
 
-- [ ] 4.1 Implement merging of pending changes per task (field-wise last-wins, revision bump); verify with unit tests including complete-then-undo collapsing into one update
-- [ ] 4.2 Implement repository writes (capture with temporary id, complete, undo, reschedule keeping time of day or defaulting to 12:00, edit) that update Room and the queue atomically; verify with Robolectric tests per action
-- [ ] 4.3 Implement the sync engine: ordered push with revision check and temporary-id remapping, error classification, then paged pull with mark-and-sweep, all under one mutex; verify with Robolectric + MockWebServer tests for create-then-complete offline, deleted-on-server, 422 rejection, 503 retry and edit-during-push
-- [ ] 4.4 Add the WorkManager worker, unique one-time `sync-now` job after local changes, 30-minute periodic job and foreground sync; verify with a WorkManager test-helper test that a local change enqueues `sync-now` with a network constraint
+- [x] 4.1 Implement merging of pending changes per task (field-wise last-wins, revision bump); verify with unit tests including complete-then-undo collapsing into one update
+- [x] 4.2 Implement repository writes (capture with temporary id, complete, undo, reschedule keeping time of day or defaulting to 12:00, edit) that update Room and the queue atomically; verify with Robolectric tests per action
+- [x] 4.3 Implement the sync engine: ordered push with revision check and temporary-id remapping, error classification, then paged pull with mark-and-sweep, all under one mutex; verify with Robolectric + MockWebServer tests for create-then-complete offline, deleted-on-server, 422 rejection, 503 retry and edit-during-push
+- [x] 4.4 Add the WorkManager worker, unique one-time `sync-now` job after local changes, 30-minute periodic job and foreground sync; verify with a WorkManager test-helper test that a local change enqueues `sync-now` with a network constraint
 
 ## 5. Main screen
 

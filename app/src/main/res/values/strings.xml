@@ -1,4 +1,79 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">doit</string>
+
+    <!-- Setup -->
+    <string name="setup_title">Connect to Vikunja</string>
+    <string name="setup_reconnect_title">Enter a new token</string>
+    <string name="setup_reconnect_body">The server no longer accepts the saved token. Your tasks and unsent changes are kept and will sync once a working token is saved.</string>
+    <string name="setup_server">Server address</string>
+    <string name="setup_server_hint">todo.example.com</string>
+    <string name="setup_token">API token</string>
+    <string name="setup_token_hint">tk_…</string>
+    <string name="setup_connect">Connect</string>
+    <string name="setup_permissions_title">Create the token in Vikunja under Settings → API Tokens with these permissions:</string>
+    <string name="setup_permissions">• tasks: read_all, create, update\n• projects: read_all\n• other: user</string>
+    <string name="setup_error_blank_url">Enter your server address.</string>
+    <string name="setup_error_http">HTTPS is required. Use an https:// address.</string>
+    <string name="setup_error_invalid_url">That doesn\'t look like a web address.</string>
+    <string name="setup_error_blank_token">Paste an API token.</string>
+    <string name="setup_error_unreachable">Can\'t reach a Vikunja 2.4+ server at this address.</string>
+    <string name="setup_error_token_rejected">This token is invalid or has expired.</string>
+    <string name="setup_error_missing_permission">This token is missing permissions. It needs the ones listed below.</string>
+    <string name="setup_error_other">The server answered unexpectedly: %1$s</string>
+
+    <!-- Task list -->
+    <string name="capture_hint">Add a task…</string>
+    <string name="capture_send">Add task</string>
+    <string name="menu">More options</string>
+    <string name="menu_sync">Sync now</string>
+    <string name="menu_sign_out">Sign out</string>
+    <string name="empty_list">Nothing to do</string>
+    <string name="complete_task">Complete</string>
+    <string name="completed_snackbar">Completed “%1$s”</string>
+    <string name="undo">Undo</string>
+    <string name="due_today">today</string>
+    <string name="due_tomorrow">tomorrow</string>
+    <string name="due_yesterday">yesterday</string>
+    <string name="status_offline">Offline</string>
+    <string name="status_failed">Sync failed</string>
+    <string name="status_missing_permission">Token is missing permissions</string>
+    <plurals name="status_waiting">
+        <item quantity="one">%d change waiting</item>
+        <item quantity="other">%d changes waiting</item>
+    </plurals>
+    <string name="token_rejected_banner">The server rejected the token. Sync is paused.</string>
+    <string name="token_rejected_action">Enter new token</string>
+    <string name="sign_out_title">Sign out?</string>
+    <plurals name="sign_out_pending">
+        <item quantity="one">%d unsent change will be lost.</item>
+        <item quantity="other">%d unsent changes will be lost.</item>
+    </plurals>
+    <string name="cancel">Cancel</string>
+
+    <!-- Reschedule and edit -->
+    <string name="when_title">Reschedule</string>
+    <string name="when_today">Today</string>
+    <string name="when_tomorrow">Tomorrow</string>
+    <string name="when_next_week">Next week</string>
+    <string name="when_pick">Pick a date…</string>
+    <string name="when_none">No date</string>
+    <string name="ok">OK</string>
+    <string name="edit_title">Title</string>
+    <string name="edit_due">Due</string>
+    <string name="edit_no_date">No date</string>
+    <string name="edit_clear_date">Clear</string>
+    <string name="edit_project">Project</string>
+    <string name="edit_save">Save</string>
+
+    <!-- Share -->
+    <string name="share_title">Add to doit</string>
+    <string name="share_add">Add</string>
+    <string name="share_not_connected">Connect doit to your Vikunja server first.</string>
+    <string name="share_open_app">Open doit</string>
+
+    <!-- Widget -->
+    <string name="widget_description">Open tasks with tap-to-complete</string>
+    <string name="widget_not_connected">Open doit to connect</string>
+    <string name="widget_add">Add a task</string>
 </resources>
