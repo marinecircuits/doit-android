@@ -7,7 +7,7 @@ Lets the user browse Vikunja's project hierarchy: top-level projects as tiles on
 ## Requirements
 
 ### Requirement: Top-level project tiles
-The main view SHALL show one tile for every non-archived top-level project in roughly the lower third of its content area, below the task list. A project whose parent is archived or not accessible SHALL count as top-level. Nested projects SHALL NOT have tiles on the main view.
+The main view SHALL show one tile for every non-archived top-level project, using the full content area and showing no task list. A project whose parent is archived or not accessible SHALL count as top-level. Nested projects SHALL NOT have tiles on the main view.
 
 #### Scenario: Only top-level projects
 - **WHEN** the user has the projects Work (with subproject Firmware) and Home
@@ -16,6 +16,10 @@ The main view SHALL show one tile for every non-archived top-level project in ro
 #### Scenario: Subproject of an archived project
 - **WHEN** the project Old is archived and its subproject Notes is not
 - **THEN** the main view shows a tile for Notes
+
+#### Scenario: No projects
+- **WHEN** no projects are available
+- **THEN** the main view shows a short "No projects yet" message
 
 ### Requirement: Project tile content
 Each tile SHALL show the project's title and the number of open tasks directly in that project.
@@ -51,6 +55,7 @@ Wherever a task list and a tile area are shown together, each SHALL scroll on it
 
 ### Requirement: Deeper levels and back
 Tapping a subproject tile SHALL open that subproject's screen with the same layout. The back arrow and the system back action SHALL go to the parent project's screen, and from a top-level project to the main view.
+The back arrow SHALL have a larger visual and touch target than a standard icon button.
 
 #### Scenario: Two levels down and back
 - **WHEN** the user opens Work, then Firmware, then goes back twice

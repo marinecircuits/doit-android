@@ -168,4 +168,22 @@ class TaskRepositoryTest {
         repository.edit(10, "Server task", null, projectId = 2)
         assertEquals(before, localChanges)
     }
+
+    @Test
+    fun immediateFieldEditsKeepTheOtherTaskFields() = runTest {
+        val originalDue = millis("2026-10-26T09:30")
+        serverTask(10, originalDue)
+
+        repository.rename(10, "  Revised task  ")
+        repository.move(10, 2)
+        repository.reschedule(10, LocalDate.parse("2026-10-27"))
+
+        val task = db.tasks().get(10)!!
+        assertEquals("Revised task", task.title)
+        assertEquals(2L, task.projectId)
+        assertEquals(millis("2026-10-27T09:30"), task.dueAt)
+        assertEquals(JsonPrimitive("Revised task"), pendingFields(10)["title"])
+        assertEquals(JsonPrimitive(2), pendingFields(10)["project_id"])
+        assertEquals(JsonPrimitive("2026-10-27T08:30:00Z"), pendingFields(10)["due_date"])
+    }
 }

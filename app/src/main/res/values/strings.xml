@@ -32,6 +32,9 @@
         <item quantity="other">%d open</item>
     </plurals>
     <string name="menu">More options</string>
+    <string name="app_info">About doit</string>
+    <string name="app_version">Version %1$s</string>
+    <string name="no_projects">No projects yet</string>
     <string name="menu_sync">Sync now</string>
     <string name="menu_sign_out">Sign out</string>
     <string name="empty_list">Nothing to do</string>
@@ -53,6 +56,7 @@
         <item quantity="other">%d unsent changes will be lost.</item>
     </plurals>
     <string name="cancel">Cancel</string>
+    <string name="close">Close</string>
 
     <!-- Reschedule and edit -->
     <string name="when_title">Reschedule</string>
@@ -67,7 +71,6 @@
     <string name="edit_no_date">No date</string>
     <string name="edit_clear_date">Clear</string>
     <string name="edit_project">Project</string>
-    <string name="edit_save">Save</string>
 
     <!-- Share -->
     <string name="share_title">Add to doit</string>

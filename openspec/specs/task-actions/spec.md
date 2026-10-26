@@ -58,15 +58,19 @@ When a date is chosen for a task that had no due date, its due time SHALL be 12:
 - **THEN** it is due tomorrow at 09:30
 
 ### Requirement: Light edit sheet
-Tapping a task row (outside the circle) SHALL open a bottom sheet with the task's title, due date (with a date picker and a clear option) and project (a list of non-archived projects). Save SHALL apply all changes at once; Cancel or dismissing SHALL discard them. Save SHALL be disabled while the title is blank.
+Tapping a task row (outside the circle) SHALL open a bottom sheet with the task's title, due date (with a date picker and a clear option) and project (a list of non-archived projects). The title SHALL save when its field loses focus or the sheet closes. A selected or cleared date and a selected project SHALL save immediately. The sheet SHALL have no Save button. A blank title SHALL NOT replace the existing title.
 
 #### Scenario: Move a task to another project
-- **WHEN** the user opens "Buy filament", chooses project "3D printing" and taps Save
+- **WHEN** the user opens "Buy filament" and chooses project "3D printing"
 - **THEN** the task belongs to "3D printing" locally at once and on the server after sync
 
-#### Scenario: Discard edits
-- **WHEN** the user changes the title and then dismisses the sheet
-- **THEN** the task keeps its original title
+#### Scenario: Title saves on focus loss
+- **WHEN** the user changes the title and leaves the title field
+- **THEN** the new title appears locally at once and reaches the server after sync
+
+#### Scenario: Closing the sheet saves the title
+- **WHEN** the user changes the title and closes the sheet without leaving the field first
+- **THEN** the new title is saved
 
 ### Requirement: Actions work offline
 Every action in this capability SHALL apply to the local list immediately, with or without a connection, and SHALL reach the server on the next successful sync.

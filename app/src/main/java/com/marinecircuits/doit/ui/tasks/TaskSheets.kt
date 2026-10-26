@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
@@ -31,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -99,7 +99,7 @@ fun PickDateDialog(initial: LocalDate?, onPicked: (LocalDate) -> Unit, onDismiss
     }
 }
 
-/** The light edit sheet: title, due date and project, applied together on Save. */
+/** The light edit sheet: changes are saved as each field is committed. */
 @Composable
 fun EditSheet(
     task: TaskEntity,
@@ -107,17 +107,34 @@ fun EditSheet(
     today: LocalDate,
     words: DueWords,
     locale: Locale,
-    onSave: (title: String, date: LocalDate?, projectId: Long) -> Unit,
+    onTitleChange: (String) -> Unit,
+    onDateChange: (LocalDate?) -> Unit,
+    onProjectChange: (Long) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
     var title by remember(task.id) { mutableStateOf(task.title) }
+    var lastSavedTitle by remember(task.id) { mutableStateOf(task.title) }
+    var titleFocused by remember(task.id) { mutableStateOf(false) }
     var date by remember(task.id) { mutableStateOf(task.dueAt?.let { DueDates.localDate(it, zone) }) }
     var projectId by remember(task.id) { mutableStateOf(task.projectId) }
     var pickingDate by remember { mutableStateOf(false) }
     var projectMenuOpen by remember { mutableStateOf(false) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    fun commitTitle() {
+        val trimmed = title.trim()
+        if (trimmed.isNotEmpty() && trimmed != lastSavedTitle) {
+            lastSavedTitle = trimmed
+            onTitleChange(trimmed)
+        }
+    }
+
+    fun dismiss() {
+        commitTitle()
+        onDismiss()
+    }
+
+    ModalBottomSheet(onDismissRequest = ::dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -128,12 +145,18 @@ fun EditSheet(
                 label = { Text(stringResource(R.string.edit_title)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().onFocusChanged { focus ->
+                    if (titleFocused && !focus.isFocused) commitTitle()
+                    titleFocused = focus.isFocused
+                },
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.edit_due), Modifier.weight(1f))
                 TextButton(onClick = { pickingDate = true }) { Text(dateLabel(date, today, words, locale)) }
-                if (date != null) TextButton(onClick = { date = null }) { Text(stringResource(R.string.edit_clear_date)) }
+                if (date != null) TextButton(onClick = {
+                    date = null
+                    onDateChange(null)
+                }) { Text(stringResource(R.string.edit_clear_date)) }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.edit_project), Modifier.weight(1f))
@@ -146,7 +169,10 @@ fun EditSheet(
                             DropdownMenuItem(
                                 text = { Text(project.title) },
                                 onClick = {
-                                    projectId = project.id
+                                    if (projectId != project.id) {
+                                        projectId = project.id
+                                        onProjectChange(project.id)
+                                    }
                                     projectMenuOpen = false
                                 },
                             )
@@ -155,10 +181,7 @@ fun EditSheet(
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-                Button(onClick = { onSave(title, date, projectId) }, enabled = title.isNotBlank()) {
-                    Text(stringResource(R.string.edit_save))
-                }
+                TextButton(onClick = ::dismiss) { Text(stringResource(R.string.close)) }
             }
         }
     }
@@ -167,7 +190,10 @@ fun EditSheet(
         PickDateDialog(
             initial = date ?: today,
             onPicked = {
-                date = it
+                if (date != it) {
+                    date = it
+                    onDateChange(it)
+                }
                 pickingDate = false
             },
             onDismiss = { pickingDate = false },

@@ -2,16 +2,16 @@
 
 ## Purpose
 
-The app's single screen of work: every open task the user can see, across all projects, in one predictable order.
+The task list shown inside each project, in one predictable order.
 
 ## Requirements
 
-### Requirement: One list of all open tasks
-The main view SHALL show, above the project tiles, every task that is not done, from every project the user can access, excluding tasks in archived projects. Tasks the user completes in the current view SHALL stay listed, struck through, until the user leaves the view; tasks completed anywhere else (on the server or from the widget) SHALL disappear after the next sync or widget update.
+### Requirement: Project task list
+Each project screen SHALL show its own open tasks, excluding tasks in subprojects. The main view SHALL show no task list. Tasks the user completes in the current project view SHALL stay listed, struck through, until the user leaves the view; tasks completed anywhere else (on the server or from the widget) SHALL disappear after the next sync or widget update.
 
 #### Scenario: Tasks from several projects
 - **WHEN** the user has open tasks in the projects Inbox, Work and Home
-- **THEN** all of them appear in the main view's list
+- **THEN** the main view shows only project tiles, and opening Work shows only Work's tasks
 
 #### Scenario: Done tasks are hidden
 - **WHEN** a task is marked done on the server or from the widget, or was completed in the app before the user left the list
@@ -36,18 +36,14 @@ Each dated task SHALL show a compact due label on the right: "today", "tomorrow"
 - **THEN** its label reads "20 Oct" in the error colour
 
 ### Requirement: Project tag
-On the main view, a task that is not in the user's default project SHALL show its project's title as a small secondary line under the task title; tasks in the default project SHALL show no project tag. On a project screen no task SHALL show a project tag.
-
-#### Scenario: Task in another project
-- **WHEN** the default project is Inbox and a task belongs to Work
-- **THEN** the row shows "Work" under the task title
+On a project screen no task SHALL show a project tag, because the header identifies the project.
 
 #### Scenario: Project screen
 - **WHEN** the user opens the Work screen
 - **THEN** none of its task rows shows a project tag
 
 ### Requirement: Refresh
-The list SHALL sync with the server when the app comes to the foreground and when the user pulls down on the list, and SHALL show a refresh indicator only for a user-initiated pull.
+Tasks and projects SHALL sync with the server when the app comes to the foreground and when the user pulls down on the main view or a project list, and SHALL show a refresh indicator only for a user-initiated pull.
 
 #### Scenario: Pull to refresh
 - **WHEN** the user pulls the list down
@@ -61,7 +57,7 @@ When changes are waiting to be sent or the last sync failed, the main screen SHA
 - **THEN** the status line reads "Offline · 2 changes waiting"
 
 ### Requirement: Empty state
-When there are no open tasks and no struck-through rows left in the view, the list area SHALL show a short "Nothing to do" message instead of an empty screen.
+When there are no open tasks and no struck-through rows left in a project view, the list area SHALL show a short "Nothing to do" message instead of an empty screen.
 
 #### Scenario: Everything done
 - **WHEN** the user completes the last open task and later comes back to the list

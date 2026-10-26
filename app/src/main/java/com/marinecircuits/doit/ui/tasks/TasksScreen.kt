@@ -64,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -84,7 +85,7 @@ import java.time.LocalDate
 import java.util.Locale
 
 /**
- * The main view and every project screen: capture box, status line, the task list with project tiles beneath it,
+ * The main view and every project screen: capture box, status line, project tiles, and a task list in projects,
  * and the sheets for rescheduling and editing. [focusCaptureRequests] grows each time the widget's + button asks
  * for the capture box, which always opens the main view.
  */
@@ -126,8 +127,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         }
     }
 
-    LaunchedEffect(state.rows, scrollToTaskId) {
-        val index = state.rows.indexOfFirst { it.task.id == scrollToTaskId }
+    LaunchedEffect(state.rows, scrollToTaskId, currentProject?.id) {
+        val index = if (currentProject == null) -1 else state.rows.indexOfFirst { it.task.id == scrollToTaskId }
         if (index >= 0) {
             listState.animateScrollToItem(index)
             scrollToTaskId = null
@@ -145,7 +146,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         val text = captureText
         if (text.isBlank()) return
         captureText = ""
-        viewModel.capture(text) { id -> scrollToTaskId = id }
+        viewModel.capture(text) { id -> if (currentProject != null) scrollToTaskId = id }
     }
 
     // The capture bar handles the status bar itself; the list stays above the keyboard and navigation bar.
@@ -169,53 +170,69 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             if (state.tokenRejected) TokenRejectedBanner(onEnterNewToken)
             StatusLine(state.status)
 
-            // Tasks take the upper two thirds and tiles the lower third; without tiles the list gets everything.
-            val hasTiles = state.tiles.isNotEmpty()
-            PullToRefreshBox(
-                isRefreshing = state.refreshing,
-                onRefresh = viewModel::refresh,
-                modifier = Modifier.fillMaxWidth().weight(if (hasTiles) 2f else 1f),
-            ) {
-                when {
-                    state.rows.isNotEmpty() -> LazyColumn(
-                        state = listState,
-                        contentPadding = if (hasTiles) PaddingValues() else WindowInsets.navigationBars.asPaddingValues(),
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        items(state.rows, key = { it.task.id }) { row ->
-                            SwipeRow(
-                                onSwipedRight = { viewModel.complete(row.task) },
-                                onSwipedLeft = { rescheduleTarget = row.task },
-                                enabled = !row.completed,
-                                modifier = Modifier.animateItem(),
-                            ) {
-                                TaskRowItem(
-                                    row = row,
-                                    dueLabel = row.dueDate?.let { DueLabels.label(it, state.today, words, locale) },
-                                    onCheckedChange = { checked ->
-                                        if (checked) viewModel.complete(row.task) else viewModel.uncomplete(row.task)
-                                    },
-                                    onOpen = { editTarget = row.task },
-                                )
+            if (currentProject == null) {
+                PullToRefreshBox(
+                    isRefreshing = state.refreshing,
+                    onRefresh = viewModel::refresh,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                ) {
+                    when {
+                        state.tiles.isNotEmpty() -> ProjectTiles(state.tiles, viewModel::openProject, Modifier.fillMaxSize())
+                        !state.loaded || !state.syncedOnce -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                        else -> Box(Modifier.fillMaxSize(), Alignment.Center) { Text(stringResource(R.string.no_projects)) }
+                    }
+                }
+            } else {
+                // In a project, tasks take two thirds and subproject tiles the lower third.
+                val hasTiles = state.tiles.isNotEmpty()
+                PullToRefreshBox(
+                    isRefreshing = state.refreshing,
+                    onRefresh = viewModel::refresh,
+                    modifier = Modifier.fillMaxWidth().weight(if (hasTiles) 2f else 1f),
+                ) {
+                    when {
+                        state.rows.isNotEmpty() -> LazyColumn(
+                            state = listState,
+                            contentPadding = if (hasTiles) PaddingValues() else WindowInsets.navigationBars.asPaddingValues(),
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
+                            items(state.rows, key = { it.task.id }) { row ->
+                                SwipeRow(
+                                    onSwipedRight = { viewModel.complete(row.task) },
+                                    onSwipedLeft = { rescheduleTarget = row.task },
+                                    enabled = !row.completed,
+                                    modifier = Modifier.animateItem(),
+                                ) {
+                                    TaskRowItem(
+                                        row = row,
+                                        dueLabel = row.dueDate?.let { DueLabels.label(it, state.today, words, locale) },
+                                        onCheckedChange = { checked ->
+                                            if (checked) viewModel.complete(row.task) else viewModel.uncomplete(row.task)
+                                        },
+                                        onOpen = { editTarget = row.task },
+                                    )
+                                }
                             }
                         }
-                    }
-                    // An empty database before the first sync is "loading", not "nothing to do".
-                    !state.loaded || !state.syncedOnce -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                    else -> LazyColumn(Modifier.fillMaxSize()) {
-                        item {
-                            Box(Modifier.fillMaxWidth().padding(top = 48.dp), Alignment.Center) {
-                                Text(stringResource(R.string.empty_list), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        // An empty database before the first sync is "loading", not "nothing to do".
+                        !state.loaded || !state.syncedOnce -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                        else -> LazyColumn(Modifier.fillMaxSize()) {
+                            item {
+                                Box(Modifier.fillMaxWidth().padding(top = 48.dp), Alignment.Center) {
+                                    Text(stringResource(R.string.empty_list), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                     }
                 }
-            }
-            if (hasTiles) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                ProjectTiles(state.tiles, onOpen = viewModel::openProject, modifier = Modifier.fillMaxWidth().weight(1f))
+                if (hasTiles) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    ProjectTiles(state.tiles, onOpen = viewModel::openProject, modifier = Modifier.fillMaxWidth().weight(1f))
+                }
             }
         }
     }
@@ -254,10 +271,9 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             today = state.today,
             words = words,
             locale = locale,
-            onSave = { title, date, projectId ->
-                editTarget = null
-                viewModel.edit(task, title, date, projectId)
-            },
+            onTitleChange = { viewModel.rename(task, it) },
+            onDateChange = { viewModel.reschedule(task, it) },
+            onProjectChange = { viewModel.move(task, it) },
             onDismiss = { editTarget = null },
         )
     }
@@ -285,6 +301,11 @@ private fun CaptureBar(
     focusRequester: FocusRequester,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    var infoOpen by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val appVersion = remember(context) {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -306,6 +327,9 @@ private fun CaptureBar(
             },
             modifier = Modifier.weight(1f).focusRequester(focusRequester),
         )
+        IconButton(onClick = { infoOpen = true }) {
+            Icon(painterResource(R.drawable.ic_info), contentDescription = stringResource(R.string.app_info))
+        }
         Box {
             IconButton(onClick = { menuOpen = true }) {
                 Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.menu))
@@ -328,6 +352,14 @@ private fun CaptureBar(
             }
         }
     }
+    if (infoOpen) {
+        AlertDialog(
+            onDismissRequest = { infoOpen = false },
+            title = { Text(stringResource(R.string.app_info)) },
+            text = { Text(stringResource(R.string.app_version, appVersion)) },
+            confirmButton = { TextButton(onClick = { infoOpen = false }) { Text(stringResource(R.string.ok)) } },
+        )
+    }
 }
 
 /** Title row of a project screen; the back arrow goes to the parent project or the main view. */
@@ -337,8 +369,12 @@ private fun ProjectHeader(title: String, onBack: () -> Unit) {
         modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 16.dp, top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) {
-            Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = stringResource(R.string.back))
+        IconButton(onClick = onBack, modifier = Modifier.size(56.dp)) {
+            Icon(
+                painterResource(R.drawable.ic_arrow_back),
+                contentDescription = stringResource(R.string.back),
+                modifier = Modifier.size(30.dp),
+            )
         }
         Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
