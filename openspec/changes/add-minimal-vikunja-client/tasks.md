@@ -17,7 +17,7 @@
 ## 3. Local storage and credentials
 
 - [x] 3.1 Add the Room database (`tasks`, `projects`, `pending_changes`) with DAOs and exported schema; verify with Robolectric DAO tests for the open-task query and the mark-and-sweep delete
-- [ ] 3.2 Add the settings DataStore with Keystore-encrypted token, backup and data-extraction rules excluding all data, and a network security config forbidding cleartext; verify the merged manifest in the CI build has `allowBackup=false` and the config attached
+- [x] 3.2 Add the settings DataStore with Keystore-encrypted token, backup and data-extraction rules excluding all data, and a network security config forbidding cleartext; verify the merged manifest in the CI build has `allowBackup=false` and the config attached
 
 ## 4. Offline sync
 
@@ -28,14 +28,14 @@
 
 ## 5. Main screen
 
-- [ ] 5.1 Add the Material You theme (dynamic colour on Android 12+, light/dark from system), placeholder adaptive icon and string resources; verify the CI APK builds with the icon and no hard-coded UI strings in code
-- [ ] 5.2 Build the setup screen with validation and the exact error messages from the server-connection spec; verify with unit tests of the setup view model against MockWebServer
-- [ ] 5.3 Build the task list (ordering, due labels, project tag, status line, empty state, pull-to-refresh); verify with unit tests for ordering and label formatting covering the task-list spec scenarios
+- [x] 5.1 Add the Material You theme (dynamic colour on Android 12+, light/dark from system), placeholder adaptive icon and string resources; verify the CI APK builds with the icon and no hard-coded UI strings in code
+- [x] 5.2 Build the setup screen with validation and the exact error messages from the server-connection spec; verify with unit tests of the setup view model against MockWebServer
+- [x] 5.3 Build the task list (ordering, due labels, project tag, status line, empty state, pull-to-refresh); verify with unit tests for ordering and label formatting covering the task-list spec scenarios
 - [ ] 5.4 Add the capture box (send action, blank ignored, keeps focus, scrolls to the new task); verify on device against the task-capture scenarios
 - [ ] 5.5 Add the swipe row (35% threshold, snap back, haptic) with complete on the circle or a right swipe and the 4-second Undo snackbar; verify on device against the task-actions completion and undo scenarios
 - [ ] 5.6 Add the quick reschedule sheet (Today, Tomorrow, Next week, Pick a date…, No date) opened by a left swipe; verify on device, and with unit tests for the date choices
 - [ ] 5.7 Add the light edit sheet (title, date with clear, project list; Save disabled for a blank title); verify on device against the edit scenarios
-- [ ] 5.8 Add the overflow menu (sync now, sign out with pending-changes confirmation) and the re-enter-token flow on 401; verify with view-model unit tests
+- [x] 5.8 Add the overflow menu (sync now, sign out with pending-changes confirmation) and the re-enter-token flow on 401; verify with view-model unit tests
 
 ## 6. Share target
 
@@ -47,7 +47,7 @@
 
 ## 8. Release workflows
 
-- [ ] 8.1 Add `.cz.toml` (version 0.0.0, tags without prefix, `version_files = ["gradle.properties:doit.versionName"]`) and `requirements-release.txt`; verify `cz bump --dry-run --files-only --changelog` locally proposes 0.1.0
+- [x] 8.1 Add `.cz.toml` (version 0.0.0, tags without prefix, `version_files = ["gradle.properties:doit.versionName"]`) and `requirements-release.txt`; verify `cz bump --dry-run --files-only --changelog` locally proposes 0.1.0
 - [ ] 8.2 Add `prepare-release.yml` mirroring weekly-planner (dry run, files-only bump, unit tests, `release/<version>` PR with `release` label); verify a dry-run dispatch on GitHub prints 0.1.0
 - [ ] 8.3 Add release signing from `ANDROID_SIGNING_*` environment variables, with a check that fails the release build without them, and `publish-release.yml` (validate, test, build signed APK, tag, release with notes and `doit-<version>.apk`, idempotent); verify by publishing 0.1.0 and checking the APK signer's SHA-256 is `06:41:57:C9:…:0B:09`
 

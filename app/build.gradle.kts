@@ -64,7 +64,7 @@ android {
 }
 
 // Never produce an unsigned or debug-signed release APK.
-val requireReleaseSigning by tasks.registering {
+val requireReleaseSigning = tasks.register("requireReleaseSigning") {
     val signingConfigured = releaseKeystore.isPresent
     doLast {
         check(signingConfigured) {
