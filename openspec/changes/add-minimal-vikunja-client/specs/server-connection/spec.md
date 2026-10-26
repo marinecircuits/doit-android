@@ -36,11 +36,11 @@ Before saving, the app SHALL verify that the server answers on API v2 and that t
 - **THEN** the app shows "Can't reach a Vikunja 2.4+ server at this address" and saves nothing
 
 #### Scenario: Token rejected
-- **WHEN** the server answers 401 for the token
+- **WHEN** the server rejects the token itself (its token check answers 401)
 - **THEN** the app shows that the token is invalid or expired and saves nothing
 
 #### Scenario: Token lacks permissions
-- **WHEN** the server answers 403 for the projects request
+- **WHEN** the token passes the token check but the server refuses to list projects (401 or 403)
 - **THEN** the app shows that the token is missing permissions and lists the required ones
 
 ### Requirement: Credential storage

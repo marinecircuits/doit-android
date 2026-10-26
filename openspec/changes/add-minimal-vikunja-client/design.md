@@ -5,7 +5,8 @@
 Greenfield repo; see proposal.md for motivation and specs/ for behaviour. Constraints that shape the approach:
 
 - Target server is Vikunja ≥ 2.4 with API v2. v2 is generated with Huma: list endpoints return `{items,total,page,per_page,total_pages}`, create is `POST` (201), update is `PUT`, and every GET+PUT resource gets a synthesised `PATCH` (Huma AutoPatch: server-side GET → JSON merge patch → PUT). Request bodies are validated, but the server sets `FieldsOptionalByDefault = true`, so partial create bodies are accepted.
-- API token scopes are shared between v1 and v2 (`tasks.read_all` covers `GET /api/v2/tasks`, `tasks.update` covers `PUT` and `PATCH /api/v2/tasks/{id}`). `GET /api/v2/user` falls under `other.user`.
+- API token scopes are shared between v1 and v2 (`tasks.read_all` covers `GET /api/v2/tasks`, `tasks.update` covers `PUT` and `PATCH /api/v2/tasks/{id}`; AutoPatch's internal GET skips the route check). `GET /api/v2/user` falls under `other.user`.
+- A valid token missing a route permission gets **401**, the same as an invalid token; only `GET /token/test` tells them apart.
 - Page size is capped by the server (`max_items_per_page`, default 50), so lists must be paged.
 - Unset dates are serialised as `0001-01-01T00:00:00Z`.
 - There is no JDK or Android SDK on the developer machine, so every compile happens on GitHub Actions. Each compile error costs a CI round trip, which pushes the design towards stable, well-known APIs.
@@ -15,6 +16,7 @@ API surface used (all under `/api/v2`):
 | Purpose | Call | Token scope |
 |---|---|---|
 | Check server | `GET /info` (public) | none |
+| Check token | `GET /token/test` (skips the route check) | none |
 | Default project | `GET /user` → `settings.default_project_id` | `other.user` |
 | Projects | `GET /projects?page=N` | `projects.read_all` |
 | Open tasks | `GET /tasks?filter=done = false&page=N` | `tasks.read_all` |

@@ -2,11 +2,11 @@
 
 ## 1. Scaffold and continuous build
 
-- [ ] 1.1 Add the Gradle 9.7.1 wrapper (jar checked against Gradle's published SHA-256), `settings.gradle.kts`, `gradle/libs.versions.toml`, root and `app` build scripts with the pinned toolchain from design.md, and an empty Compose `MainActivity`; verify `./gradlew assembleDebug` succeeds on GitHub Actions
-- [ ] 1.2 Configure the debug build type (`.debug` id suffix, label "doit debug") and derive `versionCode` from `doit.versionName`; verify the CI debug APK's badging shows `com.marinecircuits.doit.debug`
-- [ ] 1.3 Add `.github/workflows/build.yml` (push to `main` and pull requests: unit tests + debug APK artifact `doit-debug-<short sha>`); verify a run uploads the artifact
-- [ ] 1.4 Add `.gitignore` and a README covering setup, the required token permissions and how releases work; verify the README's permission list matches design.md
-- [ ] 1.5 Create the private repo `marinecircuits/doit` and push; verify `gh repo view --json visibility` reports PRIVATE and the first build run is green
+- [x] 1.1 Add the Gradle 9.7.1 wrapper (jar checked against Gradle's published SHA-256), `settings.gradle.kts`, `gradle/libs.versions.toml`, root and `app` build scripts with the pinned toolchain from design.md, and an empty Compose `MainActivity`; verify `./gradlew assembleDebug` succeeds on GitHub Actions
+- [x] 1.2 Configure the debug build type (`.debug` id suffix, label "doit debug") and derive `versionCode` from `doit.versionName`; verify the CI debug APK's badging shows `com.marinecircuits.doit.debug`
+- [x] 1.3 Add `.github/workflows/build.yml` (push to `main` and pull requests: unit tests + debug APK artifact `doit-debug-<short sha>`); verify a run uploads the artifact
+- [x] 1.4 Add `.gitignore` and a README covering setup, the required token permissions and how releases work; verify the README's permission list matches design.md
+- [x] 1.5 Create the private repo `marinecircuits/doit` and push; verify `gh repo view --json visibility` reports PRIVATE and the first build run is green
 
 ## 2. Vikunja API v2 client
 

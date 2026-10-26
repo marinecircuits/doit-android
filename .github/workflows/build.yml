@@ -45,6 +45,18 @@ jobs:
           path: doit-debug-${{ env.SHORT_SHA }}.apk
           if-no-files-found: error
 
+      - name: Check the Room schema is committed
+        run: |
+          if [ -n "$(git status --porcelain app/schemas)" ]; then
+            echo "::warning::Room schema changed; commit the files from the room-schemas artifact"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: room-schemas
+          path: app/schemas/
+          if-no-files-found: ignore
+
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v7

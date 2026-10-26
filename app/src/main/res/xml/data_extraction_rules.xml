@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Nothing is backed up or transferred: the token and the task cache belong to this device.
+    Including only a path that never exists leaves every real file out.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="file" path="nothing-to-back-up" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="file" path="nothing-to-back-up" />
+    </device-transfer>
+</data-extraction-rules>
