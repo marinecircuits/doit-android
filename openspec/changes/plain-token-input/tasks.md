@@ -7,4 +7,4 @@
 
 ## Workflow follow-up
 
-- Close issue #3 with the pull request; archive the change after the on-device check.
+- Close issue #3 with the pull request. Its spec is already synced into `openspec/specs/`; after the on-device check archive it with `openspec archive plain-token-input --skip-specs`.
