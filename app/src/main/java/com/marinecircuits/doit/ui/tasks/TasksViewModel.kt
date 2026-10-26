@@ -27,6 +27,10 @@ data class TasksUiState(
     val loaded: Boolean = false,
     /** Non-archived projects, for the edit sheet. */
     val projects: List<ProjectEntity> = emptyList(),
+    /** The open project and its ancestors, outermost first; empty on the main view. */
+    val path: List<ProjectEntity> = emptyList(),
+    /** Top-level projects on the main view, the open project's subprojects on a project screen. */
+    val tiles: List<ProjectTile> = emptyList(),
     val status: List<StatusPart> = emptyList(),
     val syncedOnce: Boolean = false,
     val refreshing: Boolean = false,
@@ -34,6 +38,14 @@ data class TasksUiState(
     val notices: List<String> = emptyList(),
     /** Number of unsent changes the user must confirm losing before signing out. */
     val signOutConfirmation: Int? = null,
+)
+
+private data class ListInputs(
+    val open: List<TaskEntity>,
+    val projects: List<ProjectEntity>,
+    val defaultProjectId: Long?,
+    val today: LocalDate,
+    val completed: Map<Long, TaskEntity>,
 )
 
 class TasksViewModel(
@@ -54,21 +66,40 @@ class TasksViewModel(
      */
     private val completedHere = MutableStateFlow<Map<Long, TaskEntity>>(emptyMap())
 
-    private val list = combine(
+    /** Ids of the projects opened from the main view, outermost first; empty on the main view. */
+    private val projectPath = MutableStateFlow<List<Long>>(emptyList())
+
+    private val inputs = combine(
         repository.openTasks,
         repository.projects,
         settings.defaultProjectId,
         today,
         completedHere,
-    ) { open, projects, defaultProjectId, day, completed ->
+    ) { open, projects, defaultProjectId, day, completed -> ListInputs(open, projects, defaultProjectId, day, completed) }
+
+    private val list = combine(inputs, projectPath) { latest, path -> view(latest, path) }
+
+    private fun view(inputs: ListInputs, requestedPath: List<Long>): TasksUiState {
+        val (open, projects, defaultProjectId, day, completed) = inputs
+        val visible = projects.filterNot { it.archived }
+        val byId = visible.associateBy { it.id }
+        // Falls back to the nearest remaining ancestor when the open project was deleted or archived elsewhere.
+        val path = ProjectTree.validPath(requestedPath, projects).map(byId::getValue)
+        val current = path.lastOrNull()
+
         // A repeating task the server reopened shows as the open task, not as a struck-through copy.
         val openIds = open.mapTo(HashSet()) { it.id }
         val tasks = open + completed.values.filter { it.id !in openIds }.map { it.copy(done = true) }
-        TasksUiState(
+        val shown = if (current == null) tasks else tasks.filter { it.projectId == current.id }
+        val tileProjects = if (current == null) ProjectTree.topLevel(projects) else ProjectTree.children(projects, current.id)
+        return TasksUiState(
             today = day,
-            rows = TaskListModel.rows(tasks, projects, defaultProjectId, day, clock.zone),
+            // On a project screen every task is in the open project, so passing it as the "default" hides all tags.
+            rows = TaskListModel.rows(shown, projects, current?.id ?: defaultProjectId, day, clock.zone),
             loaded = true,
-            projects = projects.filterNot { it.archived },
+            projects = visible,
+            path = path,
+            tiles = ProjectTree.tiles(tileProjects, open),
         )
     }
 
@@ -91,6 +122,27 @@ class TasksViewModel(
         completedHere.value = emptyMap()
     }
 
+    private val openPath: List<Long> get() = state.value.path.map { it.id }
+
+    /** Opens a project shown as a tile in the current view. */
+    fun openProject(projectId: Long) {
+        onLeave()
+        projectPath.value = openPath + projectId
+    }
+
+    /** Back from a project screen: to its parent, or to the main view. */
+    fun navigateUp() {
+        if (openPath.isEmpty()) return
+        onLeave()
+        projectPath.value = openPath.dropLast(1)
+    }
+
+    fun navigateHome() {
+        if (openPath.isEmpty()) return
+        onLeave()
+        projectPath.value = emptyList()
+    }
+
     /** The app came to the foreground: the date may have changed, and the list should catch up with the server. */
     fun onForeground() {
         today.value = LocalDate.now(clock)
@@ -110,8 +162,10 @@ class TasksViewModel(
         }
     }
 
+    /** Captures into the open project, or into the default project on the main view. */
     fun capture(text: String, onCreated: (Long) -> Unit) {
-        viewModelScope.launch { repository.capture(text)?.let(onCreated) }
+        val projectId = state.value.path.lastOrNull()?.id
+        viewModelScope.launch { repository.capture(text, projectId = projectId)?.let(onCreated) }
     }
 
     fun complete(task: TaskEntity) {

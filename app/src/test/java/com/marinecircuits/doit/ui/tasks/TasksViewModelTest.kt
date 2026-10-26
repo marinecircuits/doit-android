@@ -5,6 +5,7 @@ import com.marinecircuits.doit.data.IdRemap
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.DoitDatabase
+import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.sync.PendingChanges
 import com.marinecircuits.doit.data.sync.SyncResult
@@ -102,6 +103,107 @@ class TasksViewModelTest {
         assertEquals(JsonPrimitive(false), fields["done"])
         viewModel.onLeave()
         waitUntil { row(10)?.completed == false }
+    }
+
+    private fun seedProjects() = runBlocking {
+        db.projects().insertAll(
+            listOf(
+                ProjectEntity(1, "Inbox", false, 0.0),
+                ProjectEntity(2, "Work", false, 1.0),
+                ProjectEntity(3, "Firmware", false, 2.0, parentProjectId = 2),
+            ),
+        )
+        db.tasks().upsertAll(
+            listOf(
+                TaskEntity(10, "Buy milk", null, projectId = 1, done = false, createdAt = 3),
+                TaskEntity(11, "Review PR", null, projectId = 2, done = false, createdAt = 2),
+                TaskEntity(12, "Flash board", null, projectId = 3, done = false, createdAt = 1),
+            ),
+        )
+        settings.setDefaultProjectId(1)
+    }
+
+    private fun titles() = viewModel.state.value.rows.map { it.task.title }
+    private fun tiles() = viewModel.state.value.tiles.map { it.project.title to it.openCount }
+
+    @Test
+    fun mainViewListsEverythingWithTopLevelTiles() {
+        seedProjects()
+        waitUntil { titles().size == 3 && tiles().size == 2 }
+        assertEquals(listOf("Inbox" to 1, "Work" to 1), tiles())
+        assertEquals("Work", viewModel.state.value.rows.single { it.task.id == 11L }.projectTitle)
+    }
+
+    @Test
+    fun projectScreenShowsItsOwnTasksAndSubprojects() {
+        seedProjects()
+        waitUntil { tiles().size == 2 }
+
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.map { it.id } == listOf(2L) }
+        assertEquals(listOf("Review PR"), titles())
+        assertEquals(listOf("Firmware" to 1), tiles())
+        assertEquals(null, viewModel.state.value.rows.single().projectTitle)
+
+        viewModel.openProject(3)
+        waitUntil { viewModel.state.value.path.map { it.id } == listOf(2L, 3L) }
+        assertEquals(listOf("Flash board"), titles())
+        assertTrue(viewModel.state.value.tiles.isEmpty())
+
+        viewModel.navigateUp()
+        waitUntil { viewModel.state.value.path.map { it.id } == listOf(2L) }
+        viewModel.navigateUp()
+        waitUntil { viewModel.state.value.path.isEmpty() && titles().size == 3 }
+    }
+
+    @Test
+    fun captureGoesToTheOpenProject() {
+        seedProjects()
+        waitUntil { tiles().size == 2 }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.size == 1 }
+        viewModel.openProject(3)
+        waitUntil { viewModel.state.value.path.size == 2 }
+
+        var created: Long? = null
+        viewModel.capture("Order capacitors") { created = it }
+        waitUntil { created != null && titles().contains("Order capacitors") }
+        assertEquals(3L, runBlocking { db.tasks().get(created!!) }!!.projectId)
+    }
+
+    @Test
+    fun navigatingClearsStruckThroughRows() {
+        seedProjects()
+        waitUntil { tiles().size == 2 }
+        viewModel.openProject(2)
+        waitUntil { titles() == listOf("Review PR") }
+        viewModel.complete(viewModel.state.value.rows.single().task)
+        waitUntil { viewModel.state.value.rows.singleOrNull()?.completed == true }
+
+        viewModel.openProject(3)
+        waitUntil { titles() == listOf("Flash board") }
+        viewModel.navigateUp()
+        waitUntil { viewModel.state.value.path.size == 1 }
+        waitUntil { titles().isEmpty() }
+    }
+
+    @Test
+    fun removedProjectFallsBackToItsParentAndHomeLeavesProjects() {
+        seedProjects()
+        waitUntil { tiles().size == 2 }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.size == 1 }
+        viewModel.openProject(3)
+        waitUntil { viewModel.state.value.path.size == 2 }
+
+        runBlocking {
+            db.projects().clear()
+            db.projects().insertAll(listOf(ProjectEntity(1, "Inbox", false, 0.0), ProjectEntity(2, "Work", false, 1.0)))
+        }
+        waitUntil { viewModel.state.value.path.map { it.id } == listOf(2L) }
+
+        viewModel.navigateHome()
+        waitUntil { viewModel.state.value.path.isEmpty() }
     }
 
     @Test

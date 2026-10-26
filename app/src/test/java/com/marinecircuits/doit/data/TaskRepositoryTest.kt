@@ -73,6 +73,14 @@ class TaskRepositoryTest {
     }
 
     @Test
+    fun captureIntoAGivenProject() = runTest {
+        settings.setDefaultProjectId(1)
+        val id = repository.capture("Order capacitors", projectId = 2)!!
+        assertEquals(2L, db.tasks().get(id)!!.projectId)
+        assertEquals(JsonPrimitive(2), pendingFields(id)["project_id"])
+    }
+
+    @Test
     fun captureFallsBackToFirstProjectAndIgnoresBlank() = runTest {
         assertNull(repository.capture("   "))
         val id = repository.capture("call +Bob tomorrow !3")!!

@@ -1,0 +1,75 @@
+package com.marinecircuits.doit.data.local
+
+import android.content.Context
+import android.database.sqlite.SQLiteDatabase
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.marinecircuits.doit.data.remote.VikunjaJson
+import java.io.File
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+
+@RunWith(RobolectricTestRunner::class)
+class DatabaseMigrationTest {
+    private val context: Context = ApplicationProvider.getApplicationContext()
+    private val name = "migration-test.db"
+
+    @After
+    fun tearDown() {
+        context.deleteDatabase(name)
+    }
+
+    /** Creates the database exactly as version 1 of the app did, from the exported schema. */
+    private fun createVersion1(fill: SQLiteDatabase.() -> Unit) {
+        val schema = VikunjaJson.parseToJsonElement(
+            File("schemas/com.marinecircuits.doit.data.local.DoitDatabase/1.json").readText(),
+        ).jsonObject.getValue("database").jsonObject
+        val file = context.getDatabasePath(name).apply { parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+            schema.getValue("entities").jsonArray.forEach { element ->
+                val entity = element.jsonObject
+                val table = entity.getValue("tableName").jsonPrimitive.content
+                fun create(sql: JsonElement) = db.execSQL(sql.jsonPrimitive.content.replace("\${TABLE_NAME}", table))
+                create(entity.getValue("createSql"))
+                entity["indices"]?.jsonArray?.forEach { create(it.jsonObject.getValue("createSql")) }
+            }
+            schema.getValue("setupQueries").jsonArray.forEach { db.execSQL(it.jsonPrimitive.content) }
+            db.fill()
+            db.version = 1
+        }
+    }
+
+    @Test
+    fun version1DataSurvivesTheUpgrade() {
+        createVersion1 {
+            execSQL("INSERT INTO projects (id, title, archived, position) VALUES (7, 'Work', 0, 1.0)")
+            execSQL(
+                "INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration) " +
+                    "VALUES (-1, 'Captured offline', NULL, 7, 0, 5, 0)",
+            )
+            execSQL(
+                "INSERT INTO pending_changes (taskId, kind, fields, revision) " +
+                    "VALUES (-1, 'create', '{\"title\":\"Captured offline\"}', 0)",
+            )
+        }
+
+        val upgraded = Room.databaseBuilder(context, DoitDatabase::class.java, name).allowMainThreadQueries().build()
+        try {
+            runBlocking {
+                assertEquals(listOf(ProjectEntity(7, "Work", false, 1.0, parentProjectId = 0)), upgraded.projects().all())
+                assertEquals("Captured offline", upgraded.tasks().get(-1)?.title)
+                assertEquals(PendingChangeEntity.CREATE, upgraded.pendingChanges().forTask(-1)?.kind)
+            }
+        } finally {
+            upgraded.close()
+        }
+    }
+}

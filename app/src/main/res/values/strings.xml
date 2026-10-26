@@ -25,6 +25,12 @@
     <!-- Task list -->
     <string name="capture_hint">Add a task…</string>
     <string name="capture_send">Add task</string>
+    <string name="capture_hint_project">Add to %1$s…</string>
+    <string name="back">Back</string>
+    <plurals name="tile_open_count">
+        <item quantity="one">%d open</item>
+        <item quantity="other">%d open</item>
+    </plurals>
     <string name="menu">More options</string>
     <string name="menu_sync">Sync now</string>
     <string name="menu_sign_out">Sign out</string>
