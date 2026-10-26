@@ -160,6 +160,8 @@ class TasksViewModelTest {
     fun captureGoesToTheOpenProject() {
         seedProjects()
         waitUntil { tiles().size == 2 }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.size == 1 }
         viewModel.openProject(3)
         waitUntil { viewModel.state.value.path.size == 2 }
 
