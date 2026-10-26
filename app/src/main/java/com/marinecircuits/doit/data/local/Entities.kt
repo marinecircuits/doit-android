@@ -3,6 +3,7 @@ package com.marinecircuits.doit.data.local
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.ColumnInfo
 
 /**
  * A task as the app shows it. Tasks captured offline have negative ids until the server assigns one.
@@ -26,6 +27,7 @@ data class ProjectEntity(
     val title: String,
     val archived: Boolean,
     val position: Double,
+    @ColumnInfo(defaultValue = "0") val parentProjectId: Long = 0,
 )
 
 /**

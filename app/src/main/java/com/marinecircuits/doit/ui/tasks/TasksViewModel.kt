@@ -26,6 +26,8 @@ data class TasksUiState(
     val loaded: Boolean = false,
     /** Non-archived projects, for the edit sheet. */
     val projects: List<ProjectEntity> = emptyList(),
+    val projectPath: List<Long> = emptyList(),
+    val defaultProjectId: Long? = null,
     val status: List<StatusPart> = emptyList(),
     val syncedOnce: Boolean = false,
     val refreshing: Boolean = false,
@@ -34,6 +36,8 @@ data class TasksUiState(
     /** Number of unsent changes the user must confirm losing before signing out. */
     val signOutConfirmation: Int? = null,
 )
+
+private data class RetainedCompleted(val row: TaskRow, val index: Int)
 
 class TasksViewModel(
     private val repository: TaskRepository,
@@ -46,14 +50,33 @@ class TasksViewModel(
     private val today = MutableStateFlow(LocalDate.now(clock))
     private val refreshing = MutableStateFlow(false)
     private val signOutConfirmation = MutableStateFlow<Int?>(null)
+    private val projectPath = MutableStateFlow<List<Long>>(emptyList())
+    private val retainedCompleted = MutableStateFlow<Map<Long, RetainedCompleted>>(emptyMap())
 
-    private val list = combine(repository.openTasks, repository.projects, settings.defaultProjectId, today) {
+    private val openList = combine(repository.openTasks, repository.projects, settings.defaultProjectId, today) {
             tasks, projects, defaultProjectId, day ->
         TasksUiState(
             today = day,
             rows = TaskListModel.rows(tasks, projects, defaultProjectId, day, clock.zone),
             loaded = true,
             projects = projects.filterNot { it.archived },
+            defaultProjectId = defaultProjectId,
+        )
+    }
+
+    private val list = combine(openList, retainedCompleted, projectPath) { base, completed, path ->
+        val retained = completed.values.map { entry ->
+            val id = repository.resolveTaskId(entry.row.task.id)
+            entry.copy(row = entry.row.copy(task = entry.row.task.copy(id = id)))
+        }
+        val retainedIds = retained.mapTo(mutableSetOf()) { it.row.task.id }
+        val rows = base.rows.filterNotTo(mutableListOf()) { it.task.id in retainedIds }
+        retained.sortedBy { it.index }.forEach { entry ->
+            rows.add(entry.index.coerceIn(0, rows.size), entry.row)
+        }
+        base.copy(
+            rows = rows,
+            projectPath = path,
         )
     }
 
@@ -91,15 +114,47 @@ class TasksViewModel(
     }
 
     fun capture(text: String, onCreated: (Long) -> Unit) {
-        viewModelScope.launch { repository.capture(text)?.let(onCreated) }
+        val targetProjectId = projectPath.value.lastOrNull()
+        viewModelScope.launch {
+            val projectId = targetProjectId ?: repository.defaultProjectId()
+            repository.capture(text, targetProjectId = projectId)?.let { id ->
+                if (targetProjectId == null && projectId != null) openProject(projectId)
+                onCreated(id)
+            }
+        }
     }
 
     fun complete(task: TaskEntity) {
+        if (task.done) return
+        val index = state.value.rows.indexOfFirst { it.task.id == task.id }
+        val row = state.value.rows.getOrNull(index)
+        if (row != null) {
+            retainedCompleted.value = retainedCompleted.value +
+                (task.id to RetainedCompleted(row.copy(task = task.copy(done = true)), index))
+        }
         viewModelScope.launch { repository.complete(task.id) }
     }
 
     fun undoComplete(task: TaskEntity) {
-        viewModelScope.launch { repository.undoComplete(task) }
+        viewModelScope.launch {
+            repository.undoComplete(task)
+            val resolvedId = repository.resolveTaskId(task.id)
+            retainedCompleted.value = retainedCompleted.value.filterKeys {
+                repository.resolveTaskId(it) != resolvedId
+            }
+        }
+    }
+
+    fun openProject(projectId: Long) {
+        if (projectId !in state.value.projects.map { it.id }) return
+        retainedCompleted.value = emptyMap()
+        projectPath.value = projectPath.value + projectId
+    }
+
+    fun navigateBack() {
+        if (projectPath.value.isEmpty()) return
+        retainedCompleted.value = emptyMap()
+        projectPath.value = projectPath.value.dropLast(1)
     }
 
     fun reschedule(task: TaskEntity, date: LocalDate?) {

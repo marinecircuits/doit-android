@@ -68,6 +68,18 @@ class SyncEngineTest {
     }
 
     @Test
+    fun syncPreservesParentProjectIds() = runTest {
+        fake.intercept = { request ->
+            if (request.method == "GET" && request.requestUrl!!.encodedPath.endsWith("/projects")) {
+                FakeVikunja.json(200, """{"items":[{"id":1,"title":"Work"},{"id":2,"title":"Firmware","parent_project_id":1}],"total":2,"page":1,"per_page":50,"total_pages":1}""")
+            } else null
+        }
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(0L, 1L), db.projects().all().map { it.parentProjectId })
+    }
+
+    @Test
     fun createThenCompleteOfflineCreatesThenCompletesTheSameTask() = runTest {
         engine.sync()
         val temporaryId = repository.capture("Buy milk")!!

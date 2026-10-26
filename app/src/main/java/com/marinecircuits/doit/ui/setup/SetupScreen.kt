@@ -25,7 +25,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.marinecircuits.doit.R
 
@@ -63,8 +62,7 @@ fun SetupScreen(viewModel: SetupViewModel) {
                 label = { Text(stringResource(R.string.setup_token)) },
                 placeholder = { Text(stringResource(R.string.setup_token_hint)) },
                 singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { viewModel.connect() }),
                 modifier = Modifier.fillMaxWidth(),
             )

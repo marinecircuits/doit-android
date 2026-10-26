@@ -29,7 +29,11 @@
     <string name="menu_sync">Sync now</string>
     <string name="menu_sign_out">Sign out</string>
     <string name="empty_list">Nothing to do</string>
+    <string name="no_projects">No projects yet</string>
+    <string name="projects_back">← Projects</string>
+    <string name="subprojects">Subprojects</string>
     <string name="complete_task">Complete</string>
+    <string name="undo_complete_task">Undo completion</string>
     <string name="completed_snackbar">Completed “%1$s”</string>
     <string name="undo">Undo</string>
     <string name="due_today">today</string>

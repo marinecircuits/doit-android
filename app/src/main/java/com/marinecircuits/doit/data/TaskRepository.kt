@@ -48,6 +48,9 @@ class TaskRepository(
 
     suspend fun openTasks(): List<TaskEntity> = db.tasks().open()
 
+    /** A task captured offline can receive its server id while its completed row remains visible. */
+    fun resolveTaskId(id: Long): Long = idRemap.resolve(id)
+
     /** The Vikunja default project if known and usable, otherwise the first non-archived project. */
     suspend fun defaultProjectId(): Long? {
         val projects = db.projects().all().filterNot { it.archived }
@@ -56,10 +59,10 @@ class TaskRepository(
     }
 
     /** Creates a task in the default project. Returns its (temporary) id, or null for a blank title. */
-    suspend fun capture(title: String, description: String? = null): Long? {
+    suspend fun capture(title: String, description: String? = null, targetProjectId: Long? = null): Long? {
         val trimmed = title.trim()
         if (trimmed.isEmpty()) return null
-        val projectId = defaultProjectId() ?: 0
+        val projectId = targetProjectId ?: defaultProjectId() ?: 0
         val id = db.withTransaction {
             val id = minOf(db.tasks().minId() ?: 0, 0) - 1
             db.tasks().upsert(

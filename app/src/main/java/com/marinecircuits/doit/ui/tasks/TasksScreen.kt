@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.imePadding
@@ -23,6 +25,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -30,6 +35,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -52,6 +58,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -71,6 +78,8 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.marinecircuits.doit.R
 import com.marinecircuits.doit.data.local.TaskEntity
+import com.marinecircuits.doit.data.local.ProjectEntity
+import androidx.compose.ui.text.style.TextDecoration
 import java.time.LocalDate
 import java.util.Locale
 import kotlinx.coroutines.launch
@@ -92,6 +101,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val selectedProjectId = state.projectPath.lastOrNull()
+    val selectedProject = state.projects.firstOrNull { it.id == selectedProjectId }
+    val visibleRows = state.rows.filter { it.task.projectId == selectedProjectId }
+    val subprojects = state.projects.filter { it.parentProjectId == selectedProjectId && it.id != selectedProjectId }
     val captureFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -100,6 +113,15 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var rescheduleTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var datePickTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
+
+    BackHandler(enabled = selectedProjectId != null) { viewModel.navigateBack() }
+
+    LaunchedEffect(selectedProjectId) {
+        listState.scrollToItem(0)
+        rescheduleTarget = null
+        datePickTarget = null
+        editTarget = null
+    }
 
     LifecycleStartEffect(viewModel) {
         viewModel.onForeground()
@@ -113,8 +135,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         }
     }
 
-    LaunchedEffect(state.rows, scrollToTaskId) {
-        val index = state.rows.indexOfFirst { it.task.id == scrollToTaskId }
+    LaunchedEffect(visibleRows, scrollToTaskId) {
+        val index = visibleRows.indexOfFirst { it.task.id == scrollToTaskId }
         if (index >= 0) {
             listState.animateScrollToItem(index)
             scrollToTaskId = null
@@ -141,6 +163,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         }
     }
 
+    fun undo(task: TaskEntity) {
+        viewModel.undoComplete(task)
+        snackbarHostState.currentSnackbarData?.dismiss()
+    }
+
     fun capture() {
         val text = captureText
         if (text.isBlank()) return
@@ -164,41 +191,65 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             )
             if (state.tokenRejected) TokenRejectedBanner(onEnterNewToken)
             StatusLine(state.status)
+            if (selectedProject != null) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = viewModel::navigateBack) { Text(stringResource(R.string.projects_back)) }
+                    Text(selectedProject.title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
 
             PullToRefreshBox(
                 isRefreshing = state.refreshing,
                 onRefresh = viewModel::refresh,
                 modifier = Modifier.fillMaxSize(),
             ) {
-                when {
-                    state.rows.isNotEmpty() -> LazyColumn(
-                        state = listState,
-                        contentPadding = WindowInsets.navigationBars.asPaddingValues(),
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        items(state.rows, key = { it.task.id }) { row ->
-                            SwipeRow(
-                                onSwipedRight = { complete(row.task) },
-                                onSwipedLeft = { rescheduleTarget = row.task },
-                                modifier = Modifier.animateItem(),
-                            ) {
-                                TaskRowItem(
-                                    row = row,
-                                    dueLabel = row.dueDate?.let { DueLabels.label(it, state.today, words, locale) },
-                                    onComplete = { complete(row.task) },
-                                    onOpen = { editTarget = row.task },
-                                )
+                if (selectedProject == null) {
+                    val topLevel = ProjectNavigation.topLevel(state.projects)
+                    if (topLevel.isNotEmpty()) {
+                        ProjectTiles(topLevel, viewModel::openProject, Modifier.fillMaxSize())
+                    } else if (!state.loaded || !state.syncedOnce) {
+                        Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
+                    } else {
+                        Box(Modifier.fillMaxSize(), Alignment.Center) { Text(stringResource(R.string.no_projects)) }
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.weight(if (subprojects.isEmpty()) 1f else 2f)) {
+                            when {
+                                visibleRows.isNotEmpty() -> LazyColumn(
+                                    state = listState,
+                                    contentPadding = WindowInsets.navigationBars.asPaddingValues(),
+                                    modifier = Modifier.fillMaxSize(),
+                                ) {
+                                    items(visibleRows, key = { it.task.id }) { row ->
+                                        SwipeRow(
+                                            onSwipedRight = { if (row.task.done) undo(row.task) else complete(row.task) },
+                                            onSwipedLeft = { if (!row.task.done) rescheduleTarget = row.task },
+                                            modifier = Modifier.animateItem(),
+                                        ) {
+                                            TaskRowItem(
+                                                row = row,
+                                                dueLabel = row.dueDate?.let { DueLabels.label(it, state.today, words, locale) },
+                                                onComplete = { if (row.task.done) undo(row.task) else complete(row.task) },
+                                                onOpen = { if (!row.task.done) editTarget = row.task },
+                                            )
+                                        }
+                                    }
+                                }
+                                !state.loaded || !state.syncedOnce -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                                    CircularProgressIndicator()
+                                }
+                                else -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                                    Text(stringResource(R.string.empty_list), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
-                    }
-                    // An empty database before the first sync is "loading", not "nothing to do".
-                    !state.loaded || !state.syncedOnce -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                    else -> LazyColumn(Modifier.fillMaxSize()) {
-                        item {
-                            Box(Modifier.fillMaxWidth().padding(top = 96.dp), Alignment.Center) {
-                                Text(stringResource(R.string.empty_list), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (subprojects.isNotEmpty()) {
+                            HorizontalDivider()
+                            Column(Modifier.weight(1f)) {
+                                Text(stringResource(R.string.subprojects), style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp))
+                                ProjectTiles(subprojects, viewModel::openProject, Modifier.fillMaxSize())
                             }
                         }
                     }
@@ -347,6 +398,29 @@ private fun TokenRejectedBanner(onEnterNewToken: () -> Unit) {
 }
 
 @Composable
+private fun ProjectTiles(projects: List<ProjectEntity>, onOpen: (Long) -> Unit, modifier: Modifier = Modifier) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        modifier = modifier.navigationBarsPadding(),
+        contentPadding = PaddingValues(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        gridItems(projects, key = { it.id }) { project ->
+            ElevatedCard(onClick = { onOpen(project.id) }, modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    project.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun TaskRowItem(row: TaskRow, dueLabel: String?, onComplete: () -> Unit, onOpen: () -> Unit) {
     Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
         Row(
@@ -356,13 +430,24 @@ private fun TaskRowItem(row: TaskRow, dueLabel: String?, onComplete: () -> Unit,
             Box(
                 modifier = Modifier
                     .size(56.dp)
-                    .clickable(onClickLabel = stringResource(R.string.complete_task), role = Role.Checkbox, onClick = onComplete),
+                    .clickable(onClickLabel = stringResource(if (row.task.done) R.string.undo_complete_task else R.string.complete_task), role = Role.Checkbox, onClick = onComplete),
                 contentAlignment = Alignment.Center,
             ) {
-                Box(Modifier.size(22.dp).border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
+                Box(
+                    Modifier.size(22.dp).border(2.dp, MaterialTheme.colorScheme.outline, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (row.task.done) Icon(painterResource(R.drawable.ic_check), contentDescription = null, modifier = Modifier.size(18.dp))
+                }
             }
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
-                Text(row.task.title, style = MaterialTheme.typography.bodyLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(
+                    row.task.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textDecoration = if (row.task.done) TextDecoration.LineThrough else TextDecoration.None,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
                 row.projectTitle?.let {
                     Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

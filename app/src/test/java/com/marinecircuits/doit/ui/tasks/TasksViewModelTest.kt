@@ -5,6 +5,8 @@ import com.marinecircuits.doit.data.IdRemap
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.DoitDatabase
+import com.marinecircuits.doit.data.local.ProjectEntity
+import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.sync.SyncResult
 import com.marinecircuits.doit.inMemoryDatabase
 import com.marinecircuits.doit.testClock
@@ -99,5 +101,47 @@ class TasksViewModelTest {
         syncResults.value = SyncResult.Offline
         waitUntil { viewModel.state.value.status == listOf(StatusPart.Offline, StatusPart.Waiting(1)) }
         assertTrue(viewModel.state.value.syncedOnce)
+    }
+
+    @Test
+    fun completedTaskStaysStruckThroughUntilProjectChangesAndCanBeUndone() {
+        runBlocking {
+            db.projects().insertAll(listOf(ProjectEntity(1, "Work", false, 0.0)))
+            db.tasks().upsert(TaskEntity(7, "Review", null, 1, false, testClock.millis()))
+        }
+        waitUntil { viewModel.state.value.rows.any { it.task.id == 7L } }
+        viewModel.openProject(1)
+        waitUntil { viewModel.state.value.projectPath == listOf(1L) }
+
+        viewModel.complete(viewModel.state.value.rows.single().task)
+        waitUntil { viewModel.state.value.rows.single().task.done }
+        waitUntil { runBlocking { db.tasks().get(7)?.done == true } }
+        viewModel.undoComplete(viewModel.state.value.rows.single().task)
+        waitUntil { viewModel.state.value.rows.single().task.done.not() }
+
+        viewModel.complete(viewModel.state.value.rows.single().task)
+        waitUntil { viewModel.state.value.rows.single().task.done }
+        viewModel.navigateBack()
+        waitUntil { viewModel.state.value.projectPath.isEmpty() && viewModel.state.value.rows.isEmpty() }
+    }
+
+    @Test
+    fun projectNavigationDrillsIntoChildrenAndCaptureUsesSelectedProject() {
+        runBlocking {
+            db.projects().insertAll(listOf(
+                ProjectEntity(1, "Work", false, 0.0),
+                ProjectEntity(2, "Firmware", false, 1.0, parentProjectId = 1),
+            ))
+        }
+        waitUntil { viewModel.state.value.projects.size == 2 }
+        viewModel.openProject(1)
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.projectPath == listOf(1L, 2L) }
+        var created: Long? = null
+        viewModel.capture("Fix board") { created = it }
+        waitUntil { created != null && viewModel.state.value.rows.any { it.task.id == created } }
+        assertEquals(2L, runBlocking { db.tasks().get(created!!)?.projectId })
+        viewModel.navigateBack()
+        waitUntil { viewModel.state.value.projectPath == listOf(1L) }
     }
 }
