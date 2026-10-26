@@ -19,12 +19,15 @@ data class TaskRow(
     val overdue: Boolean,
     /** Shown under the title for tasks outside the default project. */
     val projectTitle: String?,
+    /** Completed in the current view: shown struck through until the user leaves the view. */
+    val completed: Boolean = false,
 )
 
 object TaskListModel {
     /**
      * Overdue first, then today and later (both by due time), then undated tasks newest first.
-     * Sorting dated tasks by instant puts overdue ones first on its own.
+     * Sorting dated tasks by instant puts overdue ones first on its own. Done tasks (completed in the current view)
+     * keep the place they had while open.
      */
     fun rows(
         tasks: List<TaskEntity>,
@@ -42,8 +45,9 @@ object TaskListModel {
             TaskRow(
                 task = task,
                 dueDate = dueDate,
-                overdue = dueDate != null && dueDate < today,
+                overdue = !task.done && dueDate != null && dueDate < today,
                 projectTitle = titles[task.projectId]?.takeIf { task.projectId != defaultProjectId },
+                completed = task.done,
             )
         }
     }

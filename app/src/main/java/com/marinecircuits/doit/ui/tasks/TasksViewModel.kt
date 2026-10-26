@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class TasksUiState(
@@ -47,8 +48,22 @@ class TasksViewModel(
     private val refreshing = MutableStateFlow(false)
     private val signOutConfirmation = MutableStateFlow<Int?>(null)
 
-    private val list = combine(repository.openTasks, repository.projects, settings.defaultProjectId, today) {
-            tasks, projects, defaultProjectId, day ->
+    /**
+     * Tasks completed in this view, as they were before completion. They stay listed, struck through, until the user
+     * leaves the view, even after a sync removed them from the database.
+     */
+    private val completedHere = MutableStateFlow<Map<Long, TaskEntity>>(emptyMap())
+
+    private val list = combine(
+        repository.openTasks,
+        repository.projects,
+        settings.defaultProjectId,
+        today,
+        completedHere,
+    ) { open, projects, defaultProjectId, day, completed ->
+        // A repeating task the server reopened shows as the open task, not as a struck-through copy.
+        val openIds = open.mapTo(HashSet()) { it.id }
+        val tasks = open + completed.values.filter { it.id !in openIds }.map { it.copy(done = true) }
         TasksUiState(
             today = day,
             rows = TaskListModel.rows(tasks, projects, defaultProjectId, day, clock.zone),
@@ -70,6 +85,11 @@ class TasksViewModel(
             .combine(refreshing) { state, refreshing -> state.copy(refreshing = refreshing) }
             .combine(signOutConfirmation) { state, pending -> state.copy(signOutConfirmation = pending) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, TasksUiState(today = today.value))
+
+    /** The user left the view: tasks completed here leave the list. */
+    fun onLeave() {
+        completedHere.value = emptyMap()
+    }
 
     /** The app came to the foreground: the date may have changed, and the list should catch up with the server. */
     fun onForeground() {
@@ -95,11 +115,18 @@ class TasksViewModel(
     }
 
     fun complete(task: TaskEntity) {
+        completedHere.update { it + (task.id to task) }
         viewModelScope.launch { repository.complete(task.id) }
     }
 
-    fun undoComplete(task: TaskEntity) {
-        viewModelScope.launch { repository.undoComplete(task) }
+    /** Unchecking a struck-through row restores the task as it was before it was completed. */
+    fun uncomplete(task: TaskEntity) {
+        val original = completedHere.value[task.id] ?: task.copy(done = false)
+        viewModelScope.launch {
+            repository.undoComplete(original)
+            // Dropped only now: the reopened task is in the open list, so the row never flickers out.
+            completedHere.update { it - task.id }
+        }
     }
 
     fun reschedule(task: TaskEntity, date: LocalDate?) {

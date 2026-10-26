@@ -29,9 +29,6 @@
     <string name="menu_sync">Sync now</string>
     <string name="menu_sign_out">Sign out</string>
     <string name="empty_list">Nothing to do</string>
-    <string name="complete_task">Complete</string>
-    <string name="completed_snackbar">Completed “%1$s”</string>
-    <string name="undo">Undo</string>
     <string name="due_today">today</string>
     <string name="due_tomorrow">tomorrow</string>
     <string name="due_yesterday">yesterday</string>
