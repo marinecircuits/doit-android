@@ -26,6 +26,8 @@
     <string name="capture_hint">Add a task…</string>
     <string name="capture_send">Add task</string>
     <string name="menu">More options</string>
+    <string name="app_info">About doit</string>
+    <string name="app_version">Version %1$s</string>
     <string name="menu_sync">Sync now</string>
     <string name="menu_sign_out">Sign out</string>
     <string name="empty_list">Nothing to do</string>

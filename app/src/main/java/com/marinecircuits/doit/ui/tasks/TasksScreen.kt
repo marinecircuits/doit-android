@@ -193,7 +193,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             StatusLine(state.status)
             if (selectedProject != null) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = viewModel::navigateBack) { Text(stringResource(R.string.projects_back)) }
+                    TextButton(
+                        onClick = viewModel::navigateBack,
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    ) {
+                        Text(stringResource(R.string.projects_back), style = MaterialTheme.typography.titleMedium)
+                    }
                     Text(selectedProject.title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
@@ -321,6 +326,11 @@ private fun CaptureBar(
     focusRequester: FocusRequester,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
+    var infoOpen by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val appVersion = remember(context) {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
+    }
     Row(
         modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -339,6 +349,9 @@ private fun CaptureBar(
             },
             modifier = Modifier.weight(1f).focusRequester(focusRequester),
         )
+        IconButton(onClick = { infoOpen = true }) {
+            Icon(painterResource(R.drawable.ic_info), contentDescription = stringResource(R.string.app_info))
+        }
         Box {
             IconButton(onClick = { menuOpen = true }) {
                 Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.menu))
@@ -360,6 +373,16 @@ private fun CaptureBar(
                 )
             }
         }
+    }
+    if (infoOpen) {
+        AlertDialog(
+            onDismissRequest = { infoOpen = false },
+            title = { Text(stringResource(R.string.app_info)) },
+            text = { Text(stringResource(R.string.app_version, appVersion)) },
+            confirmButton = {
+                TextButton(onClick = { infoOpen = false }) { Text(stringResource(R.string.ok)) }
+            },
+        )
     }
 }
 
