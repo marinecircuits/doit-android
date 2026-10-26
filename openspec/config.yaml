@@ -1,0 +1,40 @@
+schema: spec-driven
+
+context: |
+  doit is a personal Android client for one self-hosted Vikunja server (2.4 or newer). Use API v2 (/api/v2) only; v1 is frozen upstream.
+  Authentication is by Vikunja API token (tk_...) only. Password, OIDC and OAuth logins are out of scope unless a change adds them explicitly.
+  The developer machine has no JDK or Android SDK: every build, test and release runs on GitHub Actions.
+  The GitHub repo (marinecircuits/doit) must stay private.
+  Releases follow the marinecircuits Commitizen pattern: a manual "Prepare Release" workflow opens a release/X.Y.Z pull request, and merging it runs "Publish Release". Commit messages must be Conventional Commits.
+  Release APKs are signed with the shared marinecircuits Android key from the organization secrets ANDROID_SIGNING_*.
+
+# Project context (optional)
+# Add only constraints that should guide OpenSpec artifacts and workflows.
+# Include constraints an agent cannot infer by reading the code.
+# Keep general project documentation and discoverable codebase facts out.
+# Example:
+#   context: |
+#     Designs and tasks must cover Windows, macOS, and Linux
+#     Write all artifacts in Spanish
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always state what is out of scope
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
