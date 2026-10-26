@@ -1,3 +1,10 @@
+## 0.4.0 (2026-10-26)
+
+### Feat
+
+- autosave task edits
+- simplify home view and show app version
+
 ## 0.3.0 (2026-10-26)
 
 ### Feat
