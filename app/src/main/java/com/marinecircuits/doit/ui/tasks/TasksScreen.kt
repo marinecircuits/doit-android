@@ -327,9 +327,6 @@ private fun CaptureBar(
             },
             modifier = Modifier.weight(1f).focusRequester(focusRequester),
         )
-        IconButton(onClick = { infoOpen = true }) {
-            Icon(painterResource(R.drawable.ic_info), contentDescription = stringResource(R.string.app_info))
-        }
         Box {
             IconButton(onClick = { menuOpen = true }) {
                 Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.menu))
@@ -340,6 +337,13 @@ private fun CaptureBar(
                     onClick = {
                         menuOpen = false
                         onSyncNow()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.app_info)) },
+                    onClick = {
+                        menuOpen = false
+                        infoOpen = true
                     },
                 )
                 DropdownMenuItem(
