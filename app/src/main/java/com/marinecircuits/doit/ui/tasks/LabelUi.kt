@@ -26,7 +26,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.marinecircuits.doit.data.local.LabelEntity
+import com.marinecircuits.doit.data.CaptureSyntax.Suggestion
 
 /** A task's labels as small chips, in their colours made lighter like project tiles, or plain without one. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -57,11 +57,10 @@ fun LabelChips(labels: List<LabelChip>, dimmed: Boolean, modifier: Modifier = Mo
 }
 
 /**
- * Labels matching what follows an `@` in a text field. Nothing in it takes focus, so the field keeps the keyboard;
- * a tap hands the label to [onPick].
+ * Labels or projects matching a capture token. Nothing in it takes focus, so the field keeps the keyboard.
  */
 @Composable
-fun LabelSuggestions(suggestions: List<LabelEntity>, onPick: (LabelEntity) -> Unit, modifier: Modifier = Modifier) {
+fun CaptureSuggestions(suggestions: List<Suggestion>, onPick: (Suggestion) -> Unit, modifier: Modifier = Modifier) {
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -69,19 +68,19 @@ fun LabelSuggestions(suggestions: List<LabelEntity>, onPick: (LabelEntity) -> Un
         modifier = modifier,
     ) {
         Column(Modifier.padding(vertical = 4.dp)) {
-            suggestions.forEach { label ->
+            suggestions.forEach { suggestion ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp)
-                        .clickable { onPick(label) }
+                        .clickable { onPick(suggestion) }
                         .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    LabelDot(label.hexColor)
+                    SuggestionDot(suggestion.hexColor)
                     Spacer(Modifier.width(12.dp))
                     Text(
-                        label.title,
+                        suggestion.title,
                         style = MaterialTheme.typography.bodyLarge,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -93,7 +92,7 @@ fun LabelSuggestions(suggestions: List<LabelEntity>, onPick: (LabelEntity) -> Un
 }
 
 @Composable
-private fun LabelDot(hexColor: String) {
+private fun SuggestionDot(hexColor: String) {
     val colors = ProjectColors.tile(hexColor)
     val dot = Modifier.size(12.dp)
     if (colors != null) {

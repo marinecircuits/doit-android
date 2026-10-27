@@ -162,6 +162,27 @@ class SyncEngineTest {
     }
 
     @Test
+    fun projectAndLabelsCapturedOfflineReachTheChosenProject() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        engine.sync()
+        val id = repository.capture("Order capacitors #work @errand", projectId = 1)!!
+        assertEquals(2L, db.tasks().get(id)!!.projectId)
+        assertEquals("Order capacitors", db.tasks().get(id)!!.title)
+
+        // The pending create keeps the explicit project even if the user's default changes before syncing.
+        fake.defaultProjectId = 1
+        assertEquals(SyncResult.Synced, engine.sync())
+
+        val task = fake.tasks[100]!!
+        assertEquals(2L, task.projectId)
+        assertEquals("Order capacitors", task.title)
+        assertEquals(listOf(7L), task.labelIds)
+        assertEquals(2L, db.tasks().get(100)!!.projectId)
+        assertEquals(0, db.pendingChanges().count())
+        assertTrue(fake.requests.contains("""POST projects/2/tasks {"title":"Order capacitors","project_id":2}"""))
+    }
+
+    @Test
     fun capturedLabelsShowUnderTheServerIdUntilPulled() = runTest {
         fake.labels += FakeVikunja.Label(7, "errand")
         engine.sync()
