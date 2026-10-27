@@ -49,7 +49,7 @@ Every push to `main` also produces a debug build (`doit debug`, package `com.mar
 ## Releasing
 
 1. Run the **Prepare Release** workflow on `main`; enable *dry run* to just see the next version. It bumps the version and `CHANGELOG.md` with Commitizen and opens a `Release X.Y.Z` pull request.
-2. Review and merge that pull request. **Publish Release** then builds the signed APK, tags the merge commit `X.Y.Z` and publishes the GitHub release.
+2. Review and merge that pull request. **Prepare Release** starts **Build** on the release branch immediately: that run tests and produces the signed APK (R8 is the slow part, about three minutes). **Publish Release** reuses that APK, checks the signature, tags the merge commit `X.Y.Z` and publishes the GitHub release. It does not compile or test again.
 
 Release APKs are signed with the shared marinecircuits Android key from the organization secrets `ANDROID_SIGNING_KEYSTORE_BASE64`, `ANDROID_SIGNING_STORE_PASSWORD`, `ANDROID_SIGNING_KEY_ALIAS` and `ANDROID_SIGNING_KEY_PASSWORD`. Its certificate SHA-256 fingerprint is
 `06:41:57:C9:52:74:C3:6E:68:EE:48:8D:41:02:61:6A:BA:07:4E:84:7C:3F:F2:ED:63:ED:1A:92:C5:40:0B:09`.

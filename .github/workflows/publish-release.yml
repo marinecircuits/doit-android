@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   publish:
@@ -45,39 +46,49 @@ jobs:
           grep -qx "doit.versionName=$VERSION" gradle.properties
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - uses: gradle/actions/setup-gradle@v6
-
-      - name: Decode the signing key
+      # The signed APK was built from this commit by Build. R8 is the slow part, so it is not repeated here.
+      - name: Wait for the signed build
+        id: signed
         env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::Organization secret ANDROID_SIGNING_KEYSTORE_BASE64 is not available to this repository"
-            exit 1
-          fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
-          echo "ANDROID_SIGNING_KEYSTORE=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
+          set -euo pipefail
+          short="${HEAD_SHA::7}"
+          echo "short_sha=$short" >> "$GITHUB_OUTPUT"
+          for attempt in $(seq 1 40); do
+            run_id=$(gh run list --workflow build.yml --commit "$HEAD_SHA" --limit 20 \
+              --json databaseId,conclusion,event \
+              --jq '[.[] | select((.event=="workflow_dispatch" or .event=="pull_request") and .conclusion=="success")][0].databaseId')
+            if [ -n "$run_id" ] && [ "$run_id" != "null" ]; then
+              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            failed=$(gh run list --workflow build.yml --commit "$HEAD_SHA" --limit 20 \
+              --json conclusion,event \
+              --jq '[.[] | select((.event=="workflow_dispatch" or .event=="pull_request") and .conclusion=="failure")] | length')
+            if [ "$failed" != "0" ]; then
+              echo "::error::The signed build for $HEAD_SHA failed"
+              exit 1
+            fi
+            echo "Signed build for $HEAD_SHA is not ready (attempt $attempt)"
+            sleep 15
+          done
+          echo "::error::Timed out waiting for the signed build of $HEAD_SHA"
+          exit 1
 
-      # Built and checked before tagging, so a signing failure leaves no tag or release behind.
-      - name: Test and build the signed APK
-        env:
-          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
-          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
-          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
-        run: ./gradlew --stacktrace testDebugUnitTest assembleRelease
+      - uses: actions/download-artifact@v7
+        with:
+          name: doit-release-${{ steps.signed.outputs.short_sha }}
+          run-id: ${{ steps.signed.outputs.run_id }}
+          github-token: ${{ github.token }}
 
       - name: Check the APK is signed with the marinecircuits key
         run: |
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
-          cp app/build/outputs/apk/release/app-release.apk "doit-$VERSION.apk"
+          mv "doit-release-${{ steps.signed.outputs.short_sha }}.apk" "doit-$VERSION.apk"
           "$BUILD_TOOLS/apksigner" verify --print-certs "doit-$VERSION.apk" | tee signer.txt
           grep -q "SHA-256 digest: 064157c95274c36e68ee488d4102616aba074e847c3ff2ed63ed1a92c5400b09" signer.txt
-          rm -f "$RUNNER_TEMP/release.p12"
 
       - name: Tag tested merge commit
         run: |

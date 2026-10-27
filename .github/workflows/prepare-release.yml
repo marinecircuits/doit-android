@@ -15,6 +15,7 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 jobs:
   prepare:
@@ -47,19 +48,6 @@ jobs:
           fi
           cz bump --yes --changelog --files-only
 
-      - uses: actions/setup-java@v6
-        if: ${{ !inputs.dry_run }}
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - uses: gradle/actions/setup-gradle@v6
-        if: ${{ !inputs.dry_run }}
-
-      - name: Verify release
-        if: ${{ !inputs.dry_run }}
-        run: ./gradlew --stacktrace testDebugUnitTest
-
       - name: Push release branch and open PR
         if: ${{ !inputs.dry_run }}
         env:
@@ -77,3 +65,6 @@ jobs:
           gh pr create --base main --head "$BRANCH" --label release \
             --title "Release $VERSION" \
             --body "Automated release PR. Review the version and changelog, then merge to tag $VERSION and publish the signed APK."
+          # workflow_dispatch is not held for approval the way the bot's pull_request run is.
+          # Build tests this commit and signs the release APK; Publish Release reuses that APK.
+          gh workflow run build.yml --ref "$BRANCH"
