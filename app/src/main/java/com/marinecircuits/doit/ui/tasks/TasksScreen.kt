@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -64,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -390,7 +392,10 @@ private fun ProjectHeader(title: String, onBack: () -> Unit) {
     }
 }
 
-/** Project tiles: title and the number of open tasks directly in the project. Scrolls on its own. */
+/**
+ * Project tiles: title and the number of open tasks directly in the project, filled with the project's colour made
+ * lighter, or plain without one. Scrolls on its own.
+ */
 @Composable
 private fun ProjectTiles(
     tiles: List<ProjectTile>,
@@ -407,7 +412,18 @@ private fun ProjectTiles(
         modifier = modifier,
     ) {
         items(tiles, key = { it.project.id }) { tile ->
-            OutlinedCard(onClick = { onOpen(tile.project.id) }) {
+            val colors = ProjectColors.tile(tile.project.hexColor)
+            OutlinedCard(
+                onClick = { onOpen(tile.project.id) },
+                colors = if (colors == null) {
+                    CardDefaults.outlinedCardColors()
+                } else {
+                    CardDefaults.outlinedCardColors(
+                        containerColor = Color(colors.container),
+                        contentColor = Color(colors.content),
+                    )
+                },
+            ) {
                 Column(
                     modifier = Modifier.fillMaxWidth().then(
                         if (largeTiles) Modifier.heightIn(min = 120.dp) else Modifier
@@ -423,7 +439,8 @@ private fun ProjectTiles(
                     Text(
                         pluralStringResource(R.plurals.tile_open_count, tile.openCount, tile.openCount),
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors?.let { Color(it.content).copy(alpha = 0.8f) }
+                            ?: MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

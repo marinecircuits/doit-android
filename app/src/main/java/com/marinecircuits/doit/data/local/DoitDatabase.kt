@@ -8,10 +8,10 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [TaskEntity::class, ProjectEntity::class, PendingChangeEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
-    // 2: projects.parentProjectId
-    autoMigrations = [AutoMigration(from = 1, to = 2)],
+    // 2: projects.parentProjectId, 3: projects.hexColor
+    autoMigrations = [AutoMigration(from = 1, to = 2), AutoMigration(from = 2, to = 3)],
 )
 abstract class DoitDatabase : RoomDatabase() {
     abstract fun tasks(): TaskDao

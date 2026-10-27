@@ -86,6 +86,24 @@ class SyncEngineTest {
     }
 
     @Test
+    fun storesProjectColours() = runTest {
+        fake.intercept = { request ->
+            if (request.method == "GET" && request.requestUrl!!.encodedPath.endsWith("/projects")) {
+                FakeVikunja.json(
+                    200,
+                    """{"items":[{"id":1,"title":"Work","hex_color":"1973ff"},{"id":2,"title":"Inbox","hex_color":""},
+                       {"id":3,"title":"Home"}],"total":3,"page":1,"per_page":50,"total_pages":1}""",
+                )
+            } else {
+                null
+            }
+        }
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(mapOf(1L to "1973ff", 2L to "", 3L to ""), db.projects().all().associate { it.id to it.hexColor })
+    }
+
+    @Test
     fun createThenCompleteOfflineCreatesThenCompletesTheSameTask() = runTest {
         engine.sync()
         val temporaryId = repository.capture("Buy milk")!!
