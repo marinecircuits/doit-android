@@ -289,6 +289,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     )
                 }
             }
+            if (captureFocused) {
+                SyntaxKeyRow(
+                    onInsert = { token -> captureText = SyntaxKeys.insert(captureText, token) },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
         }
     }
 
@@ -323,10 +329,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         EditSheet(
             task = task,
             projects = state.projects,
+            labels = state.labels,
             today = state.today,
             words = words,
             locale = locale,
-            onTitleChange = { viewModel.rename(task, it) },
+            onTitleChange = { viewModel.applyEditedTitle(task, it) },
             onDateChange = { viewModel.reschedule(task, it) },
             onProjectChange = { viewModel.move(task, it) },
             onDismiss = { editTarget = null },

@@ -66,6 +66,8 @@
     <string name="when_none">No date</string>
     <string name="ok">OK</string>
     <string name="edit_title">Title</string>
+    <string name="insert_label">Insert @ for a label</string>
+    <string name="insert_project">Insert # for a project</string>
     <string name="edit_due">Due</string>
     <string name="edit_no_date">No date</string>
     <string name="edit_clear_date">Clear</string>

@@ -32,10 +32,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.marinecircuits.doit.R
+import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.data.DueDates
+import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import java.time.Instant
@@ -104,6 +108,7 @@ fun PickDateDialog(initial: LocalDate?, onPicked: (LocalDate) -> Unit, onDismiss
 fun EditSheet(
     task: TaskEntity,
     projects: List<ProjectEntity>,
+    labels: List<LabelEntity>,
     today: LocalDate,
     words: DueWords,
     locale: Locale,
@@ -113,8 +118,8 @@ fun EditSheet(
     onDismiss: () -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
-    var title by remember(task.id) { mutableStateOf(task.title) }
-    var lastSavedTitle by remember(task.id) { mutableStateOf(task.title) }
+    var title by remember(task.id) { mutableStateOf(TextFieldValue(task.title, TextRange(task.title.length))) }
+    var savedTitle by remember(task.id) { mutableStateOf(task.title) }
     var titleFocused by remember(task.id) { mutableStateOf(false) }
     var date by remember(task.id) { mutableStateOf(task.dueAt?.let { DueDates.localDate(it, zone) }) }
     var projectId by remember(task.id) { mutableStateOf(task.projectId) }
@@ -122,11 +127,18 @@ fun EditSheet(
     var projectMenuOpen by remember { mutableStateOf(false) }
 
     fun commitTitle() {
-        val trimmed = title.trim()
-        if (trimmed.isNotEmpty() && trimmed != lastSavedTitle) {
-            lastSavedTitle = trimmed
-            onTitleChange(trimmed)
+        val raw = title.text
+        if (raw == savedTitle) return
+        if (raw.isBlank()) {
+            title = TextFieldValue(savedTitle, TextRange(savedTitle.length))
+            return
         }
+        val parsed = CaptureSyntax.parse(raw, labels, projects)
+        val shown = parsed.title.ifEmpty { savedTitle }
+        parsed.projectId?.let { projectId = it }
+        savedTitle = shown
+        title = TextFieldValue(shown, TextRange(shown.length))
+        onTitleChange(raw)
     }
 
     fun dismiss() {
@@ -150,6 +162,25 @@ fun EditSheet(
                     titleFocused = focus.isFocused
                 },
             )
+            if (titleFocused) {
+                SyntaxKeyRow(onInsert = { token -> title = SyntaxKeys.insert(title, token) })
+                val suggestions = if (title.selection.collapsed) {
+                    CaptureSyntax.suggestionsAt(title.text, title.selection.end, labels, projects)
+                } else {
+                    emptyList()
+                }
+                if (suggestions.isNotEmpty()) {
+                    CaptureSuggestions(
+                        suggestions,
+                        onPick = { suggestion ->
+                            CaptureSyntax.complete(title.text, title.selection.end, suggestion.title)?.let {
+                                title = TextFieldValue(it.text, TextRange(it.cursor))
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.edit_due), Modifier.weight(1f))
                 TextButton(onClick = { pickingDate = true }) { Text(dateLabel(date, today, words, locale)) }

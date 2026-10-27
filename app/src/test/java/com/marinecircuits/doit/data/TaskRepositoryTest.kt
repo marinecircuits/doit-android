@@ -267,4 +267,44 @@ class TaskRepositoryTest {
         assertEquals(JsonPrimitive(2), pendingFields(10)["project_id"])
         assertEquals(JsonPrimitive("2026-10-27T08:30:00Z"), pendingFields(10)["due_date"])
     }
+
+    @Test
+    fun editedTitleAddsLabelsAndMovesProjectWithoutDroppingExistingLabels() = runTest {
+        db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Phone")))
+        serverTask(10)
+        db.taskLabels().set(10, listOf("Errand"))
+
+        repository.applyEditedTitle(10, "Call bank @phone #work")
+
+        val task = db.tasks().get(10)!!
+        assertEquals("Call bank", task.title)
+        assertEquals(2L, task.projectId)
+        assertEquals(listOf("Errand", "Phone"), db.taskLabels().forTask(10))
+        assertEquals(JsonArray(listOf(JsonPrimitive("Phone"))), pendingFields(10)[TaskRepository.LABELS])
+        assertEquals(JsonPrimitive(2), pendingFields(10)["project_id"])
+    }
+
+    @Test
+    fun tokensAloneKeepThePreviousTitleAndQueueLabelsAlongsideAnUnsentCapture() = runTest {
+        db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Phone")))
+        settings.setDefaultProjectId(1)
+        val id = repository.capture("Buy lamp @errand")!!
+
+        repository.applyEditedTitle(id, "@phone")
+
+        assertEquals("Buy lamp", db.tasks().get(id)!!.title)
+        assertEquals(listOf("Errand", "Phone"), db.taskLabels().forTask(id))
+        assertEquals(
+            JsonArray(listOf(JsonPrimitive("Errand"), JsonPrimitive("Phone"))),
+            pendingFields(id)[TaskRepository.LABELS],
+        )
+    }
+
+    @Test
+    fun unknownEditTokensStayInTheTitle() = runTest {
+        serverTask(10)
+        repository.applyEditedTitle(10, "Call bank @missing")
+        assertEquals("Call bank @missing", db.tasks().get(10)!!.title)
+        assertTrue(db.taskLabels().forTask(10).isEmpty())
+    }
 }

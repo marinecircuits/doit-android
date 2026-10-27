@@ -33,6 +33,8 @@ import com.marinecircuits.doit.R
 import com.marinecircuits.doit.container
 import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.ui.tasks.CaptureSuggestions
+import com.marinecircuits.doit.ui.tasks.SyntaxKeyRow
+import com.marinecircuits.doit.ui.tasks.SyntaxKeys
 import com.marinecircuits.doit.ui.theme.DoitTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -100,6 +102,12 @@ private fun ShareDialog(
                         label = { Text(stringResource(R.string.edit_title)) },
                         modifier = Modifier.fillMaxWidth().onFocusChanged { titleFocused = it.isFocused },
                     )
+                    if (titleFocused) {
+                        SyntaxKeyRow(
+                            onInsert = { token -> title = SyntaxKeys.insert(title, token) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                     val suggestions = if (titleFocused && title.selection.collapsed) {
                         CaptureSyntax.suggestionsAt(title.text, title.selection.end, labels, projects)
                     } else {

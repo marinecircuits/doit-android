@@ -207,6 +207,11 @@ class TasksViewModel(
         viewModelScope.launch { repository.rename(task.id, title) }
     }
 
+    /** Saves an edited title, including `@label` and `#project` tokens. */
+    fun applyEditedTitle(task: TaskEntity, raw: String) {
+        viewModelScope.launch { repository.applyEditedTitle(task.id, raw) }
+    }
+
     fun move(task: TaskEntity, projectId: Long) {
         viewModelScope.launch { repository.move(task.id, projectId) }
     }
