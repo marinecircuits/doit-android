@@ -2,8 +2,10 @@
 
 package com.marinecircuits.doit.ui.tasks
 
+import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -56,6 +58,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -70,6 +73,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -157,8 +162,41 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         viewModel.capture(text) { id -> if (currentProject != null) scrollToTaskId = id }
     }
 
+    val typography = MaterialTheme.typography
+    val shapes = MaterialTheme.shapes
+    val page = currentProject?.let { ProjectColors.tile(it.hexColor) }
+    val colorScheme = if (page == null) {
+        MaterialTheme.colorScheme
+    } else {
+        val container = Color(page.container)
+        val content = Color(page.content)
+        MaterialTheme.colorScheme.copy(
+            background = container,
+            surface = container,
+            surfaceVariant = container,
+            onBackground = content,
+            onSurface = content,
+            onSurfaceVariant = content.copy(alpha = 0.75f),
+            outline = content.copy(alpha = 0.55f),
+            outlineVariant = content.copy(alpha = 0.28f),
+        )
+    }
+    val view = LocalView.current
+    val darkTheme = isSystemInDarkTheme()
+    SideEffect {
+        if (view.isInEditMode) return@SideEffect
+        val window = (view.context as Activity).window
+        val controller = WindowCompat.getInsetsController(window, view)
+        val lightBackground = if (page == null) !darkTheme else page.content == ProjectColors.DARK_TEXT
+        controller.isAppearanceLightStatusBars = lightBackground
+        controller.isAppearanceLightNavigationBars = lightBackground
+    }
+
     // The capture bar handles the status bar itself; the list stays above the keyboard and navigation bar.
+    // An open project fills the page with the same lightened colour as its tile.
+    MaterialTheme(colorScheme = colorScheme, typography = typography, shapes = shapes) {
     Scaffold(
+        containerColor = colorScheme.background,
         contentWindowInsets = WindowInsets(0),
         snackbarHost = { SnackbarHost(snackbarHostState, Modifier.navigationBarsPadding().imePadding()) },
     ) { padding ->
@@ -296,6 +334,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 )
             }
         }
+    }
     }
 
     rescheduleTarget?.let { task ->
