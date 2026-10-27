@@ -1,6 +1,7 @@
 package com.marinecircuits.doit.data
 
 import com.marinecircuits.doit.data.local.DoitDatabase
+import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.PendingChangeEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
@@ -12,6 +13,7 @@ import com.marinecircuits.doit.testZone
 import java.time.LocalDate
 import java.time.ZonedDateTime
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -78,6 +80,35 @@ class TaskRepositoryTest {
         val id = repository.capture("Order capacitors", projectId = 2)!!
         assertEquals(2L, db.tasks().get(id)!!.projectId)
         assertEquals(JsonPrimitive(2), pendingFields(id)["project_id"])
+    }
+
+    @Test
+    fun captureTurnsKnownLabelsIntoLabels() = runTest {
+        db.labels().insertAll(listOf(LabelEntity(7, "Errand", "e8a33d"), LabelEntity(9, "15 min")))
+
+        val id = repository.capture("""Order capacitors @errand @"15 min" @phone""", description = "@errand stays")!!
+
+        assertEquals("Order capacitors @phone", db.tasks().get(id)!!.title)
+        assertEquals(listOf("Errand", "15 min"), db.taskLabels().forTask(id))
+        val fields = pendingFields(id)
+        assertEquals(JsonPrimitive("Order capacitors @phone"), fields["title"])
+        assertEquals(JsonArray(listOf(JsonPrimitive("Errand"), JsonPrimitive("15 min"))), fields[TaskRepository.LABELS])
+        assertEquals(JsonPrimitive("@errand stays"), fields["description"])
+    }
+
+    @Test
+    fun captureOfOnlyLabelsCreatesNothing() = runTest {
+        db.labels().insertAll(listOf(LabelEntity(7, "Errand")))
+        assertNull(repository.capture("@errand"))
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun captureWithoutLabelsQueuesNone() = runTest {
+        val id = repository.capture("mail bob@example.com @errand")!!
+        assertEquals("mail bob@example.com @errand", db.tasks().get(id)!!.title)
+        assertNull(pendingFields(id)[TaskRepository.LABELS])
+        assertEquals(emptyList<String>(), db.taskLabels().forTask(id))
     }
 
     @Test

@@ -2,9 +2,11 @@ package com.marinecircuits.doit.data
 
 import androidx.room.withTransaction
 import com.marinecircuits.doit.data.local.DoitDatabase
+import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.PendingChangeEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
+import com.marinecircuits.doit.data.local.TaskLabelEntity
 import com.marinecircuits.doit.data.remote.VikunjaDates
 import com.marinecircuits.doit.data.sync.PendingChanges
 import java.time.Clock
@@ -13,6 +15,7 @@ import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -45,6 +48,8 @@ class TaskRepository(
     val openTasks: Flow<List<TaskEntity>> = db.tasks().observeOpen()
     val projects: Flow<List<ProjectEntity>> = db.projects().observeAll()
     val pendingCount: Flow<Int> = db.pendingChanges().observeCount()
+    val labels: Flow<List<LabelEntity>> = db.labels().observeAll()
+    val taskLabels: Flow<List<TaskLabelEntity>> = db.taskLabels().observeAll()
 
     suspend fun openTasks(): List<TaskEntity> = db.tasks().open()
 
@@ -56,23 +61,26 @@ class TaskRepository(
     }
 
     /**
-     * Creates a task in [projectId], or in the default project when it is null.
-     * Returns the task's (temporary) id, or null for a blank title.
+     * Creates a task in [projectId], or in the default project when it is null. `@label` tokens in [text] naming
+     * existing labels become labels (see [LabelSyntax]); the [description] is kept as it is.
+     * Returns the task's (temporary) id, or null when nothing is left of the title.
      */
-    suspend fun capture(title: String, description: String? = null, projectId: Long? = null): Long? {
-        val trimmed = title.trim()
-        if (trimmed.isEmpty()) return null
+    suspend fun capture(text: String, description: String? = null, projectId: Long? = null): Long? {
+        val (title, labelNames) = LabelSyntax.parse(text, db.labels().all())
+        if (title.isEmpty()) return null
         val destination = projectId ?: defaultProjectId() ?: 0
         val id = db.withTransaction {
             val id = minOf(db.tasks().minId() ?: 0, 0) - 1
             db.tasks().upsert(
-                TaskEntity(id, trimmed, dueAt = null, projectId = destination, done = false, createdAt = clock.millis()),
+                TaskEntity(id, title, dueAt = null, projectId = destination, done = false, createdAt = clock.millis()),
             )
             val fields = buildJsonObject {
-                put("title", trimmed)
+                put("title", title)
                 if (!description.isNullOrBlank()) put("description", description.trim())
                 if (destination > 0) put("project_id", destination)
+                if (labelNames.isNotEmpty()) put(LABELS, JsonArray(labelNames.map { JsonPrimitive(it) }))
             }
+            db.taskLabels().set(id, labelNames) // also clears what a dropped task with this id may have left
             db.pendingChanges().insert(
                 PendingChangeEntity(taskId = id, kind = PendingChangeEntity.CREATE, fields = fields.toString()),
             )
@@ -154,6 +162,9 @@ class TaskRepository(
         const val DONE = "done"
         const val DUE_DATE = "due_date"
         const val PROJECT_ID = "project_id"
+
+        /** Label names; only ever set by a capture, and sent once the task exists on the server. */
+        const val LABELS = "labels"
 
         fun dueJson(dueAt: Long?): JsonElement =
             dueAt?.let { JsonPrimitive(VikunjaDates.format(Instant.ofEpochMilli(it))) } ?: JsonNull

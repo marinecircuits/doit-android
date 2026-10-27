@@ -6,6 +6,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.longOrNull
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
@@ -13,13 +14,29 @@ import okhttp3.mockwebserver.RecordedRequest
 
 /** An in-memory stand-in for the handful of Vikunja API v2 endpoints doit uses. */
 class FakeVikunja : Dispatcher() {
-    data class Task(val id: Long, var title: String, var done: Boolean = false, var dueDate: String? = null, var projectId: Long = 1)
+    data class Task(
+        val id: Long,
+        var title: String,
+        var done: Boolean = false,
+        var dueDate: String? = null,
+        var projectId: Long = 1,
+        val labelIds: MutableList<Long> = mutableListOf(),
+    )
+
+    data class Label(val id: Long, val title: String, val hexColor: String = "")
 
     val tasks = linkedMapOf<Long, Task>()
     val projects = mutableListOf(1L to "Inbox", 2L to "Work")
     var defaultProjectId = 1L
     var tokenValid = true
     var userAllowed = true
+    val labels = mutableListOf<Label>()
+
+    /** False: the token may not read labels (401 on the label list). */
+    var labelsReadable = true
+
+    /** False: the token may not add labels to tasks (401 on that route). */
+    var labelsAddable = true
     private var nextId = 100L
 
     /** Return a response here to override the normal handling of a request. */
@@ -40,6 +57,21 @@ class FakeVikunja : Dispatcher() {
                 else json(401, """{"message":"Unauthorized"}""")
             request.method == "GET" && path == "projects" -> page(projects.map { (id, title) -> """{"id":$id,"title":"$title"}""" })
             request.method == "GET" && path == "tasks" -> page(tasks.values.filterNot { it.done }.map(::encode))
+            request.method == "GET" && path == "labels" ->
+                if (labelsReadable) page(labels.map(::encode)) else json(401, """{"message":"Unauthorized"}""")
+            request.method == "POST" && path.matches(Regex("tasks/\\d+/labels")) -> {
+                if (!labelsAddable) return json(401, """{"message":"Unauthorized"}""")
+                val task = tasks[path.split("/")[1].toLong()] ?: return json(404, """{"title":"Not Found"}""")
+                val labelId = parse(body)["label_id"]!!.jsonPrimitive.long
+                when {
+                    labels.none { it.id == labelId } -> json(404, """{"title":"Not Found"}""")
+                    labelId in task.labelIds -> json(400, """{"title":"Bad Request","detail":"already on the task"}""")
+                    else -> {
+                        task.labelIds += labelId
+                        json(201, """{"label_id":$labelId}""")
+                    }
+                }
+            }
             request.method == "POST" && path.matches(Regex("projects/\\d+/tasks")) -> {
                 val fields = parse(body)
                 val task = Task(nextId++, fields["title"]!!.jsonPrimitive.content, projectId = path.split("/")[1].toLong())
@@ -65,9 +97,16 @@ class FakeVikunja : Dispatcher() {
 
     private fun parse(body: String) = VikunjaJson.decodeFromString(JsonObject.serializer(), body)
 
-    private fun encode(task: Task) =
-        """{"id":${task.id},"title":"${task.title}","done":${task.done},"project_id":${task.projectId},""" +
-            """"due_date":"${task.dueDate ?: "0001-01-01T00:00:00Z"}","created":"2026-10-26T10:00:00Z"}"""
+    private fun encode(task: Task): String {
+        // Vikunja sends null rather than an empty list for a task without labels.
+        val taskLabels = task.labelIds.mapNotNull { id -> labels.firstOrNull { it.id == id } }
+        val labelsJson = if (taskLabels.isEmpty()) "null" else taskLabels.joinToString(",", "[", "]") { encode(it) }
+        return """{"id":${task.id},"title":"${task.title}","done":${task.done},"project_id":${task.projectId},""" +
+            """"due_date":"${task.dueDate ?: "0001-01-01T00:00:00Z"}","created":"2026-10-26T10:00:00Z",""" +
+            """"labels":$labelsJson}"""
+    }
+
+    private fun encode(label: Label) = """{"id":${label.id},"title":"${label.title}","hex_color":"${label.hexColor}"}"""
 
     private fun page(items: List<String>) =
         json(200, """{"items":[${items.joinToString(",")}],"total":${items.size},"page":1,"per_page":50,"total_pages":1}""")

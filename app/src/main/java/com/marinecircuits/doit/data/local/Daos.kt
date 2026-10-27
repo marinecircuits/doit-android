@@ -3,6 +3,7 @@ package com.marinecircuits.doit.data.local
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
@@ -101,4 +102,48 @@ interface PendingChangeDao {
 
     @Query("DELETE FROM pending_changes")
     suspend fun clear()
+}
+
+@Dao
+interface LabelDao {
+    @Query("SELECT * FROM labels ORDER BY title COLLATE NOCASE")
+    fun observeAll(): Flow<List<LabelEntity>>
+
+    @Query("SELECT * FROM labels ORDER BY title COLLATE NOCASE")
+    suspend fun all(): List<LabelEntity>
+
+    @Insert
+    suspend fun insertAll(labels: List<LabelEntity>)
+
+    @Query("DELETE FROM labels")
+    suspend fun clear()
+}
+
+@Dao
+interface TaskLabelDao {
+    @Query("SELECT * FROM task_labels ORDER BY taskId, position")
+    fun observeAll(): Flow<List<TaskLabelEntity>>
+
+    @Query("SELECT title FROM task_labels WHERE taskId = :taskId ORDER BY position")
+    suspend fun forTask(taskId: Long): List<String>
+
+    @Insert
+    suspend fun insertAll(labels: List<TaskLabelEntity>)
+
+    @Query("DELETE FROM task_labels WHERE taskId = :taskId")
+    suspend fun deleteForTask(taskId: Long)
+
+    /** Replaces the labels of [taskId] with [titles], in order. */
+    @Transaction
+    suspend fun set(taskId: Long, titles: List<String>) {
+        deleteForTask(taskId)
+        insertAll(titles.distinct().mapIndexed { position, title -> TaskLabelEntity(taskId, title, position) })
+    }
+
+    @Query("UPDATE task_labels SET taskId = :newId WHERE taskId = :oldId")
+    suspend fun changeTaskId(oldId: Long, newId: Long)
+
+    /** Removes the labels of tasks that no longer exist locally. */
+    @Query("DELETE FROM task_labels WHERE taskId NOT IN (SELECT id FROM tasks)")
+    suspend fun deleteOrphans()
 }

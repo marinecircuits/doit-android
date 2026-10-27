@@ -105,4 +105,30 @@ class DatabaseMigrationTest {
             assertEquals(2, upgraded.pendingChanges().forTask(12)?.revision)
         }
     }
+
+    @Test
+    fun version3DataSurvivesTheUpgrade() {
+        createVersion(3) {
+            execSQL(
+                "INSERT INTO projects (id, title, archived, position, parentProjectId, hexColor) " +
+                    "VALUES (8, 'Firmware', 0, 2.0, 7, '1973ff')",
+            )
+            execSQL(
+                "INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration) " +
+                    "VALUES (-2, 'Order capacitors', NULL, 8, 0, 5, 0)",
+            )
+            execSQL(
+                "INSERT INTO pending_changes (taskId, kind, fields, revision) " +
+                    "VALUES (-2, 'create', '{\"title\":\"Order capacitors\"}', 0)",
+            )
+        }
+
+        upgrade { upgraded ->
+            assertEquals("1973ff", upgraded.projects().all().single().hexColor)
+            assertEquals("Order capacitors", upgraded.tasks().get(-2)?.title)
+            assertEquals(PendingChangeEntity.CREATE, upgraded.pendingChanges().forTask(-2)?.kind)
+            assertEquals(emptyList<LabelEntity>(), upgraded.labels().all())
+            assertEquals(emptyList<String>(), upgraded.taskLabels().forTask(-2))
+        }
+    }
 }

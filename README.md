@@ -16,8 +16,10 @@ A deliberately small Android app for a self-hosted [Vikunja](https://vikunja.io)
    | tasks | `read_all`, `create`, `update` |
    | projects | `read_all` |
    | other | `user` |
+   | labels | `read_all` (optional, for `@labels`) |
+   | tasks_labels | `create` (optional, for `@labels`) |
 
-   `other → user` is only used to read your *default project* (where new tasks go). Without it the app falls back to your first project.
+   `other → user` is only used to read your *default project* (where new tasks go). Without it the app falls back to your first project. Without the label permissions tasks are still created, and the app tells you when their labels couldn't be added.
 2. Open doit, enter the server address (e.g. `todo.example.com`) and paste the token.
 
 New tasks go to the default project set in Vikunja under **Settings → General**, or to the project whose screen is open.
@@ -25,6 +27,7 @@ New tasks go to the default project set in Vikunja under **Settings → General*
 ## Using it
 
 - The main view shows large top-level project tiles only. Tiles take their project's Vikunja colour, a little lighter. Tap a tile to see that project's tasks, with smaller subproject tiles below; back returns to the parent.
+- Add labels with **`@`**: typing `@` in the capture box (or the share dialog's title) shows your labels, narrowing as you type; tap one to complete it. `@"two words"` works for names with spaces. The `@label` words are taken out of the title, and an `@name` that isn't one of your labels stays in the title as plain text (doit never creates labels). Nothing else is parsed, so `+`, `!` and dates stay as you typed them. Labels show as small coloured chips under the task's title. This is the same `@` syntax as doit for Linux.
 - Tap a task's circle or swipe it right to complete it. It stays struck through until you leave the screen; tap the circle again to undo.
 - Swipe left to reschedule, or tap a task to edit its title, date and project. Changes save as you make them; the title saves when you leave its field.
 - Choose **About doit** from the three-dot menu to see the installed app version.

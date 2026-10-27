@@ -65,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -75,14 +76,17 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.marinecircuits.doit.R
+import com.marinecircuits.doit.data.LabelSyntax
 import com.marinecircuits.doit.data.local.TaskEntity
 import java.time.LocalDate
 import java.util.Locale
@@ -108,7 +112,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     val captureFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
-    var captureText by remember { mutableStateOf("") }
+    var captureText by remember { mutableStateOf(TextFieldValue()) }
+    var captureFocused by remember { mutableStateOf(false) }
     var scrollToTaskId by remember { mutableStateOf<Long?>(null) }
     var rescheduleTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var datePickTarget by remember { mutableStateOf<TaskEntity?>(null) }
@@ -146,9 +151,9 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
 
     fun capture() {
-        val text = captureText
+        val text = captureText.text
         if (text.isBlank()) return
-        captureText = ""
+        captureText = TextFieldValue()
         viewModel.capture(text) { id -> if (currentProject != null) scrollToTaskId = id }
     }
 
@@ -165,81 +170,123 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 belowStatusBar = currentProject == null,
                 text = captureText,
                 onTextChange = { captureText = it },
+                onFocusChange = { captureFocused = it },
                 onSend = ::capture,
                 onSyncNow = viewModel::refresh,
                 onSignOut = viewModel::requestSignOut,
                 focusRequester = captureFocus,
             )
-            if (state.tokenRejected) TokenRejectedBanner(onEnterNewToken)
-            StatusLine(state.status)
-
-            if (currentProject == null) {
-                PullToRefreshBox(
-                    isRefreshing = state.refreshing,
-                    onRefresh = viewModel::refresh,
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                ) {
-                    when {
-                        state.tiles.isNotEmpty() -> ProjectTiles(
-                            state.tiles,
-                            viewModel::openProject,
-                            Modifier.fillMaxSize(),
-                            largeTiles = true,
-                        )
-                        !state.loaded || !state.syncedOnce -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                            CircularProgressIndicator()
-                        }
-                        else -> Box(Modifier.fillMaxSize(), Alignment.Center) { Text(stringResource(R.string.no_projects)) }
-                    }
-                }
+            val suggestions = if (captureFocused && captureText.selection.collapsed) {
+                LabelSyntax.suggestionsAt(captureText.text, captureText.selection.end, state.labels)
             } else {
-                // In a project, tasks take two thirds and subproject tiles the lower third.
-                val hasTiles = state.tiles.isNotEmpty()
-                PullToRefreshBox(
-                    isRefreshing = state.refreshing,
-                    onRefresh = viewModel::refresh,
-                    modifier = Modifier.fillMaxWidth().weight(if (hasTiles) 2f else 1f),
-                ) {
-                    when {
-                        state.rows.isNotEmpty() -> LazyColumn(
-                            state = listState,
-                            contentPadding = if (hasTiles) PaddingValues() else WindowInsets.navigationBars.asPaddingValues(),
-                            modifier = Modifier.fillMaxSize(),
+                emptyList()
+            }
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                Column(Modifier.fillMaxSize()) {
+                    if (state.tokenRejected) TokenRejectedBanner(onEnterNewToken)
+                    StatusLine(state.status)
+
+                    if (currentProject == null) {
+                        PullToRefreshBox(
+                            isRefreshing = state.refreshing,
+                            onRefresh = viewModel::refresh,
+                            modifier = Modifier.fillMaxWidth().weight(1f),
                         ) {
-                            items(state.rows, key = { it.task.id }) { row ->
-                                SwipeRow(
-                                    onSwipedRight = { viewModel.complete(row.task) },
-                                    onSwipedLeft = { rescheduleTarget = row.task },
-                                    enabled = !row.completed,
-                                    modifier = Modifier.animateItem(),
+                            when {
+                                state.tiles.isNotEmpty() -> ProjectTiles(
+                                    state.tiles,
+                                    viewModel::openProject,
+                                    Modifier.fillMaxSize(),
+                                    largeTiles = true,
+                                )
+                                !state.loaded || !state.syncedOnce -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                                    CircularProgressIndicator()
+                                }
+                                else -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                                    Text(stringResource(R.string.no_projects))
+                                }
+                            }
+                        }
+                    } else {
+                        // In a project, tasks take two thirds and subproject tiles the lower third.
+                        val hasTiles = state.tiles.isNotEmpty()
+                        PullToRefreshBox(
+                            isRefreshing = state.refreshing,
+                            onRefresh = viewModel::refresh,
+                            modifier = Modifier.fillMaxWidth().weight(if (hasTiles) 2f else 1f),
+                        ) {
+                            when {
+                                state.rows.isNotEmpty() -> LazyColumn(
+                                    state = listState,
+                                    contentPadding = if (hasTiles) {
+                                        PaddingValues()
+                                    } else {
+                                        WindowInsets.navigationBars.asPaddingValues()
+                                    },
+                                    modifier = Modifier.fillMaxSize(),
                                 ) {
-                                    TaskRowItem(
-                                        row = row,
-                                        dueLabel = row.dueDate?.let { DueLabels.label(it, state.today, words, locale) },
-                                        onCheckedChange = { checked ->
-                                            if (checked) viewModel.complete(row.task) else viewModel.uncomplete(row.task)
-                                        },
-                                        onOpen = { editTarget = row.task },
-                                    )
+                                    items(state.rows, key = { it.task.id }) { row ->
+                                        SwipeRow(
+                                            onSwipedRight = { viewModel.complete(row.task) },
+                                            onSwipedLeft = { rescheduleTarget = row.task },
+                                            enabled = !row.completed,
+                                            modifier = Modifier.animateItem(),
+                                        ) {
+                                            TaskRowItem(
+                                                row = row,
+                                                dueLabel = row.dueDate?.let {
+                                                    DueLabels.label(it, state.today, words, locale)
+                                                },
+                                                onCheckedChange = { checked ->
+                                                    if (checked) {
+                                                        viewModel.complete(row.task)
+                                                    } else {
+                                                        viewModel.uncomplete(row.task)
+                                                    }
+                                                },
+                                                onOpen = { editTarget = row.task },
+                                            )
+                                        }
+                                    }
+                                }
+                                // An empty database before the first sync is "loading", not "nothing to do".
+                                !state.loaded || !state.syncedOnce -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                                    CircularProgressIndicator()
+                                }
+                                else -> LazyColumn(Modifier.fillMaxSize()) {
+                                    item {
+                                        Box(Modifier.fillMaxWidth().padding(top = 48.dp), Alignment.Center) {
+                                            Text(
+                                                stringResource(R.string.empty_list),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
-                        // An empty database before the first sync is "loading", not "nothing to do".
-                        !state.loaded || !state.syncedOnce -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                            CircularProgressIndicator()
-                        }
-                        else -> LazyColumn(Modifier.fillMaxSize()) {
-                            item {
-                                Box(Modifier.fillMaxWidth().padding(top = 48.dp), Alignment.Center) {
-                                    Text(stringResource(R.string.empty_list), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
+                        if (hasTiles) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            ProjectTiles(
+                                state.tiles,
+                                onOpen = viewModel::openProject,
+                                modifier = Modifier.fillMaxWidth().weight(1f),
+                            )
                         }
                     }
                 }
-                if (hasTiles) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    ProjectTiles(state.tiles, onOpen = viewModel::openProject, modifier = Modifier.fillMaxWidth().weight(1f))
+                // Over the content, lined up with the capture field, so nothing below it moves.
+                if (suggestions.isNotEmpty()) {
+                    LabelSuggestions(
+                        suggestions,
+                        onPick = { label ->
+                            val value = captureText
+                            LabelSyntax.complete(value.text, value.selection.end, label.title)?.let {
+                                captureText = TextFieldValue(it.text, TextRange(it.cursor))
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 52.dp),
+                    )
                 }
             }
         }
@@ -301,8 +348,9 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
 private fun CaptureBar(
     hint: String,
     belowStatusBar: Boolean,
-    text: String,
-    onTextChange: (String) -> Unit,
+    text: TextFieldValue,
+    onTextChange: (TextFieldValue) -> Unit,
+    onFocusChange: (Boolean) -> Unit,
     onSend: () -> Unit,
     onSyncNow: () -> Unit,
     onSignOut: () -> Unit,
@@ -329,11 +377,14 @@ private fun CaptureBar(
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { onSend() }),
             trailingIcon = {
-                IconButton(onClick = onSend, enabled = text.isNotBlank()) {
+                IconButton(onClick = onSend, enabled = text.text.isNotBlank()) {
                     Icon(painterResource(R.drawable.ic_send), contentDescription = stringResource(R.string.capture_send))
                 }
             },
-            modifier = Modifier.weight(1f).focusRequester(focusRequester),
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester)
+                .onFocusChanged { onFocusChange(it.isFocused) },
         )
         Box {
             IconButton(onClick = { menuOpen = true }) {
@@ -528,6 +579,9 @@ private fun TaskRowItem(row: TaskRow, dueLabel: String?, onCheckedChange: (Boole
                 )
                 row.projectTitle?.let {
                     Text(it, style = MaterialTheme.typography.labelMedium, color = muted)
+                }
+                if (row.labels.isNotEmpty()) {
+                    LabelChips(row.labels, dimmed = row.completed, modifier = Modifier.padding(top = 4.dp))
                 }
             }
             dueLabel?.let {

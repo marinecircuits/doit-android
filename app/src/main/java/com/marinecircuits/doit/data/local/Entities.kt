@@ -51,3 +51,24 @@ data class PendingChangeEntity(
         const val UPDATE = "update"
     }
 }
+
+/** One of the user's labels, as of the last sync. */
+@Entity(tableName = "labels")
+data class LabelEntity(
+    @PrimaryKey val id: Long,
+    val title: String,
+    /** As Vikunja sends it; empty for no colour. */
+    val hexColor: String = "",
+)
+
+/**
+ * A label on a task, by name: a task captured offline can carry labels before any id is known. Colours come from
+ * [LabelEntity] with the same title, ignoring case.
+ */
+@Entity(tableName = "task_labels", primaryKeys = ["taskId", "title"])
+data class TaskLabelEntity(
+    val taskId: Long,
+    val title: String,
+    /** Order of the labels on the task. */
+    val position: Int,
+)
