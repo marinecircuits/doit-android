@@ -456,4 +456,44 @@ class SyncEngineTest {
         assertEquals(SyncResult.NotConnected, engine.sync())
         assertEquals(0, server.requestCount)
     }
+
+    @Test
+    fun deleteRemovesTheTaskOnTheServer() = runTest {
+        fake.tasks[1] = FakeVikunja.Task(1, "Buy filament")
+        engine.sync()
+
+        repository.delete(1)
+        assertNull(db.tasks().get(1))
+        assertEquals(SyncResult.Synced, engine.sync())
+
+        assertNull(fake.tasks[1])
+        assertEquals(0, db.pendingChanges().count())
+        assertTrue(fake.requests.any { it.startsWith("DELETE tasks/1") })
+    }
+
+    @Test
+    fun deleteBeforeSyncNeverCreatesTheTask() = runTest {
+        engine.sync()
+        val id = repository.capture("Buy milk")!!
+
+        repository.delete(id)
+        assertEquals(SyncResult.Synced, engine.sync())
+
+        assertTrue(fake.tasks.isEmpty())
+        assertEquals(0, db.pendingChanges().count())
+        assertTrue(fake.requests.none { it.startsWith("POST") && "Buy milk" in it })
+    }
+
+    @Test
+    fun deleteOfTaskAlreadyGoneStillClearsTheQueue() = runTest {
+        fake.tasks[1] = FakeVikunja.Task(1, "Gone")
+        engine.sync()
+        repository.delete(1)
+        fake.tasks.remove(1)
+
+        assertEquals(SyncResult.Synced, engine.sync())
+
+        assertEquals(0, db.pendingChanges().count())
+        assertTrue(settings.notices.first().isEmpty())
+    }
 }

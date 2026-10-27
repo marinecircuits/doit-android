@@ -72,6 +72,21 @@ Tapping a task row (outside the circle) SHALL open a bottom sheet with the task'
 - **WHEN** the user changes the title and closes the sheet without leaving the field first
 - **THEN** the new title is saved
 
+### Requirement: Delete a task
+The edit sheet SHALL offer deleting the task. Confirming SHALL remove it from the list at once. A task the server has never seen SHALL drop its unsent create and SHALL NOT be created. Any other task SHALL be deleted on the server at the next successful sync, including when it was already gone there. Cancelling the confirmation SHALL leave the task as it is.
+
+#### Scenario: Delete a synced task
+- **WHEN** the user opens "Buy filament", chooses Delete task and confirms
+- **THEN** the task leaves the list at once and is gone from the server after sync
+
+#### Scenario: Delete before the first sync
+- **WHEN** the user deletes a task captured offline, before it has synced
+- **THEN** the task is gone locally and the server never receives it
+
+#### Scenario: Cancel
+- **WHEN** the user opens the delete confirmation and cancels
+- **THEN** the task is unchanged
+
 ### Requirement: Actions work offline
 Every action in this capability SHALL apply to the local list immediately, with or without a connection, and SHALL reach the server on the next successful sync.
 

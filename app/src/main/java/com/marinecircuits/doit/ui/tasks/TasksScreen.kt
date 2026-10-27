@@ -375,6 +375,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             onTitleChange = { viewModel.applyEditedTitle(task, it) },
             onDateChange = { viewModel.reschedule(task, it) },
             onProjectChange = { viewModel.move(task, it) },
+            onDelete = {
+                viewModel.delete(task)
+                editTarget = null
+            },
             onDismiss = { editTarget = null },
         )
     }

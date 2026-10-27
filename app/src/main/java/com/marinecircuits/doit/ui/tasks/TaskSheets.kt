@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
@@ -115,6 +116,7 @@ fun EditSheet(
     onTitleChange: (String) -> Unit,
     onDateChange: (LocalDate?) -> Unit,
     onProjectChange: (Long) -> Unit,
+    onDelete: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
@@ -125,6 +127,7 @@ fun EditSheet(
     var projectId by remember(task.id) { mutableStateOf(task.projectId) }
     var pickingDate by remember { mutableStateOf(false) }
     var projectMenuOpen by remember { mutableStateOf(false) }
+    var confirmingDelete by remember(task.id) { mutableStateOf(false) }
 
     fun commitTitle() {
         val raw = title.text
@@ -211,7 +214,25 @@ fun EditSheet(
                     }
                 }
             }
+            TextButton(onClick = { confirmingDelete = true }, modifier = Modifier.align(Alignment.End)) {
+                Text(stringResource(R.string.edit_delete), color = MaterialTheme.colorScheme.error)
+            }
         }
+    }
+
+    if (confirmingDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text(stringResource(R.string.delete_title)) },
+            text = { Text(stringResource(R.string.delete_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmingDelete = false
+                    onDelete()
+                }) { Text(stringResource(R.string.delete_confirm), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmingDelete = false }) { Text(stringResource(R.string.cancel)) } },
+        )
     }
 
     if (pickingDate) {

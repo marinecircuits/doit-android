@@ -49,6 +49,7 @@ data class PendingChangeEntity(
     companion object {
         const val CREATE = "create"
         const val UPDATE = "update"
+        const val DELETE = "delete"
     }
 }
 

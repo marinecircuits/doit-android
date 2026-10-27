@@ -80,6 +80,17 @@ class VikunjaApiTest {
     }
 
     @Test
+    fun deleteTargetsTheTask() = runTest {
+        server.enqueue(json("""{"id":9,"title":"Buy milk"}"""))
+
+        api.deleteTask(9)
+
+        val request = server.takeRequest()
+        assertEquals("DELETE", request.method)
+        assertEquals("/api/v2/tasks/9", request.requestUrl!!.encodedPath)
+    }
+
+    @Test
     fun errorsCarryStatusAndProblemDetail() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(422).setHeader("Content-Type", "application/problem+json")

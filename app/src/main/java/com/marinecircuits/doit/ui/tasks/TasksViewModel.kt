@@ -216,6 +216,11 @@ class TasksViewModel(
         viewModelScope.launch { repository.move(task.id, projectId) }
     }
 
+    fun delete(task: TaskEntity) {
+        completedHere.update { it - task.id }
+        viewModelScope.launch { repository.delete(task.id) }
+    }
+
     fun requestSignOut() {
         viewModelScope.launch {
             val pending = repository.pendingCount.first()

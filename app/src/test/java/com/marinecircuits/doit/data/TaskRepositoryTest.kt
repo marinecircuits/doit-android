@@ -307,4 +307,30 @@ class TaskRepositoryTest {
         assertEquals("Call bank @missing", db.tasks().get(10)!!.title)
         assertTrue(db.taskLabels().forTask(10).isEmpty())
     }
+
+    @Test
+    fun deleteSyncedTaskReplacesAPendingUpdate() = runTest {
+        serverTask(10)
+        db.taskLabels().set(10, listOf("Errand"))
+        repository.rename(10, "Renamed")
+
+        repository.delete(10)
+
+        assertNull(db.tasks().get(10))
+        assertTrue(db.taskLabels().forTask(10).isEmpty())
+        val change = db.pendingChanges().forTask(10)!!
+        assertEquals(PendingChangeEntity.DELETE, change.kind)
+        assertEquals("{}", change.fields)
+    }
+
+    @Test
+    fun deleteUnsentCaptureDropsTheCreate() = runTest {
+        settings.setDefaultProjectId(1)
+        val id = repository.capture("Buy milk")!!
+
+        repository.delete(id)
+
+        assertNull(db.tasks().get(id))
+        assertEquals(0, db.pendingChanges().count())
+    }
 }
