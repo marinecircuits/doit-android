@@ -1,3 +1,10 @@
+## 0.8.0 (2026-10-27)
+
+### Feat
+
+- paint an open project with its colour
+- offer @ and # keys while editing a task
+
 ## 0.7.0 (2026-10-27)
 
 ### Feat
