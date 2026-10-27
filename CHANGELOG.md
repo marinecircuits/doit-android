@@ -1,3 +1,11 @@
+## 0.9.0 (2026-10-27)
+
+### Feat
+
+- delete a task from the edit sheet
+- wash project colours further towards white
+- scroll the full project and label suggestions
+
 ## 0.8.0 (2026-10-27)
 
 ### Feat
