@@ -30,6 +30,8 @@ data class ProjectDto(
     val position: Double = 0.0,
     /** 0 for a top-level project. */
     @SerialName("parent_project_id") val parentProjectId: Long = 0,
+    /** Six hex digits, normally without a leading #; empty for no colour. */
+    @SerialName("hex_color") val hexColor: String = "",
 )
 
 @Serializable

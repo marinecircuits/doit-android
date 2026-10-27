@@ -27,10 +27,10 @@ class DatabaseMigrationTest {
         context.deleteDatabase(name)
     }
 
-    /** Creates the database exactly as version 1 of the app did, from the exported schema. */
-    private fun createVersion1(fill: SQLiteDatabase.() -> Unit) {
+    /** Creates the database exactly as the given version of the app did, from the exported schema. */
+    private fun createVersion(version: Int, fill: SQLiteDatabase.() -> Unit) {
         val schema = VikunjaJson.parseToJsonElement(
-            File("schemas/com.marinecircuits.doit.data.local.DoitDatabase/1.json").readText(),
+            File("schemas/com.marinecircuits.doit.data.local.DoitDatabase/$version.json").readText(),
         ).jsonObject.getValue("database").jsonObject
         val file = context.getDatabasePath(name).apply { parentFile?.mkdirs() }
         SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
@@ -43,13 +43,22 @@ class DatabaseMigrationTest {
             }
             schema.getValue("setupQueries").jsonArray.forEach { db.execSQL(it.jsonPrimitive.content) }
             db.fill()
-            db.version = 1
+            db.version = version
+        }
+    }
+
+    private fun upgrade(check: suspend (DoitDatabase) -> Unit) {
+        val upgraded = Room.databaseBuilder(context, DoitDatabase::class.java, name).allowMainThreadQueries().build()
+        try {
+            runBlocking { check(upgraded) }
+        } finally {
+            upgraded.close()
         }
     }
 
     @Test
     fun version1DataSurvivesTheUpgrade() {
-        createVersion1 {
+        createVersion(1) {
             execSQL("INSERT INTO projects (id, title, archived, position) VALUES (7, 'Work', 0, 1.0)")
             execSQL(
                 "INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration) " +
@@ -61,15 +70,39 @@ class DatabaseMigrationTest {
             )
         }
 
-        val upgraded = Room.databaseBuilder(context, DoitDatabase::class.java, name).allowMainThreadQueries().build()
-        try {
-            runBlocking {
-                assertEquals(listOf(ProjectEntity(7, "Work", false, 1.0, parentProjectId = 0)), upgraded.projects().all())
-                assertEquals("Captured offline", upgraded.tasks().get(-1)?.title)
-                assertEquals(PendingChangeEntity.CREATE, upgraded.pendingChanges().forTask(-1)?.kind)
-            }
-        } finally {
-            upgraded.close()
+        upgrade { upgraded ->
+            assertEquals(
+                listOf(ProjectEntity(7, "Work", false, 1.0, parentProjectId = 0, hexColor = "")),
+                upgraded.projects().all(),
+            )
+            assertEquals("Captured offline", upgraded.tasks().get(-1)?.title)
+            assertEquals(PendingChangeEntity.CREATE, upgraded.pendingChanges().forTask(-1)?.kind)
+        }
+    }
+
+    @Test
+    fun version2DataSurvivesTheUpgrade() {
+        createVersion(2) {
+            execSQL(
+                "INSERT INTO projects (id, title, archived, position, parentProjectId) VALUES (8, 'Firmware', 0, 2.0, 7)",
+            )
+            execSQL(
+                "INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration) " +
+                    "VALUES (12, 'Order capacitors', NULL, 8, 1, 5, 3)",
+            )
+            execSQL(
+                "INSERT INTO pending_changes (taskId, kind, fields, revision) " +
+                    "VALUES (12, 'update', '{\"done\":true}', 2)",
+            )
+        }
+
+        upgrade { upgraded ->
+            assertEquals(
+                listOf(ProjectEntity(8, "Firmware", false, 2.0, parentProjectId = 7, hexColor = "")),
+                upgraded.projects().all(),
+            )
+            assertEquals(true, upgraded.tasks().get(12)?.done)
+            assertEquals(2, upgraded.pendingChanges().forTask(12)?.revision)
         }
     }
 }

@@ -214,6 +214,6 @@ class SyncEngine(
             syncGeneration = generation,
         )
 
-        fun ProjectDto.toEntity() = ProjectEntity(id, title, isArchived, position, parentProjectId)
+        fun ProjectDto.toEntity() = ProjectEntity(id, title, isArchived, position, parentProjectId, hexColor)
     }
 }
