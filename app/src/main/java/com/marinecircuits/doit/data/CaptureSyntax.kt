@@ -8,8 +8,6 @@ object CaptureSyntax {
     // Consume a quoted name as a whole, including an unfinished one, so prefixes inside it stay literal.
     private val TOKEN = Regex("""(?:^|\s)([@#])("[^"]*"?|[^\s"]*)""")
     private val WHITESPACE = Regex("""\s+""")
-    const val SUGGESTIONS = 5
-
     enum class Kind(val prefix: Char) { LABEL('@'), PROJECT('#') }
 
     data class Parsed(val title: String, val labels: List<String>, val projectId: Long? = null)
@@ -60,7 +58,7 @@ object CaptureSyntax {
         )
     }
 
-    /** At most five matching labels or active projects, prefix matches before substring matches. */
+    /** Matching labels or active projects, prefix matches before substring matches. */
     fun suggestionsAt(
         text: String,
         cursor: Int,
@@ -75,7 +73,7 @@ object CaptureSyntax {
         val query = typing.query.lowercase()
         val starts = candidates.filter { it.title.lowercase().startsWith(query) }
         val contains = candidates.filter { query.isNotEmpty() && query in it.title.lowercase() && it !in starts }
-        return (starts + contains).take(SUGGESTIONS)
+        return starts + contains
     }
 
     /** Completes the token before the cursor, preserving the following text and keeping the cursor after it. */

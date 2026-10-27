@@ -3,6 +3,8 @@ package com.marinecircuits.doit.ui.tasks
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,7 +69,13 @@ fun CaptureSuggestions(suggestions: List<Suggestion>, onPick: (Suggestion) -> Un
         shadowElevation = 3.dp,
         modifier = modifier,
     ) {
-        Column(Modifier.padding(vertical = 4.dp)) {
+        // Capped so the open keyboard still leaves a list, and scrollable so every match is reachable.
+        Column(
+            Modifier
+                .heightIn(max = 320.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 4.dp),
+        ) {
             suggestions.forEach { suggestion ->
                 Row(
                     modifier = Modifier
