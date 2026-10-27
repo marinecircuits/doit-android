@@ -26,19 +26,19 @@ class ProjectColorsTest {
 
     @Test
     fun lightensTowardsWhite() {
-        assertEquals(argb(0x98C0FF), ProjectColors.lighten(argb(0x1973FF)))
-        assertEquals(argb(0x8C8C8C), ProjectColors.lighten(argb(0x000000)))
+        assertEquals(argb(0xC6DCFF), ProjectColors.lighten(argb(0x1973FF)))
+        assertEquals(argb(0xBFBFBF), ProjectColors.lighten(argb(0x000000)))
         assertEquals(argb(0xFFFFFF), ProjectColors.lighten(argb(0xFFFFFF)))
     }
 
     @Test
     fun paleNavyGetsDarkText() {
-        assertEquals(TileColors(argb(0x8C8CC6), DARK_TEXT), ProjectColors.tile("000080"))
+        assertEquals(TileColors(argb(0xBFBFDF), DARK_TEXT), ProjectColors.tile("000080"))
     }
 
     @Test
     fun lightColourGetsDarkText() {
-        assertEquals(TileColors(argb(0xFFEC8C), DARK_TEXT), ProjectColors.tile("ffd400"))
+        assertEquals(TileColors(argb(0xFFF4BF), DARK_TEXT), ProjectColors.tile("ffd400"))
     }
 
     @Test
