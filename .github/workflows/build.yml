@@ -69,8 +69,10 @@ jobs:
           path: app/build/reports/tests/
           if-no-files-found: ignore
 
+  # Release branches are built here, before the release PR is merged, so publishing does not
+  # compile again. A manual run signs whatever ref it was given.
   signed-release:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))
     needs: build
     runs-on: ubuntu-latest
     steps:
