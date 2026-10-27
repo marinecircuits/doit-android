@@ -108,6 +108,7 @@ class SyncEngine(
         val fields = PendingChanges.decode(change.fields)
         try {
             when {
+                change.kind == PendingChangeEntity.DELETE -> pushDelete(api, change)
                 change.kind == PendingChangeEntity.CREATE -> {
                     // `done` and `labels` go in follow-up updates: a completion is recorded like any other, and labels
                     // need the task's id.
@@ -122,6 +123,25 @@ class SyncEngine(
         } catch (e: ApiException) {
             if (e.isUnauthorized || e.isTransient || e.status !in 400..499) throw e
             reject(change, e)
+        }
+    }
+
+    /** A 404 means the task is already gone, which is what a delete wanted. */
+    private suspend fun pushDelete(api: VikunjaApi, change: PendingChangeEntity) {
+        if (change.taskId > 0) {
+            try {
+                api.deleteTask(change.taskId)
+            } catch (e: ApiException) {
+                if (!e.isNotFound) throw e
+            }
+        }
+        db.withTransaction {
+            val current = db.pendingChanges().get(change.seq) ?: return@withTransaction
+            if (current.revision == change.revision && current.kind == PendingChangeEntity.DELETE) {
+                db.pendingChanges().delete(change.seq)
+                db.tasks().delete(change.taskId)
+                db.taskLabels().deleteForTask(change.taskId)
+            }
         }
     }
 
@@ -226,7 +246,19 @@ class SyncEngine(
             db.tasks().changeId(temporaryId, created.id)
             db.taskLabels().changeTaskId(temporaryId, created.id)
             db.pendingChanges().changeTaskId(temporaryId, created.id)
+            val kept = db.tasks().get(created.id)
             when {
+                current != null && current.kind == PendingChangeEntity.DELETE ->
+                    db.pendingChanges().update(
+                        current.copy(taskId = created.id, kind = PendingChangeEntity.DELETE, fields = "{}"),
+                    )
+                kept == null -> {
+                    // Deleted locally while the create was in flight: remove the server copy too.
+                    db.pendingChanges().delete(change.seq)
+                    db.pendingChanges().insert(
+                        PendingChangeEntity(taskId = created.id, kind = PendingChangeEntity.DELETE, fields = "{}"),
+                    )
+                }
                 current != null && current.revision != change.revision ->
                     // Edited while the create was in flight: send everything except the one-off description again.
                     db.pendingChanges().update(
@@ -242,7 +274,7 @@ class SyncEngine(
                     )
                 else -> {
                     db.pendingChanges().delete(change.seq)
-                    db.tasks().upsert(created.toEntity(fallbackCreatedAt = db.tasks().get(created.id)?.createdAt))
+                    db.tasks().upsert(created.toEntity(fallbackCreatedAt = kept.createdAt))
                 }
             }
         }

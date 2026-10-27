@@ -79,6 +79,11 @@ class FakeVikunja : Dispatcher() {
                 tasks[task.id] = task
                 json(201, encode(task))
             }
+            request.method == "DELETE" && path.matches(Regex("tasks/\\d+")) -> {
+                val id = path.removePrefix("tasks/").toLong()
+                val task = tasks.remove(id) ?: return json(404, """{"title":"Not Found"}""")
+                json(200, encode(task))
+            }
             request.method == "PATCH" && path.startsWith("tasks/") -> {
                 val task = tasks[path.removePrefix("tasks/").toLong()] ?: return json(404, """{"title":"Not Found"}""")
                 apply(task, parse(body))

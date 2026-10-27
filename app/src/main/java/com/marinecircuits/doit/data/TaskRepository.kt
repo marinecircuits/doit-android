@@ -158,6 +158,31 @@ class TaskRepository(
         if (written) onLocalChange()
     }
 
+    /**
+     * Removes the task locally at once. A task the server has never seen drops its unsent create.
+     * Anything else queues a delete, replacing an unsent update.
+     */
+    suspend fun delete(taskId: Long) {
+        val id = idRemap.resolve(taskId)
+        val removed = db.withTransaction {
+            val task = db.tasks().get(id) ?: return@withTransaction false
+            val pending = db.pendingChanges().forTask(id)
+            db.tasks().delete(id)
+            db.taskLabels().deleteForTask(id)
+            when {
+                pending?.kind == PendingChangeEntity.CREATE -> db.pendingChanges().delete(pending.seq)
+                pending != null -> db.pendingChanges().update(
+                    pending.copy(kind = PendingChangeEntity.DELETE, fields = "{}", revision = pending.revision + 1),
+                )
+                id > 0 -> db.pendingChanges().insert(
+                    PendingChangeEntity(taskId = id, kind = PendingChangeEntity.DELETE, fields = "{}"),
+                )
+            }
+            true
+        }
+        if (removed) onLocalChange()
+    }
+
     suspend fun move(taskId: Long, projectId: Long) {
         val task = db.tasks().get(idRemap.resolve(taskId)) ?: return
         if (projectId == task.projectId) return

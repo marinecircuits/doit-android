@@ -70,6 +70,11 @@ class VikunjaApi(
         execute(authorized(url("tasks/$taskId/labels")).post(body).build(), JsonObject.serializer())
     }
 
+    /** Gone already (404) is reported as [ApiException.isNotFound]; the caller treats that as success. */
+    suspend fun deleteTask(taskId: Long) {
+        execute(authorized(url("tasks/$taskId")).delete().build(), JsonObject.serializer())
+    }
+
     /** JSON merge patch: only [fields] change; a JSON `null` clears a field. */
     suspend fun updateTask(taskId: Long, fields: JsonObject): TaskDto {
         val request = authorized(url("tasks/$taskId")).patch(fields.toString().toRequestBody(MERGE_PATCH)).build()
