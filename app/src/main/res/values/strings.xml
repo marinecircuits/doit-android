@@ -56,7 +56,6 @@
         <item quantity="other">%d unsent changes will be lost.</item>
     </plurals>
     <string name="cancel">Cancel</string>
-    <string name="close">Close</string>
 
     <!-- Reschedule and edit -->
     <string name="when_title">Reschedule</string>
