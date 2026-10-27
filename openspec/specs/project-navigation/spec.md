@@ -23,7 +23,7 @@ Main-view tiles SHALL be roughly twice as tall as subproject tiles, while keepin
 - **THEN** the main view shows a short "No projects yet" message
 
 ### Requirement: Project tile content
-Each tile SHALL show the project's title and the number of open tasks directly in that project. A tile whose project has a colour set in Vikunja SHALL be filled with that colour made a little lighter, and its text SHALL be dark or light, whichever contrasts more with the fill. A tile whose project has no colour, or a colour the app cannot read, SHALL keep the theme's plain tile.
+Each tile SHALL show the project's title and the number of open tasks directly in that project. A tile whose project has a colour set in Vikunja SHALL be filled with that colour washed well towards white, and its text SHALL be dark or light, whichever contrasts more with the fill. A tile whose project has no colour, or a colour the app cannot read, SHALL keep the theme's plain tile.
 
 #### Scenario: Tile with open tasks
 - **WHEN** Work contains 7 open tasks and its subproject Firmware contains 2
@@ -31,7 +31,7 @@ Each tile SHALL show the project's title and the number of open tasks directly i
 
 #### Scenario: Coloured project
 - **WHEN** the project Work has the colour dark blue in Vikunja
-- **THEN** the Work tile is a lighter blue with light text
+- **THEN** the Work tile is a pale blue, with text that contrasts with the fill
 
 #### Scenario: Light colour
 - **WHEN** the project Home has the colour yellow in Vikunja
