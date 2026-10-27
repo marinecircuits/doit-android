@@ -1,3 +1,9 @@
+## 0.6.0 (2026-10-27)
+
+### Feat
+
+- fill project tiles with the project's colour, a little lighter
+
 ## 0.5.1 (2026-10-27)
 
 ### Fix
