@@ -1,3 +1,10 @@
+## 0.7.0 (2026-10-27)
+
+### Feat
+
+- choose projects with # when capturing tasks
+- add labels with @ when capturing tasks
+
 ## 0.6.0 (2026-10-27)
 
 ### Feat
