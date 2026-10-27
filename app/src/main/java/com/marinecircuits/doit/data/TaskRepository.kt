@@ -61,14 +61,14 @@ class TaskRepository(
     }
 
     /**
-     * Creates a task in [projectId], or in the default project when it is null. `@label` tokens in [text] naming
-     * existing labels become labels (see [LabelSyntax]); the [description] is kept as it is.
+     * Creates a task in the `#project` named in [text], otherwise [projectId] or the default project.
+     * Existing `@labels` become labels (see [CaptureSyntax]); the [description] is kept as it is.
      * Returns the task's (temporary) id, or null when nothing is left of the title.
      */
     suspend fun capture(text: String, description: String? = null, projectId: Long? = null): Long? {
-        val (title, labelNames) = LabelSyntax.parse(text, db.labels().all())
+        val (title, labelNames, namedProjectId) = CaptureSyntax.parse(text, db.labels().all(), db.projects().all())
         if (title.isEmpty()) return null
-        val destination = projectId ?: defaultProjectId() ?: 0
+        val destination = namedProjectId ?: projectId ?: defaultProjectId() ?: 0
         val id = db.withTransaction {
             val id = minOf(db.tasks().minId() ?: 0, 0) - 1
             db.tasks().upsert(

@@ -83,6 +83,56 @@ class TaskRepositoryTest {
     }
 
     @Test
+    fun namedProjectOverridesTheDefaultAndTheOpenProject() = runTest {
+        settings.setDefaultProjectId(1)
+        for (openProject in listOf(null, 1L)) {
+            val id = repository.capture("Order capacitors #work", projectId = openProject)!!
+            assertEquals("Order capacitors", db.tasks().get(id)!!.title)
+            assertEquals(2L, db.tasks().get(id)!!.projectId)
+            assertEquals(JsonPrimitive(2), pendingFields(id)["project_id"])
+        }
+    }
+
+    @Test
+    fun sharedCaptureCombinesProjectsAndLabelsWithoutParsingTheDescription() = runTest {
+        db.projects().insertAll(listOf(ProjectEntity(3, "Home office", false, 3.0)))
+        db.labels().insertAll(listOf(LabelEntity(7, "Errand")))
+        val description = "Read #Work @Errand at https://example.com/#Inbox"
+        val id = repository.capture("Buy lamp #\"Home office\" @errand", description)!!
+
+        assertEquals("Buy lamp", db.tasks().get(id)!!.title)
+        assertEquals(3L, db.tasks().get(id)!!.projectId)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(id))
+        val fields = pendingFields(id)
+        assertEquals(JsonPrimitive(3), fields["project_id"])
+        assertEquals(JsonArray(listOf(JsonPrimitive("Errand"))), fields[TaskRepository.LABELS])
+        assertEquals(JsonPrimitive(description), fields["description"])
+    }
+
+    @Test
+    fun unknownAndArchivedProjectNamesKeepTheUsualDestination() = runTest {
+        db.projects().insertAll(listOf(ProjectEntity(3, "Old", true, 3.0)))
+        settings.setDefaultProjectId(1)
+        val text = "Buy lamp #unknown #Old"
+        val defaultId = repository.capture(text)!!
+        val projectId = repository.capture(text, projectId = 2)!!
+        assertEquals(text, db.tasks().get(defaultId)!!.title)
+        assertEquals(text, db.tasks().get(projectId)!!.title)
+        assertEquals(1L, db.tasks().get(defaultId)!!.projectId)
+        assertEquals(2L, db.tasks().get(projectId)!!.projectId)
+    }
+
+    @Test
+    fun onlyProjectAndLabelTokensCreateNothing() = runTest {
+        db.labels().insertAll(listOf(LabelEntity(7, "Errand")))
+        assertNull(repository.capture("#Work"))
+        assertNull(repository.capture("#Work @errand"))
+        assertTrue(db.tasks().open().isEmpty())
+        assertEquals(0, db.pendingChanges().count())
+        assertEquals(0, localChanges)
+    }
+
+    @Test
     fun captureTurnsKnownLabelsIntoLabels() = runTest {
         db.labels().insertAll(listOf(LabelEntity(7, "Errand", "e8a33d"), LabelEntity(9, "15 min")))
 

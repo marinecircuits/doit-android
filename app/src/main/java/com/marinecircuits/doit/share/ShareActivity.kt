@@ -31,8 +31,8 @@ import androidx.compose.ui.unit.dp
 import com.marinecircuits.doit.MainActivity
 import com.marinecircuits.doit.R
 import com.marinecircuits.doit.container
-import com.marinecircuits.doit.data.LabelSyntax
-import com.marinecircuits.doit.ui.tasks.LabelSuggestions
+import com.marinecircuits.doit.data.CaptureSyntax
+import com.marinecircuits.doit.ui.tasks.CaptureSuggestions
 import com.marinecircuits.doit.ui.theme.DoitTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -77,6 +77,7 @@ private fun ShareDialog(
     var title by remember { mutableStateOf(TextFieldValue(shared.title, TextRange(shared.title.length))) }
     var titleFocused by remember { mutableStateOf(false) }
     val labels by container.repository.labels.collectAsState(initial = emptyList())
+    val projects by container.repository.projects.collectAsState(initial = emptyList())
     var adding by remember { mutableStateOf(false) }
 
     when (connected) {
@@ -100,15 +101,15 @@ private fun ShareDialog(
                         modifier = Modifier.fillMaxWidth().onFocusChanged { titleFocused = it.isFocused },
                     )
                     val suggestions = if (titleFocused && title.selection.collapsed) {
-                        LabelSyntax.suggestionsAt(title.text, title.selection.end, labels)
+                        CaptureSyntax.suggestionsAt(title.text, title.selection.end, labels, projects)
                     } else {
                         emptyList()
                     }
                     if (suggestions.isNotEmpty()) {
-                        LabelSuggestions(
+                        CaptureSuggestions(
                             suggestions,
-                            onPick = { label ->
-                                LabelSyntax.complete(title.text, title.selection.end, label.title)?.let {
+                            onPick = { suggestion ->
+                                CaptureSyntax.complete(title.text, title.selection.end, suggestion.title)?.let {
                                     title = TextFieldValue(it.text, TextRange(it.cursor))
                                 }
                             },

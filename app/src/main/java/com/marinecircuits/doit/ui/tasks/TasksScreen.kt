@@ -86,7 +86,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.marinecircuits.doit.R
-import com.marinecircuits.doit.data.LabelSyntax
+import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.data.local.TaskEntity
 import java.time.LocalDate
 import java.util.Locale
@@ -177,7 +177,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 focusRequester = captureFocus,
             )
             val suggestions = if (captureFocused && captureText.selection.collapsed) {
-                LabelSyntax.suggestionsAt(captureText.text, captureText.selection.end, state.labels)
+                CaptureSyntax.suggestionsAt(captureText.text, captureText.selection.end, state.labels, state.projects)
             } else {
                 emptyList()
             }
@@ -277,11 +277,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 }
                 // Over the content, lined up with the capture field, so nothing below it moves.
                 if (suggestions.isNotEmpty()) {
-                    LabelSuggestions(
+                    CaptureSuggestions(
                         suggestions,
-                        onPick = { label ->
+                        onPick = { suggestion ->
                             val value = captureText
-                            LabelSyntax.complete(value.text, value.selection.end, label.title)?.let {
+                            CaptureSyntax.complete(value.text, value.selection.end, suggestion.title)?.let {
                                 captureText = TextFieldValue(it.text, TextRange(it.cursor))
                             }
                         },

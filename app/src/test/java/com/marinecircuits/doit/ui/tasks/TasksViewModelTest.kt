@@ -172,6 +172,23 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun namedProjectOverridesTheOpenProjectWithoutNavigatingAway() {
+        seedProjects()
+        waitUntil { tiles().size == 2 }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.map { it.id } == listOf(2L) }
+
+        var created: Long? = null
+        viewModel.capture("Flash board #Firmware") { created = it }
+        waitUntil { created != null }
+        val task = runBlocking { db.tasks().get(created!!) }!!
+        assertEquals(3L, task.projectId)
+        assertEquals("Flash board", task.title)
+        assertEquals(listOf(2L), viewModel.state.value.path.map { it.id })
+        assertEquals(listOf("Review PR"), titles())
+    }
+
+    @Test
     fun navigatingClearsStruckThroughRows() {
         seedProjects()
         waitUntil { tiles().size == 2 }

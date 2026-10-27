@@ -178,7 +178,7 @@ class TasksViewModel(
         }
     }
 
-    /** Captures into the open project, or into the default project on the main view. */
+    /** Captures into a named `#project`, otherwise the open project or the default on the main view. */
     fun capture(text: String, onCreated: (Long) -> Unit) {
         val projectId = state.value.path.lastOrNull()?.id
         viewModelScope.launch { repository.capture(text, projectId = projectId)?.let(onCreated) }
