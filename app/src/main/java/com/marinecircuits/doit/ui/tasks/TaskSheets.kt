@@ -180,9 +180,6 @@ fun EditSheet(
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = ::dismiss) { Text(stringResource(R.string.close)) }
-            }
         }
     }
 

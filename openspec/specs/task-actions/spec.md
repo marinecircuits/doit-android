@@ -58,7 +58,7 @@ When a date is chosen for a task that had no due date, its due time SHALL be 12:
 - **THEN** it is due tomorrow at 09:30
 
 ### Requirement: Light edit sheet
-Tapping a task row (outside the circle) SHALL open a bottom sheet with the task's title, due date (with a date picker and a clear option) and project (a list of non-archived projects). The title SHALL save when its field loses focus or the sheet closes. A selected or cleared date and a selected project SHALL save immediately. The sheet SHALL have no Save button. A blank title SHALL NOT replace the existing title.
+Tapping a task row (outside the circle) SHALL open a bottom sheet with the task's title, due date (with a date picker and a clear option) and project (a list of non-archived projects). The title SHALL save when its field loses focus or the sheet closes. A selected or cleared date and a selected project SHALL save immediately. The sheet SHALL have no Save or Close button; it SHALL dismiss through the standard sheet gesture, outside tap, or system back action. A blank title SHALL NOT replace the existing title.
 
 #### Scenario: Move a task to another project
 - **WHEN** the user opens "Buy filament" and chooses project "3D printing"
