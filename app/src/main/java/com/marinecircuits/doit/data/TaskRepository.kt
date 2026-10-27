@@ -21,6 +21,9 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 /**
@@ -119,6 +122,40 @@ class TaskRepository(
         val task = db.tasks().get(idRemap.resolve(taskId)) ?: return
         if (trimmed == task.title) return
         write(task.id, fields(TITLE to JsonPrimitive(trimmed))) { it.copy(title = trimmed) }
+    }
+
+    /**
+     * Saves a title typed in the edit sheet. Recognized `@labels` are added to the labels the task
+     * already has, and a recognized `#project` moves it. The stored title is what remains; an edit
+     * that is only tokens keeps the previous title.
+     */
+    suspend fun applyEditedTitle(taskId: Long, raw: String) {
+        if (raw.isBlank()) return
+        val id = idRemap.resolve(taskId)
+        val written = db.withTransaction {
+            val task = db.tasks().get(id) ?: return@withTransaction false
+            val parsed = CaptureSyntax.parse(raw, db.labels().all(), db.projects().all())
+            val newTitle = parsed.title.ifEmpty { task.title }
+            val existing = db.taskLabels().forTask(id)
+            val added = parsed.labels.filter { name -> existing.none { it.equals(name, ignoreCase = true) } }
+            val projectId = parsed.projectId ?: task.projectId
+            val queued = db.pendingChanges().forTask(id)?.let { change ->
+                PendingChanges.decode(change.fields)[LABELS]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }
+            }.orEmpty()
+            val fields = buildJsonObject {
+                if (newTitle != task.title) put(TITLE, newTitle)
+                if (projectId != task.projectId) put(PROJECT_ID, projectId)
+                if (added.isNotEmpty()) {
+                    put(LABELS, JsonArray((queued + added).distinctBy { it.lowercase() }.map { JsonPrimitive(it) }))
+                }
+            }
+            if (fields.isEmpty()) return@withTransaction false
+            db.tasks().upsert(task.copy(title = newTitle, projectId = projectId))
+            if (added.isNotEmpty()) db.taskLabels().set(id, existing + added)
+            record(id, fields)
+            true
+        }
+        if (written) onLocalChange()
     }
 
     suspend fun move(taskId: Long, projectId: Long) {
