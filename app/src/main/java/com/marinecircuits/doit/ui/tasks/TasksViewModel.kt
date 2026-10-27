@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
+import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.sync.SyncResult
@@ -29,6 +30,8 @@ data class TasksUiState(
     val path: List<ProjectEntity> = emptyList(),
     /** Top-level projects on the main view, the open project's subprojects on a project screen. */
     val tiles: List<ProjectTile> = emptyList(),
+    /** The user's labels as of the last sync, for `@` suggestions in the capture box. */
+    val labels: List<LabelEntity> = emptyList(),
     val status: List<StatusPart> = emptyList(),
     val syncedOnce: Boolean = false,
     val refreshing: Boolean = false,
@@ -45,6 +48,8 @@ private data class ListInputs(
     val today: LocalDate,
     val completed: Map<Long, TaskEntity>,
 )
+
+private data class LabelInputs(val labels: List<LabelEntity>, val byTask: Map<Long, List<String>>)
 
 class TasksViewModel(
     private val repository: TaskRepository,
@@ -75,9 +80,13 @@ class TasksViewModel(
         completedHere,
     ) { open, projects, defaultProjectId, day, completed -> ListInputs(open, projects, defaultProjectId, day, completed) }
 
-    private val list = combine(inputs, projectPath) { latest, path -> view(latest, path) }
+    private val labelInputs = combine(repository.labels, repository.taskLabels) { labels, taskLabels ->
+        LabelInputs(labels, taskLabels.groupBy({ it.taskId }, { it.title }))
+    }
 
-    private fun view(inputs: ListInputs, requestedPath: List<Long>): TasksUiState {
+    private val list = combine(inputs, projectPath, labelInputs) { latest, path, labels -> view(latest, path, labels) }
+
+    private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs): TasksUiState {
         val (open, projects, defaultProjectId, day, completed) = inputs
         val visible = projects.filterNot { it.archived }
         val byId = visible.associateBy { it.id }
@@ -93,11 +102,20 @@ class TasksViewModel(
         return TasksUiState(
             today = day,
             // On a project screen every task is in the open project, so passing it as the "default" hides all tags.
-            rows = TaskListModel.rows(shown, projects, current?.id ?: defaultProjectId, day, clock.zone),
+            rows = TaskListModel.rows(
+                shown,
+                projects,
+                current?.id ?: defaultProjectId,
+                day,
+                clock.zone,
+                taskLabels = labels.byTask,
+                labels = labels.labels,
+            ),
             loaded = true,
             projects = visible,
             path = path,
             tiles = ProjectTree.tiles(tileProjects, open),
+            labels = labels.labels,
         )
     }
 

@@ -1,6 +1,7 @@
 package com.marinecircuits.doit.ui.tasks
 
 import com.marinecircuits.doit.data.DueDates
+import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.sync.SyncResult
@@ -21,13 +22,18 @@ data class TaskRow(
     val projectTitle: String?,
     /** Completed in the current view: shown struck through until the user leaves the view. */
     val completed: Boolean = false,
+    /** Shown as chips under the title. */
+    val labels: List<LabelChip> = emptyList(),
 )
+
+/** A label on a row; [hexColor] is empty for a label without a colour or one the app doesn't know. */
+data class LabelChip(val title: String, val hexColor: String = "")
 
 object TaskListModel {
     /**
      * Overdue first, then today and later (both by due time), then undated tasks newest first.
      * Sorting dated tasks by instant puts overdue ones first on its own. Done tasks (completed in the current view)
-     * keep the place they had while open.
+     * keep the place they had while open. [taskLabels] maps task ids to their label names, in order.
      */
     fun rows(
         tasks: List<TaskEntity>,
@@ -35,8 +41,11 @@ object TaskListModel {
         defaultProjectId: Long?,
         today: LocalDate,
         zone: ZoneId,
+        taskLabels: Map<Long, List<String>> = emptyMap(),
+        labels: List<LabelEntity> = emptyList(),
     ): List<TaskRow> {
         val titles = projects.associate { it.id to it.title }
+        val colors = labels.reversed().associate { it.title.lowercase() to it.hexColor } // the first of equal names wins
         val (dated, undated) = tasks.partition { it.dueAt != null }
         val ordered = dated.sortedWith(compareBy<TaskEntity> { it.dueAt }.thenBy { it.id }) +
             undated.sortedWith(compareByDescending<TaskEntity> { it.createdAt }.thenBy { it.id })
@@ -48,6 +57,7 @@ object TaskListModel {
                 overdue = !task.done && dueDate != null && dueDate < today,
                 projectTitle = titles[task.projectId]?.takeIf { task.projectId != defaultProjectId },
                 completed = task.done,
+                labels = taskLabels[task.id].orEmpty().map { LabelChip(it, colors[it.lowercase()].orEmpty()) },
             )
         }
     }

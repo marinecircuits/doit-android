@@ -6,6 +6,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import okhttp3.HttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -58,6 +60,14 @@ class VikunjaApi(
         val url = url("projects/$projectId/tasks").newBuilder().addQueryParameter("format", "markdown").build()
         val request = authorized(url).post(fields.toString().toRequestBody(JSON)).build()
         return execute(request, TaskDto.serializer())
+    }
+
+    suspend fun labels(): List<LabelDto> = getAllPages(url("labels"), LabelDto.serializer())
+
+    /** Vikunja answers with a 4xx (400) when the label is on the task already. */
+    suspend fun addLabel(taskId: Long, labelId: Long) {
+        val body = buildJsonObject { put("label_id", labelId) }.toString().toRequestBody(JSON)
+        execute(authorized(url("tasks/$taskId/labels")).post(body).build(), JsonObject.serializer())
     }
 
     /** JSON merge patch: only [fields] change; a JSON `null` clears a field. */

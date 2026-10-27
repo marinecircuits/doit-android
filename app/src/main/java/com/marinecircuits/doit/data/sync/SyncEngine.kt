@@ -6,6 +6,7 @@ import com.marinecircuits.doit.data.IdRemap
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.DoitDatabase
+import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.PendingChangeEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
@@ -22,6 +23,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
@@ -35,7 +38,7 @@ sealed interface SyncResult {
 }
 
 /**
- * Sends pending changes in order, then replaces local data with the server's open tasks and projects.
+ * Sends pending changes in order, then replaces local data with the server's open tasks, projects and labels.
  * One sync runs at a time; a second request waits for the first to finish.
  */
 class SyncEngine(
@@ -46,6 +49,9 @@ class SyncEngine(
     private val onSynced: () -> Unit,
 ) {
     private val mutex = Mutex()
+
+    /** Set once the label list was fetched again to resolve a name, so that happens at most once per sync. */
+    private var labelsRefetched = false
     private val _lastResult = MutableStateFlow<SyncResult?>(null)
 
     /** Outcome of the latest sync in this process; null until one ran. */
@@ -62,6 +68,7 @@ class SyncEngine(
         val credentials = settings.credentials() ?: return SyncResult.NotConnected
         if (settings.tokenRejected.first()) return SyncResult.TokenRejected
         val api = apiFor(credentials)
+        labelsRefetched = false
         return try {
             push(api)
             pull(api)
@@ -100,18 +107,106 @@ class SyncEngine(
     private suspend fun pushOne(api: VikunjaApi, change: PendingChangeEntity) {
         val fields = PendingChanges.decode(change.fields)
         try {
-            if (change.kind == PendingChangeEntity.CREATE) {
-                // `done` goes in a follow-up update so the server records it like any completion.
-                val projectId = fields[TaskRepository.PROJECT_ID]?.jsonPrimitive?.longOrNull ?: fallbackProjectId(api)
-                val created = api.createTask(projectId, JsonObject(fields - TaskRepository.DONE))
-                applyCreated(change, created, leftover = JsonObject(fields.filterKeys { it == TaskRepository.DONE }))
-            } else {
-                applyUpdated(change, api.updateTask(change.taskId, fields))
+            when {
+                change.kind == PendingChangeEntity.CREATE -> {
+                    // `done` and `labels` go in follow-up updates: a completion is recorded like any other, and labels
+                    // need the task's id.
+                    val later = setOf(TaskRepository.DONE, TaskRepository.LABELS)
+                    val projectId = fields[TaskRepository.PROJECT_ID]?.jsonPrimitive?.longOrNull ?: fallbackProjectId(api)
+                    val created = api.createTask(projectId, JsonObject(fields - later))
+                    applyCreated(change, created, leftover = JsonObject(fields.filterKeys { it in later }))
+                }
+                TaskRepository.LABELS in fields -> pushLabels(api, change, fields)
+                else -> applyUpdated(change, api.updateTask(change.taskId, fields))
             }
         } catch (e: ApiException) {
             if (e.isUnauthorized || e.isTransient || e.status !in 400..499) throw e
             reject(change, e)
         }
+    }
+
+    /** Adds a capture's labels to its task, then takes them off the pending change; other fields go next turn. */
+    private suspend fun pushLabels(api: VikunjaApi, change: PendingChangeEntity, fields: JsonObject) {
+        val names = fields.getValue(TaskRepository.LABELS).jsonArray.mapNotNull { it.jsonPrimitive.contentOrNull }
+        try {
+            // Names whose label was deleted on the server since the capture.
+            val gone = names.filterNot { name ->
+                val labelId = labelId(api, name)
+                labelId != null && addLabel(api, change.taskId, labelId)
+            }
+            if (gone.isNotEmpty()) {
+                val quoted = gone.joinToString(", ") { "“$it”" }
+                labelNotice(change, "$quoted no longer exist${if (gone.size == 1) "s" else ""}")
+            }
+        } catch (e: ApiException) {
+            when {
+                e.isNotFound -> return reject(change, e) // the task was deleted elsewhere
+                e.isUnauthorized || e.isForbidden -> {
+                    // A bad token fails here and is handled like any 401; one without label permissions passes.
+                    api.tokenTest()
+                    labelNotice(change, "the token isn't allowed to change labels")
+                }
+                e.isTransient || e.status !in 400..499 -> throw e
+                else -> labelNotice(change, e.problem ?: "the server refused them (${e.status})")
+            }
+        }
+        db.withTransaction {
+            // Re-read: the change may have been edited while the labels were sent.
+            val current = db.pendingChanges().get(change.seq) ?: return@withTransaction
+            val rest = PendingChanges.decode(current.fields) - TaskRepository.LABELS
+            if (rest.isEmpty()) {
+                db.pendingChanges().delete(change.seq)
+            } else {
+                db.pendingChanges().update(current.copy(fields = JsonObject(rest).toString()))
+            }
+        }
+    }
+
+    /** The id of the label called [name], ignoring case, or null when it no longer exists. */
+    private suspend fun labelId(api: VikunjaApi, name: String): Long? {
+        db.labels().all().firstOrNull { it.title.equals(name, ignoreCase = true) }?.let { return it.id }
+        if (labelsRefetched) return null
+        labelsRefetched = true // it may have been renamed on another device since the last pull
+        val fetched = fetchLabels(api) ?: return null
+        replaceLabels(fetched)
+        return fetched.firstOrNull { it.title.equals(name, ignoreCase = true) }?.id
+    }
+
+    /** True once the label is on the task, false when the label no longer exists. */
+    private suspend fun addLabel(api: VikunjaApi, taskId: Long, labelId: Long): Boolean {
+        try {
+            api.addLabel(taskId, labelId)
+        } catch (e: ApiException) {
+            if (e.isNotFound) {
+                // Either the task or the label is gone; only a missing task should drop the change.
+                val fetched = fetchLabels(api)
+                if (fetched != null) {
+                    replaceLabels(fetched)
+                    if (fetched.none { it.id == labelId }) return false
+                }
+                throw e
+            }
+            if (e.isUnauthorized || e.isForbidden || e.isTransient || e.status !in 400..499) throw e
+            // Any other 4xx: the label is on the task already, which is what we wanted.
+        }
+        return true
+    }
+
+    /** The user's labels, or null when the token may not read them. */
+    private suspend fun fetchLabels(api: VikunjaApi): List<LabelEntity>? = try {
+        api.labels().filter { it.id > 0 }.distinctBy { it.id }.map { LabelEntity(it.id, it.title, it.hexColor) }
+    } catch (e: ApiException) {
+        if (e.isUnauthorized || e.isForbidden) null else throw e
+    }
+
+    private suspend fun replaceLabels(labels: List<LabelEntity>) = db.withTransaction {
+        db.labels().clear()
+        db.labels().insertAll(labels)
+    }
+
+    private suspend fun labelNotice(change: PendingChangeEntity, reason: String) {
+        val title = db.tasks().get(change.taskId)?.title ?: return
+        settings.addNotice("Couldn't add labels to “$title”: $reason")
     }
 
     private suspend fun fallbackProjectId(api: VikunjaApi): Long {
@@ -127,7 +222,9 @@ class SyncEngine(
         db.withTransaction {
             val current = db.pendingChanges().get(change.seq)
             db.tasks().delete(created.id)
+            db.taskLabels().deleteForTask(created.id)
             db.tasks().changeId(temporaryId, created.id)
+            db.taskLabels().changeTaskId(temporaryId, created.id)
             db.pendingChanges().changeTaskId(temporaryId, created.id)
             when {
                 current != null && current.revision != change.revision ->
@@ -167,7 +264,10 @@ class SyncEngine(
         val title = db.tasks().get(change.taskId)?.title
         db.withTransaction {
             db.pendingChanges().delete(change.seq)
-            if (change.kind == PendingChangeEntity.CREATE || error.isNotFound) db.tasks().delete(change.taskId)
+            if (change.kind == PendingChangeEntity.CREATE || error.isNotFound) {
+                db.tasks().delete(change.taskId)
+                db.taskLabels().deleteForTask(change.taskId)
+            }
         }
         // A 404 on an update just means the task was deleted elsewhere; anything else is worth telling.
         if (title != null && (!error.isNotFound || change.kind == PendingChangeEntity.CREATE)) {
@@ -184,18 +284,22 @@ class SyncEngine(
         }
         val projects = api.projects()
         val tasks = api.openTasks()
+        // Optional: a token that may not read labels keeps the list it has.
+        val labels = fetchLabels(api)
 
         db.withTransaction {
             val generation = db.tasks().maxSyncGeneration() + 1
             db.projects().clear()
             db.projects().insertAll(projects.filter { it.id > 0 }.map { it.toEntity() })
+            if (labels != null) replaceLabels(labels)
             val pending = db.pendingChanges().all().map { it.taskId }.toSet()
+            val pulled = tasks.filter { it.id !in pending }
             db.tasks().upsertAll(
-                tasks.filter { it.id !in pending }.map {
-                    it.toEntity(fallbackCreatedAt = db.tasks().get(it.id)?.createdAt, generation = generation)
-                },
+                pulled.map { it.toEntity(fallbackCreatedAt = db.tasks().get(it.id)?.createdAt, generation = generation) },
             )
+            pulled.forEach { task -> db.taskLabels().set(task.id, task.labels.map { it.title }) }
             db.tasks().deleteNotSeenIn(generation)
+            db.taskLabels().deleteOrphans()
         }
         if (defaultProjectId != null && defaultProjectId > 0) settings.setDefaultProjectId(defaultProjectId)
     }

@@ -1,5 +1,6 @@
 package com.marinecircuits.doit.ui.tasks
 
+import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.sync.SyncResult
@@ -86,6 +87,24 @@ class TaskListModelTest {
         )
         assertNull(rows[0].projectTitle)
         assertEquals("Work", rows[1].projectTitle)
+    }
+
+    @Test
+    fun labelChipsTakeTheLabelColourIgnoringCase() {
+        val rows = TaskListModel.rows(
+            listOf(task(1, "a", createdAt = 2), task(2, "b", createdAt = 1)),
+            emptyList(),
+            defaultProjectId = 1,
+            today = today,
+            zone = zone,
+            taskLabels = mapOf(1L to listOf("Errand", "15 min", "gone")),
+            labels = listOf(LabelEntity(7, "errand", "e8a33d"), LabelEntity(9, "15 min")),
+        )
+        assertEquals(
+            listOf(LabelChip("Errand", "e8a33d"), LabelChip("15 min", ""), LabelChip("gone", "")),
+            rows[0].labels,
+        )
+        assertEquals(emptyList<LabelChip>(), rows[1].labels)
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.marinecircuits.doit.data.IdRemap
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.DoitDatabase
+import com.marinecircuits.doit.data.local.PendingChangeEntity
 import com.marinecircuits.doit.data.remote.VikunjaApi
 import com.marinecircuits.doit.inMemoryDatabase
 import com.marinecircuits.doit.testClock
@@ -101,6 +102,197 @@ class SyncEngineTest {
 
         assertEquals(SyncResult.Synced, engine.sync())
         assertEquals(mapOf(1L to "1973ff", 2L to "", 3L to ""), db.projects().all().associate { it.id to it.hexColor })
+    }
+
+    @Test
+    fun pullsLabelsAndTaskLabels() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "errand", "e8a33d"), FakeVikunja.Label(9, "15 min"))
+        fake.tasks[1] = FakeVikunja.Task(1, "Order capacitors", labelIds = mutableListOf(9, 7))
+        fake.tasks[2] = FakeVikunja.Task(2, "Plain")
+
+        assertEquals(SyncResult.Synced, engine.sync())
+
+        assertEquals(listOf("15 min", "errand"), db.labels().all().map { it.title })
+        assertEquals("e8a33d", db.labels().all().single { it.id == 7L }.hexColor)
+        assertEquals(listOf("15 min", "errand"), db.taskLabels().forTask(1))
+        assertEquals(emptyList<String>(), db.taskLabels().forTask(2))
+
+        // Removed in the web UI, and a task that is gone takes its labels with it.
+        fake.tasks[1]!!.labelIds.remove(9L)
+        fake.tasks[2]!!.done = true
+        fake.tasks[2]!!.labelIds += 7
+        engine.sync()
+        assertEquals(listOf("errand"), db.taskLabels().forTask(1))
+        assertEquals(emptyList<String>(), db.taskLabels().forTask(2))
+    }
+
+    @Test
+    fun tokenWithoutLabelReadKeepsKnownLabelsAndSyncs() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        engine.sync()
+        fake.labelsReadable = false
+        fake.labels.clear()
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf("errand"), db.labels().all().map { it.title })
+    }
+
+    @Test
+    fun labelsCapturedOfflineAreAddedAfterTheCreate() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "errand"), FakeVikunja.Label(9, "15 min"))
+        engine.sync()
+        val temporaryId = repository.capture("""Buy filament @errand @"15 min"""")!!
+        repository.complete(temporaryId)
+
+        assertEquals(SyncResult.Synced, engine.sync())
+
+        val writes = fake.requests.filter { it.startsWith("POST") || it.startsWith("PATCH") }
+        assertEquals(
+            listOf(
+                """POST projects/1/tasks {"title":"Buy filament","project_id":1}""",
+                """POST tasks/100/labels {"label_id":7}""",
+                """POST tasks/100/labels {"label_id":9}""",
+                """PATCH tasks/100 {"done":true}""",
+            ),
+            writes,
+        )
+        assertEquals(listOf(7L, 9L), fake.tasks[100]!!.labelIds)
+        assertEquals(0, db.pendingChanges().count())
+        assertTrue(settings.notices.first().isEmpty())
+    }
+
+    @Test
+    fun capturedLabelsShowUnderTheServerIdUntilPulled() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        engine.sync()
+        val temporaryId = repository.capture("Buy filament @errand")!!
+        assertEquals(listOf("errand"), db.taskLabels().forTask(temporaryId))
+        // The label request fails once: the task exists on the server, its labels are still to be sent.
+        var failLabel = true
+        fake.intercept = { request ->
+            if (failLabel && request.requestUrl!!.encodedPath.endsWith("/labels") && request.method == "POST") {
+                failLabel = false
+                FakeVikunja.json(503, """{"title":"Service Unavailable"}""")
+            } else {
+                null
+            }
+        }
+
+        assertTrue(engine.sync() is SyncResult.ServerError)
+        assertEquals(emptyList<String>(), db.taskLabels().forTask(temporaryId))
+        assertEquals(listOf("errand"), db.taskLabels().forTask(100))
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(7L), fake.tasks[100]!!.labelIds)
+        assertEquals(listOf("errand"), db.taskLabels().forTask(100))
+    }
+
+    @Test
+    fun labelAlreadyOnTheTaskCountsAsAdded() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        fake.tasks[1] = FakeVikunja.Task(1, "Buy filament", labelIds = mutableListOf(7))
+        engine.sync()
+        db.pendingChanges().insert(
+            PendingChangeEntity(
+                taskId = 1,
+                kind = PendingChangeEntity.UPDATE,
+                fields = """{"labels":["errand"],"title":"Buy more filament"}""",
+            ),
+        )
+
+        assertEquals(SyncResult.Synced, engine.sync())
+
+        assertEquals(listOf(7L), fake.tasks[1]!!.labelIds)
+        assertEquals("Buy more filament", fake.tasks[1]!!.title)
+        assertEquals(0, db.pendingChanges().count())
+        assertTrue(settings.notices.first().isEmpty())
+    }
+
+    @Test
+    fun labelDeletedMeanwhileIsSkippedWithANotice() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        engine.sync()
+        repository.capture("Buy milk @errand")!!
+        fake.labels.clear()
+
+        assertEquals(SyncResult.Synced, engine.sync())
+
+        assertEquals(emptyList<Long>(), fake.tasks[100]!!.labelIds)
+        assertEquals(listOf("Couldn't add labels to “Buy milk”: “errand” no longer exists"), settings.notices.first())
+        assertEquals(0, db.pendingChanges().count())
+        assertEquals(emptyList<String>(), db.taskLabels().forTask(100))
+    }
+
+    @Test
+    fun labelMissingLocallyIsFoundByOneRefetch() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        engine.sync()
+        repository.capture("Buy milk @errand")!!
+        // Recreated elsewhere under a new id, and not in the local list: one refetch finds it.
+        fake.labels[0] = FakeVikunja.Label(8, "Errand")
+        db.labels().clear()
+
+        assertEquals(SyncResult.Synced, engine.sync())
+
+        assertEquals(listOf(8L), fake.tasks[100]!!.labelIds)
+        assertTrue(settings.notices.first().isEmpty())
+    }
+
+    @Test
+    fun tokenWithoutLabelPermissionDropsTheLabelsWithANotice() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        engine.sync()
+        repository.capture("Buy milk @errand")!!
+        fake.labelsAddable = false
+
+        assertEquals(SyncResult.Synced, engine.sync())
+
+        assertEquals("Buy milk", fake.tasks[100]!!.title)
+        assertEquals(emptyList<Long>(), fake.tasks[100]!!.labelIds)
+        assertEquals(
+            listOf("Couldn't add labels to “Buy milk”: the token isn't allowed to change labels"),
+            settings.notices.first(),
+        )
+        assertEquals(0, db.pendingChanges().count())
+        assertFalse(settings.tokenRejected.first())
+    }
+
+    @Test
+    fun rejectedTokenOnTheLabelRouteStopsTheSync() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        engine.sync()
+        repository.capture("Buy milk @errand")!!
+        fake.intercept = { request ->
+            if (request.requestUrl!!.encodedPath.endsWith("/labels") && request.method == "POST") fake.tokenValid = false
+            null
+        }
+
+        assertEquals(SyncResult.TokenRejected, engine.sync())
+        assertTrue(settings.tokenRejected.first())
+        assertEquals(1, db.pendingChanges().count())
+    }
+
+    @Test
+    fun taskDeletedBeforeItsLabelsDropsTheChange() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        fake.tasks[1] = FakeVikunja.Task(1, "Buy filament")
+        engine.sync()
+        db.pendingChanges().insert(
+            PendingChangeEntity(
+                taskId = 1,
+                kind = PendingChangeEntity.UPDATE,
+                fields = """{"labels":["errand"]}""",
+            ),
+        )
+        db.taskLabels().set(1, listOf("errand"))
+        fake.tasks.remove(1)
+
+        assertEquals(SyncResult.Synced, engine.sync())
+
+        assertEquals(0, db.pendingChanges().count())
+        assertNull(db.tasks().get(1))
+        assertEquals(emptyList<String>(), db.taskLabels().forTask(1))
+        assertTrue(settings.notices.first().isEmpty())
     }
 
     @Test

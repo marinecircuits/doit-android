@@ -20,6 +20,16 @@ data class TaskDto(
     @SerialName("project_id") val projectId: Long = 0,
     @SerialName("repeat_after") val repeatAfter: Long = 0,
     val created: String? = null,
+    /** Vikunja sends null for a task without labels; [VikunjaJson] turns that into the empty default. */
+    val labels: List<LabelDto> = emptyList(),
+)
+
+@Serializable
+data class LabelDto(
+    val id: Long = 0,
+    val title: String = "",
+    /** Six hex digits, normally without a leading #; empty for no colour. */
+    @SerialName("hex_color") val hexColor: String = "",
 )
 
 @Serializable

@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -20,13 +21,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.marinecircuits.doit.MainActivity
 import com.marinecircuits.doit.R
 import com.marinecircuits.doit.container
+import com.marinecircuits.doit.data.LabelSyntax
+import com.marinecircuits.doit.ui.tasks.LabelSuggestions
 import com.marinecircuits.doit.ui.theme.DoitTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -68,7 +74,9 @@ private fun ShareDialog(
     val container = LocalContext.current.container
     val connected by produceState<Boolean?>(null) { value = container.settings.credentials.first() != null }
     val scope = rememberCoroutineScope()
-    var title by remember { mutableStateOf(shared.title) }
+    var title by remember { mutableStateOf(TextFieldValue(shared.title, TextRange(shared.title.length))) }
+    var titleFocused by remember { mutableStateOf(false) }
+    val labels by container.repository.labels.collectAsState(initial = emptyList())
     var adding by remember { mutableStateOf(false) }
 
     when (connected) {
@@ -89,8 +97,24 @@ private fun ShareDialog(
                         value = title,
                         onValueChange = { title = it },
                         label = { Text(stringResource(R.string.edit_title)) },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().onFocusChanged { titleFocused = it.isFocused },
                     )
+                    val suggestions = if (titleFocused && title.selection.collapsed) {
+                        LabelSyntax.suggestionsAt(title.text, title.selection.end, labels)
+                    } else {
+                        emptyList()
+                    }
+                    if (suggestions.isNotEmpty()) {
+                        LabelSuggestions(
+                            suggestions,
+                            onPick = { label ->
+                                LabelSyntax.complete(title.text, title.selection.end, label.title)?.let {
+                                    title = TextFieldValue(it.text, TextRange(it.cursor))
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
                     shared.description?.let {
                         Text(
                             it,
@@ -104,10 +128,10 @@ private fun ShareDialog(
             },
             confirmButton = {
                 TextButton(
-                    enabled = title.isNotBlank() && !adding,
+                    enabled = title.text.isNotBlank() && !adding,
                     onClick = {
                         adding = true
-                        scope.launch { onAdd(title, shared.description) }
+                        scope.launch { onAdd(title.text, shared.description) }
                     },
                 ) { Text(stringResource(R.string.share_add)) }
             },
