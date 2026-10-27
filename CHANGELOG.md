@@ -1,3 +1,9 @@
+## 0.11.0 (2026-10-27)
+
+### Feat
+
+- open a project or label typed on its own
+
 ## 0.10.0 (2026-10-27)
 
 ### Feat
