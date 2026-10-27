@@ -100,7 +100,7 @@ class CaptureProjectSyntaxTest {
         assertEquals(Kind.PROJECT, suggest("#wo").single().kind)
         assertEquals(emptyList<CaptureSyntax.Suggestion>(), suggest("#zz"))
         val many = (1L..8L).map { ProjectEntity(it, "Project $it", false, it.toDouble()) }
-        assertEquals(5, CaptureSyntax.suggestionsAt("#", 1, labels, many).size)
+        assertEquals(many.map { it.title }, CaptureSyntax.suggestionsAt("#", 1, labels, many).map { it.title })
     }
 
     @Test

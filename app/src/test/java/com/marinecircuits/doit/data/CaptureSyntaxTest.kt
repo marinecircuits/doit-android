@@ -81,10 +81,10 @@ class CaptureSyntaxTest {
     }
 
     @Test
-    fun emptyQueryListsAllUpToFive() {
+    fun emptyQueryListsEveryLabel() {
         assertEquals(4, CaptureSyntax.suggestionsAt("@", 1, all).size)
         val many = (1L..8L).map { LabelEntity(it, "label $it") }
-        assertEquals(CaptureSyntax.SUGGESTIONS, CaptureSyntax.suggestionsAt("@", 1, many).size)
+        assertEquals(many.map { it.title }, CaptureSyntax.suggestionsAt("@", 1, many).map { it.title })
     }
 
     @Test
