@@ -35,6 +35,20 @@ object ProjectTree {
         return valid
     }
 
+    /** Ancestors of [projectId], outermost first, or empty when that project is gone or archived. */
+    fun pathTo(projectId: Long, projects: List<ProjectEntity>): List<Long> {
+        val visible = projects.filterNot { it.archived }.associateBy { it.id }
+        val chain = ArrayDeque<Long>()
+        val seen = HashSet<Long>()
+        var id: Long? = projectId
+        while (id != null && id in visible && seen.add(id)) {
+            chain.addFirst(id)
+            val parent = visible.getValue(id).parentProjectId
+            id = parent.takeIf { it != 0L && it != id && it in visible }
+        }
+        return validPath(chain.toList(), projects)
+    }
+
     fun tiles(projects: List<ProjectEntity>, openTasks: List<TaskEntity>): List<ProjectTile> {
         val counts = openTasks.filterNot { it.done }.groupingBy { it.projectId }.eachCount()
         return projects.map { ProjectTile(it, counts[it.id] ?: 0) }

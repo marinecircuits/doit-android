@@ -5,6 +5,7 @@ import com.marinecircuits.doit.data.IdRemap
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.DoitDatabase
+import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.sync.PendingChanges
@@ -186,6 +187,62 @@ class TasksViewModelTest {
         assertEquals("Flash board", task.title)
         assertEquals(listOf(2L), viewModel.state.value.path.map { it.id })
         assertEquals(listOf("Review PR"), titles())
+    }
+
+    @Test
+    fun aProjectOnItsOwnOpensThatProject() {
+        seedProjects()
+        waitUntil { tiles().size == 2 }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.map { it.id } == listOf(2L) }
+
+        var created: Long? = null
+        viewModel.capture("#Firmware") { created = it }
+        waitUntil { viewModel.state.value.path.map { it.id } == listOf(2L, 3L) }
+        assertEquals(null, created)
+        assertEquals(listOf("Flash board"), titles())
+
+        viewModel.capture("#Inbox") { created = it }
+        waitUntil { viewModel.state.value.path.map { it.id } == listOf(1L) }
+        assertEquals(null, created)
+        assertEquals(listOf("Buy milk"), titles())
+    }
+
+    @Test
+    fun aLabelOnItsOwnOpensThatLabel() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "15 min")))
+            db.taskLabels().set(11, listOf("Errand"))
+            db.taskLabels().set(10, listOf("15 min"))
+        }
+        waitUntil { viewModel.state.value.labels.size == 2 }
+
+        var created: Long? = null
+        viewModel.capture("  @errand  ") { created = it }
+        waitUntil { viewModel.state.value.openLabel?.id == 7L }
+        assertEquals(null, created)
+        assertEquals(listOf("Review PR"), titles())
+        assertEquals("Work", viewModel.state.value.rows.single().projectTitle)
+        assertTrue(viewModel.state.value.path.isEmpty())
+
+        viewModel.capture("@\"15 min\"") { created = it }
+        waitUntil { viewModel.state.value.openLabel?.title == "15 min" }
+        assertEquals(listOf("Buy milk"), titles())
+
+        viewModel.navigateUp()
+        waitUntil { viewModel.state.value.openLabel == null && titles().size == 3 }
+    }
+
+    @Test
+    fun anUnknownProjectOnItsOwnStaysATask() {
+        seedProjects()
+        waitUntil { tiles().size == 2 }
+        var created: Long? = null
+        viewModel.capture("#Nope") { created = it }
+        waitUntil { created != null }
+        assertEquals("#Nope", runBlocking { db.tasks().get(created!!) }!!.title)
+        assertTrue(viewModel.state.value.path.isEmpty())
     }
 
     @Test

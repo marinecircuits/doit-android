@@ -7,6 +7,8 @@ import com.marinecircuits.doit.data.local.ProjectEntity
 object CaptureSyntax {
     // Consume a quoted name as a whole, including an unfinished one, so prefixes inside it stay literal.
     private val TOKEN = Regex("""(?:^|\s)([@#])("[^"]*"?|[^\s"]*)""")
+    /** The whole capture, and nothing else: one closed project or label token. */
+    private val ONLY = Regex("""\s*([@#])("[^"]+"|[^\s"]+)\s*""")
     private val WHITESPACE = Regex("""\s+""")
     enum class Kind(val prefix: Char) { LABEL('@'), PROJECT('#') }
 
@@ -14,6 +16,12 @@ object CaptureSyntax {
     data class Typing(val start: Int, val query: String, val quoted: Boolean, val kind: Kind)
     data class Suggestion(val title: String, val hexColor: String, val kind: Kind)
     data class Completion(val text: String, val cursor: Int)
+
+    /** A capture that is only a known project or label opens that view instead of creating a task. */
+    sealed interface Destination {
+        data class Project(val id: Long) : Destination
+        data class Label(val id: Long) : Destination
+    }
 
     /** Unknown names stay literal. The last recognized project wins; labels accumulate without duplicates. */
     fun parse(text: String, labels: List<LabelEntity>, projects: List<ProjectEntity> = emptyList()): Parsed {
@@ -41,6 +49,20 @@ object CaptureSyntax {
             append(text.substring(end))
         }.split(WHITESPACE).filter { it.isNotEmpty() }.joinToString(" ")
         return Parsed(title, names, projectId)
+    }
+
+    /**
+     * The capture is nothing but one known name. Quotes are required only when the name contains a space.
+     * Unknown, archived, and unfinished names are not destinations.
+     */
+    fun destination(text: String, labels: List<LabelEntity>, projects: List<ProjectEntity> = emptyList()): Destination? {
+        val match = ONLY.matchEntire(text) ?: return null
+        val key = match.groupValues[2].removeSurrounding("\"").trim().lowercase()
+        if (key.isEmpty()) return null
+        return when (match.groupValues[1]) {
+            "@" -> labels.associateBy { it.title.lowercase() }[key]?.let { Destination.Label(it.id) }
+            else -> availableProjects(projects).associateBy { it.title.lowercase() }[key]?.let { Destination.Project(it.id) }
+        }
     }
 
     /** The active token before the cursor; a closed quote or trailing space ends completion. */

@@ -2,6 +2,7 @@ package com.marinecircuits.doit.ui.tasks
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.LabelEntity
@@ -39,6 +40,8 @@ data class TasksUiState(
     val notices: List<String> = emptyList(),
     /** Number of unsent changes the user must confirm losing before signing out. */
     val signOutConfirmation: Int? = null,
+    /** Set when the capture box opened a label. Mutually exclusive with [path]. */
+    val openLabel: LabelEntity? = null,
 )
 
 private data class ListInputs(
@@ -72,6 +75,9 @@ class TasksViewModel(
     /** Ids of the projects opened from the main view, outermost first; empty on the main view. */
     private val projectPath = MutableStateFlow<List<Long>>(emptyList())
 
+    /** The label opened from the capture box, or null when a project or the main view is showing. */
+    private val openLabelId = MutableStateFlow<Long?>(null)
+
     private val inputs = combine(
         repository.openTasks,
         repository.projects,
@@ -84,9 +90,11 @@ class TasksViewModel(
         LabelInputs(labels, taskLabels.groupBy({ it.taskId }, { it.title }))
     }
 
-    private val list = combine(inputs, projectPath, labelInputs) { latest, path, labels -> view(latest, path, labels) }
+    private val list = combine(inputs, projectPath, labelInputs, openLabelId) { latest, path, labels, labelId ->
+        view(latest, path, labels, labelId)
+    }
 
-    private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs): TasksUiState {
+    private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs, labelId: Long?): TasksUiState {
         val (open, projects, defaultProjectId, day, completed) = inputs
         val visible = projects.filterNot { it.archived }
         val byId = visible.associateBy { it.id }
@@ -97,6 +105,28 @@ class TasksViewModel(
         // A repeating task the server reopened shows as the open task, not as a struck-through copy.
         val openIds = open.mapTo(HashSet()) { it.id }
         val tasks = open + completed.values.filter { it.id !in openIds }.map { it.copy(done = true) }
+        val openLabel = labelId?.let { id -> labels.labels.find { it.id == id } }
+        if (openLabel != null) {
+            val shown = tasks.filter { task ->
+                labels.byTask[task.id].orEmpty().any { it.equals(openLabel.title, ignoreCase = true) }
+            }
+            return TasksUiState(
+                today = day,
+                rows = TaskListModel.rows(
+                    shown,
+                    projects,
+                    null,
+                    day,
+                    clock.zone,
+                    taskLabels = labels.byTask,
+                    labels = labels.labels,
+                ),
+                loaded = true,
+                projects = visible,
+                labels = labels.labels,
+                openLabel = openLabel,
+            )
+        }
         val shown = if (current == null) tasks else tasks.filter { it.projectId == current.id }
         val tileProjects = if (current == null) ProjectTree.topLevel(projects) else ProjectTree.children(projects, current.id)
         return TasksUiState(
@@ -143,19 +173,26 @@ class TasksViewModel(
     /** Opens a project shown as a tile in the current view. */
     fun openProject(projectId: Long) {
         onLeave()
+        openLabelId.value = null
         projectPath.value = openPath + projectId
     }
 
-    /** Back from a project screen: to its parent, or to the main view. */
+    /** Back from a label or project screen: closes the label, or returns to the parent project or the main view. */
     fun navigateUp() {
+        if (openLabelId.value != null) {
+            onLeave()
+            openLabelId.value = null
+            return
+        }
         if (openPath.isEmpty()) return
         onLeave()
         projectPath.value = openPath.dropLast(1)
     }
 
     fun navigateHome() {
-        if (openPath.isEmpty()) return
+        if (openPath.isEmpty() && openLabelId.value == null) return
         onLeave()
+        openLabelId.value = null
         projectPath.value = emptyList()
     }
 
@@ -178,10 +215,28 @@ class TasksViewModel(
         }
     }
 
-    /** Captures into a named `#project`, otherwise the open project or the default on the main view. */
+    /**
+     * A capture that is only `#project` or `@label` opens that view.
+     * Anything else is captured into a named `#project`, otherwise the open project or the default on the main view.
+     */
     fun capture(text: String, onCreated: (Long) -> Unit) {
-        val projectId = state.value.path.lastOrNull()?.id
-        viewModelScope.launch { repository.capture(text, projectId = projectId)?.let(onCreated) }
+        val current = state.value
+        when (val destination = CaptureSyntax.destination(text, current.labels, current.projects)) {
+            is CaptureSyntax.Destination.Project -> {
+                onLeave()
+                openLabelId.value = null
+                projectPath.value = ProjectTree.pathTo(destination.id, current.projects)
+            }
+            is CaptureSyntax.Destination.Label -> {
+                onLeave()
+                projectPath.value = emptyList()
+                openLabelId.value = destination.id
+            }
+            null -> {
+                val projectId = current.path.lastOrNull()?.id
+                viewModelScope.launch { repository.capture(text, projectId = projectId)?.let(onCreated) }
+            }
+        }
     }
 
     fun complete(task: TaskEntity) {
