@@ -38,6 +38,16 @@ class ProjectTreeTest {
     }
 
     @Test
+    fun pathToFollowsVisibleParents() {
+        assertEquals(listOf(1L, 2L, 3L), ProjectTree.pathTo(3, projects))
+        assertEquals(listOf(4L), ProjectTree.pathTo(4, projects))
+        assertEquals(listOf(6L), ProjectTree.pathTo(6, projects))
+        assertEquals(listOf(7L), ProjectTree.pathTo(7, projects))
+        assertEquals(emptyList<Long>(), ProjectTree.pathTo(5, projects))
+        assertEquals(emptyList<Long>(), ProjectTree.pathTo(99, projects))
+    }
+
+    @Test
     fun tilesCountOpenTasksDirectlyInTheProject() {
         val tasks = listOf(
             TaskEntity(1, "a", null, projectId = 1, done = false, createdAt = 0),

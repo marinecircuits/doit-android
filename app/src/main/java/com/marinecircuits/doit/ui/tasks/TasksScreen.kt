@@ -111,9 +111,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         yesterday = stringResource(R.string.due_yesterday),
     )
     val snackbarHostState = remember { SnackbarHostState() }
+    val openLabel = state.openLabel
     val currentProject = state.path.lastOrNull()
     // Each view starts at the top of its own list.
-    val listState = key(currentProject?.id) { rememberLazyListState() }
+    val listState = key(currentProject?.id to openLabel?.id) { rememberLazyListState() }
     val captureFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -130,7 +131,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         onStopOrDispose { viewModel.onLeave() }
     }
 
-    BackHandler(enabled = currentProject != null) { viewModel.navigateUp() }
+    BackHandler(enabled = openLabel != null || currentProject != null) { viewModel.navigateUp() }
 
     LaunchedEffect(focusCaptureRequests) {
         if (focusCaptureRequests > 0) {
@@ -140,8 +141,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         }
     }
 
-    LaunchedEffect(state.rows, scrollToTaskId, currentProject?.id) {
-        val index = if (currentProject == null) -1 else state.rows.indexOfFirst { it.task.id == scrollToTaskId }
+    LaunchedEffect(state.rows, scrollToTaskId, currentProject?.id, openLabel?.id) {
+        val index = if (currentProject == null && openLabel == null) -1 else state.rows.indexOfFirst { it.task.id == scrollToTaskId }
         if (index >= 0) {
             listState.animateScrollToItem(index)
             scrollToTaskId = null
@@ -159,12 +160,13 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         val text = captureText.text
         if (text.isBlank()) return
         captureText = TextFieldValue()
-        viewModel.capture(text) { id -> if (currentProject != null) scrollToTaskId = id }
+        viewModel.capture(text) { id -> if (currentProject != null || openLabel != null) scrollToTaskId = id }
     }
 
     val typography = MaterialTheme.typography
     val shapes = MaterialTheme.shapes
-    val page = currentProject?.let { ProjectColors.tile(it.hexColor) }
+    val page = openLabel?.let { ProjectColors.tile(it.hexColor) }
+        ?: currentProject?.let { ProjectColors.tile(it.hexColor) }
     val colorScheme = if (page == null) {
         MaterialTheme.colorScheme
     } else {
@@ -201,11 +203,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         snackbarHost = { SnackbarHost(snackbarHostState, Modifier.navigationBarsPadding().imePadding()) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            currentProject?.let { ProjectHeader(it.title, onBack = viewModel::navigateUp) }
+            val headerTitle = openLabel?.title ?: currentProject?.title
+            headerTitle?.let { ProjectHeader(it, onBack = viewModel::navigateUp) }
             CaptureBar(
                 hint = currentProject?.let { stringResource(R.string.capture_hint_project, it.title) }
                     ?: stringResource(R.string.capture_hint),
-                belowStatusBar = currentProject == null,
+                belowStatusBar = headerTitle == null,
                 text = captureText,
                 onTextChange = { captureText = it },
                 onFocusChange = { captureFocused = it },
@@ -224,7 +227,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     if (state.tokenRejected) TokenRejectedBanner(onEnterNewToken)
                     StatusLine(state.status)
 
-                    if (currentProject == null) {
+                    if (openLabel == null && currentProject == null) {
                         PullToRefreshBox(
                             isRefreshing = state.refreshing,
                             onRefresh = viewModel::refresh,
@@ -247,7 +250,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                         }
                     } else {
                         // In a project, tasks take two thirds and subproject tiles the lower third.
-                        val hasTiles = state.tiles.isNotEmpty()
+                        val hasTiles = openLabel == null && state.tiles.isNotEmpty()
                         PullToRefreshBox(
                             isRefreshing = state.refreshing,
                             onRefresh = viewModel::refresh,

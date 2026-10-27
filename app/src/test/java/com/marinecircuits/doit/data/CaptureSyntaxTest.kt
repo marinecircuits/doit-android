@@ -51,6 +51,16 @@ class CaptureSyntaxTest {
     }
 
     @Test
+    fun onlyAKnownLabelIsADestination() {
+        assertEquals(CaptureSyntax.Destination.Label(7), CaptureSyntax.destination("@errand", known))
+        assertEquals(CaptureSyntax.Destination.Label(7), CaptureSyntax.destination("  @Errand  ", known))
+        assertEquals(CaptureSyntax.Destination.Label(9), CaptureSyntax.destination("@\"15 min\"", known))
+        assertNull(CaptureSyntax.destination("@missing", known))
+        assertNull(CaptureSyntax.destination("@errand tomorrow", known))
+        assertNull(CaptureSyntax.destination("@\"15 min", known))
+    }
+
+    @Test
     fun withoutKnownLabelsNothingIsParsed() {
         assertEquals(Parsed("Buy milk @errand", emptyList()), CaptureSyntax.parse("Buy milk @errand", emptyList()))
     }

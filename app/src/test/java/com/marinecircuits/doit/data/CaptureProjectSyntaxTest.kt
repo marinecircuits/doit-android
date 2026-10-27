@@ -67,6 +67,20 @@ class CaptureProjectSyntaxTest {
     }
 
     @Test
+    fun onlyAKnownProjectIsADestination() {
+        assertEquals(CaptureSyntax.Destination.Project(2), CaptureSyntax.destination("#Work", labels, projects))
+        assertEquals(CaptureSyntax.Destination.Project(2), CaptureSyntax.destination("  #work  ", labels, projects))
+        assertEquals(CaptureSyntax.Destination.Project(3), CaptureSyntax.destination("#\"Home office\"", labels, projects))
+        assertEquals(CaptureSyntax.Destination.Project(4), CaptureSyntax.destination("#Firmware", labels, projects))
+        assertEquals(CaptureSyntax.Destination.Label(7), CaptureSyntax.destination("@errand", labels, projects))
+        assertNull(CaptureSyntax.destination("#\"Old work\"", labels, projects))
+        assertNull(CaptureSyntax.destination("#unknown", labels, projects))
+        assertNull(CaptureSyntax.destination("#Home office", labels, projects))
+        assertNull(CaptureSyntax.destination("Buy #Work", labels, projects))
+        assertNull(CaptureSyntax.destination("#Work @errand", labels, projects))
+    }
+
+    @Test
     fun prefixesInQuotedNamesAreNotParsedOrSuggestedSeparately() {
         val quotedProjects = projects + ProjectEntity(6, "Team @Errand", false, 5.0)
         val quotedLabels = labels + LabelEntity(9, "Review #Work")
