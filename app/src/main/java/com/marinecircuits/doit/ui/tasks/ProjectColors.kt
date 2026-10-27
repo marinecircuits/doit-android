@@ -8,8 +8,11 @@ data class TileColors(val container: Int, val content: Int)
 
 /** Turns Vikunja's project colours into tile colours. */
 object ProjectColors {
-    /** How far each channel moves towards white. High enough that a tile reads as a tint, not a solid fill. */
-    const val LIGHTEN = 0.55f
+    /**
+     * How far each channel moves towards white. 0.75 is about twice as bright as 0.55:
+     * a black project becomes grey 191 instead of 140.
+     */
+    const val LIGHTEN = 0.75f
     const val DARK_TEXT = 0xFF1D1B20.toInt()
     const val LIGHT_TEXT = 0xFFFFFFFF.toInt()
     private const val HEX_DIGITS = "0123456789abcdefABCDEF"
