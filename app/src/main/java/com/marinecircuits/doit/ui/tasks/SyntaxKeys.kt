@@ -38,9 +38,29 @@ object SyntaxKeys {
     fun insert(text: String, selectionStart: Int, selectionEnd: Int, token: String): Pair<String, Int> {
         val start = minOf(selectionStart, selectionEnd).coerceIn(0, text.length)
         val end = maxOf(selectionStart, selectionEnd).coerceIn(0, text.length)
+        if (start == end) {
+            // A bare @ or # with no name yet is replaced, so switching keys does not leave "@ # @".
+            emptyMarkerAt(text, start)?.let { marker ->
+                return if (text[marker] == token.singleOrNull()) {
+                    text to start
+                } else {
+                    text.replaceRange(marker, start, token) to marker + token.length
+                }
+            }
+        }
         val prefix = if (start > 0 && !text[start - 1].isWhitespace()) " " else ""
         val suffix = if (end < text.length && !text[end].isWhitespace()) " " else ""
         return text.replaceRange(start, end, prefix + token + suffix) to start + prefix.length + token.length
+    }
+
+    /** Index of an `@` or `#` that ends at [cursor] and has no name characters yet, if the cursor is in one. */
+    private fun emptyMarkerAt(text: String, cursor: Int): Int? {
+        if (cursor == 0 || cursor > text.length) return null
+        val marker = cursor - 1
+        if (text[marker] != '@' && text[marker] != '#') return null
+        val atBoundary = marker == 0 || text[marker - 1].isWhitespace()
+        val nameNotStarted = cursor == text.length || text[cursor].isWhitespace()
+        return marker.takeIf { atBoundary && nameNotStarted }
     }
 }
 
