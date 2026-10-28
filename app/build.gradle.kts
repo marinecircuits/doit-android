@@ -68,7 +68,7 @@ val bundleReleaseNotes = tasks.register<Sync>("bundleReleaseNotes") {
     from(rootProject.file("CHANGELOG.md"))
     into(layout.buildDirectory.dir("generated/releaseNotes"))
 }
-android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/releaseNotes"))
+android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/releaseNotes").get().asFile)
 tasks.named("preBuild").configure { dependsOn(bundleReleaseNotes) }
 
 // Never produce an unsigned or debug-signed release APK.
