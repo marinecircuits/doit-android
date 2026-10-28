@@ -390,6 +390,20 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun serverFailureDetailsFollowTheLatestSyncResult() {
+        syncResults.value = SyncResult.ServerError("HTTP 503: Service unavailable")
+        waitUntil { viewModel.state.value.syncError == "HTTP 503: Service unavailable" }
+        assertTrue(viewModel.state.value.status.contains(StatusPart.Failed))
+
+        syncResults.value = SyncResult.Offline
+        waitUntil { viewModel.state.value.syncError == null && viewModel.state.value.status.contains(StatusPart.Offline) }
+
+        syncResults.value = SyncResult.Synced
+        waitUntil { viewModel.state.value.syncError == null && viewModel.state.value.status.isEmpty() }
+        assertTrue(viewModel.state.value.syncedOnce)
+    }
+
+    @Test
     fun capturedTasksAppearAndForegroundSyncs() {
         var created: Long? = null
         viewModel.capture("Buy milk") { created = it }

@@ -258,7 +258,6 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 },
                 onFocusChange = { captureFocused = it },
                 onSend = ::capture,
-                onSyncNow = viewModel::refresh,
                 onSignOut = viewModel::requestSignOut,
                 onConfigureContext = { labelPickerOpen = true },
                 showContextOption = currentProject == null && (openLabel == null || isContext),
@@ -267,6 +266,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 status = state.status,
                 syncedOnce = state.syncedOnce,
                 tokenRejected = state.tokenRejected,
+                syncError = state.syncError,
                 focusRequester = captureFocus,
             )
             captureDueDate?.let { selected ->
@@ -529,7 +529,6 @@ private fun CaptureBar(
     onTextChange: (TextFieldValue) -> Unit,
     onFocusChange: (Boolean) -> Unit,
     onSend: () -> Unit,
-    onSyncNow: () -> Unit,
     onSignOut: () -> Unit,
     onConfigureContext: () -> Unit,
     showContextOption: Boolean,
@@ -538,6 +537,7 @@ private fun CaptureBar(
     status: List<StatusPart>,
     syncedOnce: Boolean,
     tokenRejected: Boolean,
+    syncError: String?,
     focusRequester: FocusRequester,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -591,14 +591,9 @@ private fun CaptureBar(
                     )
                 } else {
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.menu_sync)) },
-                        onClick = {
-                            menuOpen = false
-                            onSyncNow()
+                        text = {
+                            Text(stringResource(if (SyncStatus.needsAttention(status, tokenRejected)) R.string.app_info_issue else R.string.app_info))
                         },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.app_info)) },
                         onClick = {
                             menuOpen = false
                             infoOpen = true
@@ -628,6 +623,9 @@ private fun CaptureBar(
                         status.isNotEmpty() -> StatusLine(status)
                         syncedOnce -> Text(stringResource(R.string.server_info_synced))
                         else -> Text(stringResource(R.string.server_info_not_synced))
+                    }
+                    if (!syncError.isNullOrBlank() && !tokenRejected) {
+                        Text(stringResource(R.string.server_info_error_detail, syncError))
                     }
                 }
             },
