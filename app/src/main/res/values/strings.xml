@@ -12,7 +12,7 @@
     <string name="setup_token_hint">tk_…</string>
     <string name="setup_connect">Connect</string>
     <string name="setup_permissions_title">Create the token in Vikunja under Settings → API Tokens with these permissions:</string>
-    <string name="setup_permissions">• tasks: read_all, create, update, delete\n• projects: read_all\n• other: user\n• for @labels (optional): labels: read_all, tasks_labels: create</string>
+    <string name="setup_permissions">• tasks: read_all, create, update, delete\n• projects: read_all\n• other: user\n• for @labels (optional): labels: read_all, tasks_labels: create\n• for @doing: tasks_labels: delete</string>
     <string name="setup_error_blank_url">Enter your server address.</string>
     <string name="setup_error_http">HTTPS is required. Use an https:// address.</string>
     <string name="setup_error_invalid_url">That doesn\'t look like a web address.</string>
@@ -84,6 +84,10 @@
     <string name="edit_clear_date">Clear</string>
     <string name="edit_project">Project</string>
     <string name="edit_delete">Delete task</string>
+    <string name="start_working">Start working</string>
+    <string name="stop_working">Stop working</string>
+    <string name="doing_warning">%1$d tasks marked @doing</string>
+    <string name="doing_review">Review</string>
     <string name="delete_title">Delete this task?</string>
     <string name="delete_body">It is removed here and on the server.</string>
     <string name="delete_confirm">Delete</string>

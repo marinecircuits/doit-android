@@ -3,6 +3,7 @@ package com.marinecircuits.doit.ui.tasks
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marinecircuits.doit.data.CaptureSyntax
+import com.marinecircuits.doit.data.Doing
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.LabelEntity
@@ -48,14 +49,19 @@ data class TasksUiState(
     val contextIndex: Int? = null,
     val contextScreen: Boolean = false,
     val serverAddress: String? = null,
+    val doingLabel: LabelEntity? = null,
+    val doingCount: Int = 0,
+    val doingTaskIds: Set<Long> = emptySet(),
 )
+
+private data class CompletedSnapshot(val task: TaskEntity, val labels: List<String>, val doingLabelId: Long?)
 
 private data class ListInputs(
     val open: List<TaskEntity>,
     val projects: List<ProjectEntity>,
     val defaultProjectId: Long?,
     val today: LocalDate,
-    val completed: Map<Long, TaskEntity>,
+    val completed: Map<Long, CompletedSnapshot>,
 )
 
 private data class LabelInputs(val labels: List<LabelEntity>, val byTask: Map<Long, List<String>>)
@@ -76,7 +82,7 @@ class TasksViewModel(
      * Tasks completed in this view, as they were before completion. They stay listed, struck through, until the user
      * leaves the view, even after a sync removed them from the database.
      */
-    private val completedHere = MutableStateFlow<Map<Long, TaskEntity>>(emptyMap())
+    private val completedHere = MutableStateFlow<Map<Long, CompletedSnapshot>>(emptyMap())
 
     /** Ids of the projects opened from the main view, outermost first; empty on the main view. */
     private val projectPath = MutableStateFlow<List<Long>>(emptyList())
@@ -107,10 +113,17 @@ class TasksViewModel(
         val index = (values[5] as Int?)?.takeIf { slot ->
             labels.labels.any { it.id == contextIds.getOrNull(slot) }
         }
+        val doing = Doing.label(labels.labels)
+        val doingIds = if (doing == null) emptySet() else latest.open.filter { task ->
+            Doing.contains(labels.byTask[task.id].orEmpty(), doing)
+        }.mapTo(HashSet()) { it.id }
         view(latest, path, labels, if (index != null) contextIds[index] else labelId).copy(
             contextLabelIds = contextIds,
             contextIndex = index,
             contextScreen = index != null,
+            doingLabel = doing,
+            doingCount = doingIds.size,
+            doingTaskIds = doingIds,
         )
     }
 
@@ -124,11 +137,17 @@ class TasksViewModel(
 
         // A repeating task the server reopened shows as the open task, not as a struck-through copy.
         val openIds = open.mapTo(HashSet()) { it.id }
-        val tasks = open + completed.values.filter { it.id !in openIds }.map { it.copy(done = true) }
+        val tasks = open + completed.values.filter { it.task.id !in openIds }.map { it.task.copy(done = true) }
+        val doing = Doing.label(labels.labels)
+        val retained = completed.filterKeys { it !in openIds }
+        val labelsForMatch = labels.byTask + retained.mapValues { (_, snapshot) -> snapshot.labels }
+        val taskLabels = labels.byTask + retained.mapValues { (_, snapshot) ->
+            snapshot.labels.filterNot { name -> doing != null && name.equals(doing.title, ignoreCase = true) }
+        }
         val openLabel = labelId?.let { id -> labels.labels.find { it.id == id } }
         if (openLabel != null) {
             val shown = tasks.filter { task ->
-                labels.byTask[task.id].orEmpty().any { it.equals(openLabel.title, ignoreCase = true) }
+                labelsForMatch[task.id].orEmpty().any { it.equals(openLabel.title, ignoreCase = true) }
             }
             return TasksUiState(
                 today = day,
@@ -138,7 +157,7 @@ class TasksViewModel(
                     null,
                     day,
                     clock.zone,
-                    taskLabels = labels.byTask,
+                    taskLabels = taskLabels,
                     labels = labels.labels,
                 ),
                 loaded = true,
@@ -158,7 +177,7 @@ class TasksViewModel(
                 current?.id ?: defaultProjectId,
                 day,
                 clock.zone,
-                taskLabels = labels.byTask,
+                taskLabels = taskLabels,
                 labels = labels.labels,
             ),
             loaded = true,
@@ -305,18 +324,34 @@ class TasksViewModel(
     }
 
     fun complete(task: TaskEntity) {
-        completedHere.update { it + (task.id to task) }
+        val current = state.value
+        val names = current.rows.firstOrNull { it.task.id == task.id }?.labels?.map { it.title }.orEmpty()
+        val doingId = current.doingLabel?.takeIf { Doing.contains(names, it) }?.id
+        completedHere.update { it + (task.id to CompletedSnapshot(task, names, doingId)) }
         viewModelScope.launch { repository.complete(task.id) }
     }
 
     /** Unchecking a struck-through row restores the task as it was before it was completed. */
     fun uncomplete(task: TaskEntity) {
-        val original = completedHere.value[task.id] ?: task.copy(done = false)
+        val original = completedHere.value[task.id] ?: CompletedSnapshot(task.copy(done = false), emptyList(), null)
         viewModelScope.launch {
-            repository.undoComplete(original)
+            repository.undoComplete(original.task, original.labels, original.doingLabelId)
             // Dropped only now: the reopened task is in the open list, so the row never flickers out.
             completedHere.update { it - task.id }
         }
+    }
+
+    fun setDoing(task: TaskEntity, active: Boolean) {
+        viewModelScope.launch { repository.setDoing(task.id, active) }
+    }
+
+    /** Open the cross-project list of tasks bearing the doing label. */
+    fun reviewDoing() {
+        val label = state.value.doingLabel ?: return
+        onLeave()
+        contextIndex.value = null
+        projectPath.value = emptyList()
+        openLabelId.value = label.id
     }
 
     fun reschedule(task: TaskEntity, date: LocalDate?) {

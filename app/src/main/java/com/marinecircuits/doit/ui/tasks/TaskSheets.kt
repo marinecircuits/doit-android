@@ -117,6 +117,8 @@ fun EditSheet(
     onDateChange: (LocalDate?) -> Unit,
     onProjectChange: (Long) -> Unit,
     onDelete: () -> Unit,
+    working: Boolean,
+    onWork: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
@@ -216,6 +218,11 @@ fun EditSheet(
                             )
                         }
                     }
+                }
+            }
+            if (onWork != null) {
+                TextButton(onClick = onWork) {
+                    Text(stringResource(if (working) R.string.stop_working else R.string.start_working))
                 }
             }
             TextButton(onClick = { confirmingDelete = true }, modifier = Modifier.align(Alignment.End)) {

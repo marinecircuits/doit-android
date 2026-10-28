@@ -55,6 +55,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -116,6 +117,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         yesterday = stringResource(R.string.due_yesterday),
     )
     val snackbarHostState = remember { SnackbarHostState() }
+    val doingWarning = stringResource(R.string.doing_warning, state.doingCount)
+    val doingReview = stringResource(R.string.doing_review)
     val openLabel = state.openLabel
     val isContext = state.contextScreen
     var labelPickerOpen by remember { mutableStateOf(false) }
@@ -179,6 +182,14 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         if (notices.isEmpty()) return@LaunchedEffect
         viewModel.clearNotices()
         notices.forEach { snackbarHostState.showSnackbar(it, withDismissAction = true, duration = SnackbarDuration.Long) }
+    }
+
+    // A new or changed conflicting count produces one overlay; unchanged syncs do not repeat it.
+    LaunchedEffect(state.doingCount, state.doingLabel?.id) {
+        if (state.doingCount > 1 && state.doingLabel != null) {
+            val result = snackbarHostState.showSnackbar(doingWarning, actionLabel = doingReview, duration = SnackbarDuration.Long)
+            if (result == SnackbarResult.ActionPerformed) viewModel.reviewDoing()
+        }
     }
 
     fun capture() {
@@ -346,6 +357,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                                     }
                                                 },
                                                 onOpen = { editTarget = row.task },
+                                                working = row.task.id in state.doingTaskIds,
+                                                onWork = if (state.doingLabel != null && !row.completed) {
+                                                    { viewModel.setDoing(row.task, row.task.id !in state.doingTaskIds) }
+                                                } else null,
                                             )
                                         }
                                     }
@@ -462,6 +477,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 viewModel.delete(task)
                 editTarget = null
             },
+            working = task.id in state.doingTaskIds,
+            onWork = if (state.doingLabel != null && !task.done) {
+                { viewModel.setDoing(task, task.id !in state.doingTaskIds) }
+            } else null,
             onDismiss = { editTarget = null },
         )
     }
@@ -796,7 +815,14 @@ private fun TokenRejectedBanner(onEnterNewToken: () -> Unit) {
 }
 
 @Composable
-private fun TaskRowItem(row: TaskRow, dueLabel: String?, onCheckedChange: (Boolean) -> Unit, onOpen: () -> Unit) {
+private fun TaskRowItem(
+    row: TaskRow,
+    dueLabel: String?,
+    onCheckedChange: (Boolean) -> Unit,
+    onOpen: () -> Unit,
+    working: Boolean,
+    onWork: (() -> Unit)?,
+) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
         Row(
@@ -853,6 +879,15 @@ private fun TaskRowItem(row: TaskRow, dueLabel: String?, onCheckedChange: (Boole
                     style = MaterialTheme.typography.labelLarge,
                     color = if (row.overdue) MaterialTheme.colorScheme.error else muted,
                 )
+            }
+            if (onWork != null) {
+                IconButton(onClick = onWork) {
+                    Icon(
+                        painterResource(if (working) R.drawable.ic_stop_work else R.drawable.ic_start_work),
+                        contentDescription = stringResource(if (working) R.string.stop_working else R.string.start_working),
+                        tint = if (working) MaterialTheme.colorScheme.primary else muted,
+                    )
+                }
             }
         }
         HorizontalDivider(Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant)

@@ -55,6 +55,269 @@ class SyncEngineTest {
     private suspend fun openTitles() = db.tasks().open().map { it.title }.toSet()
 
     @Test
+    fun doingStartAndStopPreserveOtherLabels() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
+        fake.tasks[1] = FakeVikunja.Task(1, "Work on it", labelIds = mutableListOf(7))
+        engine.sync()
+        repository.setDoing(1, true)
+        assertEquals(listOf("Errand", "Doing"), db.taskLabels().forTask(1))
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(7L, 8L), fake.tasks[1]!!.labelIds)
+        repository.setDoing(1, false)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(1))
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(7L), fake.tasks[1]!!.labelIds)
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun doingRequiresExistingLabelAndIgnoresCompletedTasks() = runTest {
+        fake.tasks[1] = FakeVikunja.Task(1, "Work")
+        engine.sync()
+        repository.setDoing(1, true)
+        assertEquals(0, db.pendingChanges().count())
+        fake.labels += FakeVikunja.Label(8, "dOiNg")
+        engine.sync()
+        repository.complete(1)
+        repository.setDoing(1, true)
+        assertEquals(emptyList<String>(), db.taskLabels().forTask(1))
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertFalse(fake.tasks[1]!!.labelIds.contains(8))
+    }
+
+    @Test
+    fun stoppingDoingOnUnsentCapturePreservesOtherLabels() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
+        engine.sync()
+        val id = repository.capture("Work @doing @errand")!!
+        repository.setDoing(id, false)
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(7L), fake.tasks[100]!!.labelIds)
+        assertEquals(0, db.pendingChanges().count())
+        assertTrue(fake.requests.none { it.startsWith("PATCH") && "_doing" in it })
+    }
+
+    @Test
+    fun completingRemovesDoingBeforeDoneAndUndoRestoresItAfterSync() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
+        fake.tasks[1] = FakeVikunja.Task(1, "Work", labelIds = mutableListOf(7, 8))
+        engine.sync()
+        val original = db.tasks().get(1)!!
+        val names = db.taskLabels().forTask(1)
+        fake.requests.clear()
+        repository.complete(1)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(1))
+        assertEquals(SyncResult.Synced, engine.sync())
+        val writes = fake.requests.filter { it.startsWith("DELETE") || it.startsWith("PATCH") }
+        assertEquals("DELETE tasks/1/labels/8", writes[0])
+        assertTrue(writes[1].startsWith("PATCH tasks/1"))
+        assertEquals(listOf(7L), fake.tasks[1]!!.labelIds)
+        repository.undoComplete(original, names, doingLabelId = 8)
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertFalse(fake.tasks[1]!!.done)
+        assertEquals(listOf(7L, 8L), fake.tasks[1]!!.labelIds)
+    }
+
+    @Test
+    fun repeatedTaskReopensWithoutDoing() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Repeat", labelIds = mutableListOf(8))
+        fake.reopenOnComplete = true
+        engine.sync()
+        repository.complete(1)
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertFalse(fake.tasks[1]!!.done)
+        assertTrue(fake.tasks[1]!!.labelIds.isEmpty())
+        assertTrue(db.tasks().open().any { it.id == 1L })
+    }
+
+    @Test
+    fun newerDoingIntentWinsWhileTheFirstRequestIsInFlight() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Work")
+        engine.sync()
+        repository.setDoing(1, true)
+        var changed = false
+        fake.intercept = { request ->
+            if (!changed && request.method == "POST" && request.requestUrl!!.encodedPath.endsWith("/tasks/1/labels")) {
+                changed = true
+                runBlocking { repository.setDoing(1, false) }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(changed)
+        assertTrue(fake.tasks[1]!!.labelIds.isEmpty())
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun stopDuringCaptureLabelUploadRemovesDoingAfterTheAdd() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
+        engine.sync()
+        val id = repository.capture("Work @doing @errand")!!
+        var changed = false
+        fake.intercept = { request ->
+            if (!changed && request.method == "POST" && request.requestUrl!!.encodedPath.endsWith("/tasks/100/labels")) {
+                changed = true
+                runBlocking { repository.setDoing(id, false) }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(changed)
+        assertEquals(listOf(7L), fake.tasks[100]!!.labelIds)
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun stoppingDuringCreateKeepsTheNewestIntentAfterIdRemap() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
+        engine.sync()
+        val id = repository.capture("Work @doing @errand")!!
+        var changed = false
+        fake.intercept = { request ->
+            if (!changed && request.method == "POST" && request.requestUrl!!.encodedPath.endsWith("/projects/1/tasks")) {
+                changed = true
+                runBlocking { repository.setDoing(id, false) }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(changed)
+        assertEquals(listOf(7L), fake.tasks[100]!!.labelIds)
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun editingNewLabelsDuringLabelUploadDoesNotLoseThem() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"), FakeVikunja.Label(9, "Phone"))
+        fake.tasks[1] = FakeVikunja.Task(1, "Work")
+        engine.sync()
+        repository.applyEditedTitle(1, "Work @errand")
+        var changed = false
+        fake.intercept = { request ->
+            if (!changed && request.method == "POST" && request.requestUrl!!.encodedPath.endsWith("/tasks/1/labels")) {
+                changed = true
+                runBlocking { repository.applyEditedTitle(1, "Work @phone") }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(changed)
+        assertEquals(listOf(7L, 9L), fake.tasks[1]!!.labelIds)
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun deletionDuringDoingPushIsNotLost() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Work")
+        engine.sync()
+        repository.setDoing(1, true)
+        var changed = false
+        fake.intercept = { request ->
+            if (!changed && request.method == "POST" && request.requestUrl!!.encodedPath.endsWith("/tasks/1/labels")) {
+                changed = true
+                runBlocking { repository.delete(1) }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(changed)
+        assertNull(fake.tasks[1])
+        assertNull(db.tasks().get(1))
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun rejectedTokenRetainsDoingIntent() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Work")
+        engine.sync()
+        repository.setDoing(1, true)
+        fake.tokenValid = false
+        assertEquals(SyncResult.TokenRejected, engine.sync())
+        assertEquals(1, db.pendingChanges().count())
+        assertEquals(listOf("Doing"), db.taskLabels().forTask(1))
+    }
+
+    @Test
+    fun addingDoingInEditSupersedesAnUnsentStop() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Work", labelIds = mutableListOf(8))
+        engine.sync()
+        repository.setDoing(1, false)
+        repository.applyEditedTitle(1, "Work @doing")
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(8L), fake.tasks[1]!!.labelIds)
+        assertEquals(listOf("Doing"), db.taskLabels().forTask(1))
+    }
+
+    @Test
+    fun refusedRemovalReportsAndReconcilesWithoutLosingOtherEdits() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
+        fake.tasks[1] = FakeVikunja.Task(1, "Work", labelIds = mutableListOf(7, 8))
+        engine.sync()
+        repository.setDoing(1, false)
+        repository.rename(1, "Updated")
+        fake.labelsRemovable = false
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("Updated", fake.tasks[1]!!.title)
+        assertEquals(listOf(7L, 8L), fake.tasks[1]!!.labelIds)
+        assertEquals(listOf("Errand", "Doing"), db.taskLabels().forTask(1))
+        assertTrue(settings.notices.first().single().contains("stop working"))
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun transientFailureRetainsDoingIntentForAutomaticRetry() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Work")
+        engine.sync()
+        repository.setDoing(1, true)
+        fake.intercept = { request ->
+            if (request.method == "POST" && request.requestUrl!!.encodedPath.endsWith("/labels")) {
+                FakeVikunja.json(503, """{"title":"Unavailable"}""")
+            } else null
+        }
+        assertTrue(engine.sync() is SyncResult.ServerError)
+        assertEquals(1, db.pendingChanges().count())
+        assertEquals(listOf("Doing"), db.taskLabels().forTask(1))
+        fake.intercept = { null }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(8L), fake.tasks[1]!!.labelIds)
+    }
+
+    @Test
+    fun doingIntentUsesLabelIdAcrossServerRename() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Work")
+        engine.sync()
+        repository.setDoing(1, true)
+        fake.labels[0] = FakeVikunja.Label(8, "Focus")
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(8L), fake.tasks[1]!!.labelIds)
+        assertEquals(listOf("Focus"), db.taskLabels().forTask(1))
+        assertTrue(db.labels().all().none { it.title.equals("doing", ignoreCase = true) })
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun deletedDoingLabelIsNotRecreatedAndUserIsNotified() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Work")
+        engine.sync()
+        repository.setDoing(1, true)
+        fake.labels.clear()
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(fake.tasks[1]!!.labelIds.isEmpty())
+        assertTrue(db.labels().all().isEmpty())
+        assertTrue(settings.notices.first().single().contains("label no longer exists"))
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
     fun pullsOpenTasksProjectsAndDefaultProject() = runTest {
         fake.tasks[1] = FakeVikunja.Task(1, "Pay invoice", dueDate = "2026-10-20T11:00:00Z")
         fake.tasks[2] = FakeVikunja.Task(2, "Old", done = true)

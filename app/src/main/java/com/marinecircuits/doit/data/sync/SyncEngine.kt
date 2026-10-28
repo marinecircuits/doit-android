@@ -25,8 +25,10 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
@@ -132,12 +134,13 @@ class SyncEngine(
                 change.kind == PendingChangeEntity.CREATE -> {
                     // `done` and `labels` go in follow-up updates: a completion is recorded like any other, and labels
                     // need the task's id.
-                    val later = setOf(TaskRepository.DONE, TaskRepository.LABELS)
+                    val later = setOf(TaskRepository.DONE, TaskRepository.LABELS, TaskRepository.DOING)
                     val projectId = fields[TaskRepository.PROJECT_ID]?.jsonPrimitive?.longOrNull ?: fallbackProjectId(api)
                     val created = api.createTask(projectId, JsonObject(fields - later))
                     applyCreated(change, created, leftover = JsonObject(fields.filterKeys { it in later }))
                 }
                 TaskRepository.LABELS in fields -> pushLabels(api, change, fields)
+                TaskRepository.DOING in fields -> pushDoing(api, change, fields)
                 else -> applyUpdated(change, api.updateTask(change.taskId, fields))
             }
         } catch (e: ApiException) {
@@ -193,13 +196,64 @@ class SyncEngine(
         db.withTransaction {
             // Re-read: the change may have been edited while the labels were sent.
             val current = db.pendingChanges().get(change.seq) ?: return@withTransaction
-            val rest = PendingChanges.decode(current.fields) - TaskRepository.LABELS
+            if (current.kind == PendingChangeEntity.DELETE) return@withTransaction
+            val currentFields = PendingChanges.decode(current.fields)
+            val remaining = currentFields[TaskRepository.LABELS]?.jsonArray.orEmpty().filterNot { item ->
+                val name = item.jsonPrimitive.contentOrNull
+                name != null && names.any { it.equals(name, ignoreCase = true) }
+            }
+            val rest = JsonObject((currentFields - TaskRepository.LABELS) +
+                if (remaining.isNotEmpty()) mapOf(TaskRepository.LABELS to kotlinx.serialization.json.JsonArray(remaining)) else emptyMap())
             if (rest.isEmpty()) {
                 db.pendingChanges().delete(change.seq)
             } else {
                 db.pendingChanges().update(current.copy(fields = JsonObject(rest).toString()))
             }
         }
+    }
+
+    /** Send the latest durable doing intent by label ID, without disturbing other labels or later edits. */
+    private suspend fun pushDoing(api: VikunjaApi, change: PendingChangeEntity, fields: JsonObject) {
+        val intent = fields.getValue(TaskRepository.DOING).jsonObject
+        val labelId = intent["id"]?.jsonPrimitive?.longOrNull ?: return
+        val active = intent["active"]?.jsonPrimitive?.booleanOrNull ?: return
+        try {
+            if (active) {
+                if (!addLabel(api, change.taskId, labelId)) doingNotice(change, active, "the label no longer exists")
+            } else {
+                try {
+                    api.removeLabel(change.taskId, labelId)
+                } catch (e: ApiException) {
+                    if (!e.isNotFound) throw e // already removed, or task/label gone
+                }
+            }
+        } catch (e: ApiException) {
+            when {
+                e.isNotFound -> return reject(change, e)
+                e.isUnauthorized || e.isForbidden -> {
+                    api.tokenTest() // a rejected token retains the pending intent
+                    doingNotice(change, active, "the token isn't allowed to change task labels")
+                }
+                e.isTransient || e.status !in 400..499 -> throw e
+                else -> doingNotice(change, active, e.problem ?: "the server refused the change (${e.status})")
+            }
+        }
+        db.withTransaction {
+            val current = db.pendingChanges().get(change.seq) ?: return@withTransaction
+            val currentFields = PendingChanges.decode(current.fields)
+            if (current.kind == PendingChangeEntity.DELETE || currentFields[TaskRepository.DOING] != intent) return@withTransaction
+            val rest = currentFields - TaskRepository.DOING
+            if (rest.isEmpty()) db.pendingChanges().delete(change.seq)
+            else db.pendingChanges().update(current.copy(fields = JsonObject(rest).toString()))
+        }
+    }
+
+    private suspend fun doingNotice(change: PendingChangeEntity, active: Boolean, reason: String) {
+        val current = db.pendingChanges().get(change.seq) ?: return
+        if (current.kind == PendingChangeEntity.DELETE ||
+            PendingChanges.decode(current.fields)[TaskRepository.DOING] != PendingChanges.decode(change.fields)[TaskRepository.DOING]) return
+        val title = db.tasks().get(change.taskId)?.title ?: return
+        settings.addNotice("Couldn't ${if (active) "start" else "stop"} working on “$title”: $reason")
     }
 
     /** The id of the label called [name], ignoring case, or null when it no longer exists. */

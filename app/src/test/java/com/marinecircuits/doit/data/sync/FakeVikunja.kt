@@ -41,6 +41,8 @@ class FakeVikunja : Dispatcher() {
 
     /** False: the token may not add labels to tasks (401 on that route). */
     var labelsAddable = true
+    var labelsRemovable = true
+    var reopenOnComplete = false
     private var nextId = 100L
 
     /** Return a response here to override the normal handling of a request. */
@@ -88,6 +90,13 @@ class FakeVikunja : Dispatcher() {
                     }
                 }
             }
+            request.method == "DELETE" && path.matches(Regex("tasks/\\d+/labels/\\d+")) -> {
+                if (!labelsRemovable) return json(403, """{"title":"Forbidden","detail":"missing label permission"}""")
+                val parts = path.split("/")
+                val task = tasks[parts[1].toLong()] ?: return json(404, """{"title":"Not Found"}""")
+                if (!task.labelIds.remove(parts[3].toLong())) return json(404, """{"title":"Not Found"}""")
+                MockResponse().setResponseCode(204)
+            }
             request.method == "POST" && path.matches(Regex("projects/\\d+/tasks")) -> {
                 val fields = parse(body)
                 val task = Task(nextId++, fields["title"]!!.jsonPrimitive.content, projectId = path.split("/")[1].toLong())
@@ -103,6 +112,7 @@ class FakeVikunja : Dispatcher() {
             request.method == "PATCH" && path.startsWith("tasks/") -> {
                 val task = tasks[path.removePrefix("tasks/").toLong()] ?: return json(404, """{"title":"Not Found"}""")
                 apply(task, parse(body))
+                if (reopenOnComplete && task.done) task.done = false
                 json(200, encode(task))
             }
             else -> json(404, """{"title":"Not Found"}""")
