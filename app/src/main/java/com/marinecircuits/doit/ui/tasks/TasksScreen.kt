@@ -742,13 +742,12 @@ private fun CaptureBar(
         )
     }
     if (releaseNotesOpen) {
-        val notes = remember(context, appVersion) {
-            val changelog = runCatching { context.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() } }.getOrDefault("")
-            ReleaseNotes.forVersion(changelog, appVersion)
+        val notes = remember(context) {
+            runCatching { context.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() } }.getOrDefault("")
         }
         AlertDialog(
             onDismissRequest = { releaseNotesOpen = false },
-            title = { Text(stringResource(R.string.release_notes_version, appVersion)) },
+            title = { Text(stringResource(R.string.release_history)) },
             text = {
                 Text(notes.ifEmpty { stringResource(R.string.release_notes_unavailable) },
                     modifier = Modifier.verticalScroll(rememberScrollState()))
