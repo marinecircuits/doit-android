@@ -1,3 +1,9 @@
+## 0.15.0 (2026-10-28)
+
+### Feat
+
+- show automatic sync failures in about
+
 ## 0.14.0 (2026-10-28)
 
 ### Feat
