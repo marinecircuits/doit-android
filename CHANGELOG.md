@@ -1,3 +1,9 @@
+## 0.12.0 (2026-10-28)
+
+### Feat
+
+- set a project colour from a fixed palette
+
 ## 0.11.0 (2026-10-27)
 
 ### Feat
