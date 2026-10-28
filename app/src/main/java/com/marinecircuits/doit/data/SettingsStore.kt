@@ -30,6 +30,12 @@ class SettingsStore(
 
     val defaultProjectId: Flow<Long?> = dataStore.data.map { it[DEFAULT_PROJECT] }
 
+    val contextLabelId: Flow<Long?> = dataStore.data.map { it[CONTEXT_LABEL] }
+
+    suspend fun setContextLabelId(id: Long?) {
+        dataStore.edit { prefs -> if (id == null) prefs.remove(CONTEXT_LABEL) else prefs[CONTEXT_LABEL] = id }
+    }
+
     /** Messages about changes the server rejected, kept until the user has seen them. */
     val notices: Flow<List<String>> = dataStore.data.map { prefs ->
         prefs[NOTICES]?.split('\n')?.filter { it.isNotEmpty() } ?: emptyList()
@@ -101,6 +107,7 @@ class SettingsStore(
         val TOKEN = stringPreferencesKey("token")
         val TOKEN_REJECTED = booleanPreferencesKey("token_rejected")
         val DEFAULT_PROJECT = longPreferencesKey("default_project_id")
+        val CONTEXT_LABEL = longPreferencesKey("context_label_id")
         val NOTICES = stringPreferencesKey("notices")
         val PROJECT_COLORS = stringPreferencesKey("project_colors")
     }
