@@ -1,3 +1,9 @@
+## 0.12.1 (2026-10-28)
+
+### Fix
+
+- show only Color in the project menu
+
 ## 0.12.0 (2026-10-28)
 
 ### Feat
