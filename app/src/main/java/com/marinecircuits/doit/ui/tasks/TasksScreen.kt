@@ -469,28 +469,29 @@ private fun CaptureBar(
                             onProjectColor()
                         },
                     )
+                } else {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_sync)) },
+                        onClick = {
+                            menuOpen = false
+                            onSyncNow()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.app_info)) },
+                        onClick = {
+                            menuOpen = false
+                            infoOpen = true
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_sign_out)) },
+                        onClick = {
+                            menuOpen = false
+                            onSignOut()
+                        },
+                    )
                 }
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.menu_sync)) },
-                    onClick = {
-                        menuOpen = false
-                        onSyncNow()
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.app_info)) },
-                    onClick = {
-                        menuOpen = false
-                        infoOpen = true
-                    },
-                )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.menu_sign_out)) },
-                    onClick = {
-                        menuOpen = false
-                        onSignOut()
-                    },
-                )
             }
         }
     }
