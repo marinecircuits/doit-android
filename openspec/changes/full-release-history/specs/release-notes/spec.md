@@ -1,8 +1,8 @@
 # Spec Delta
 
-## MODIFIED Requirements
+## ADDED Requirements
 
-### Requirement: Release notes in About
+### Requirement: Complete release history
 The About menu SHALL provide access to the complete release history from the bundled changelog. It SHALL be available offline and scrollable, with release headings and entries preserved. If the changelog is unavailable, the view SHALL show an unavailable message.
 
 #### Scenario: Browse past releases offline
