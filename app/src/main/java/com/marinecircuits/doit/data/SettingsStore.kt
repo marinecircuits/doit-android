@@ -35,10 +35,13 @@ class SettingsStore(
 
     val defaultProjectId: Flow<Long?> = dataStore.data.map { it[DEFAULT_PROJECT] }
 
-    val contextLabelId: Flow<Long?> = dataStore.data.map { it[CONTEXT_LABEL] }
+    /** Three ordered label screens. Slot one keeps the original context-label preference on upgrade. */
+    val contextLabelIds: Flow<List<Long?>> = dataStore.data.map { prefs -> CONTEXT_LABELS.map { prefs[it] } }
 
-    suspend fun setContextLabelId(id: Long?) {
-        dataStore.edit { prefs -> if (id == null) prefs.remove(CONTEXT_LABEL) else prefs[CONTEXT_LABEL] = id }
+    suspend fun setContextLabelId(slot: Int, id: Long?) {
+        require(slot in CONTEXT_LABELS.indices)
+        val key = CONTEXT_LABELS[slot]
+        dataStore.edit { prefs -> if (id == null) prefs.remove(key) else prefs[key] = id }
     }
 
     /** Messages about changes the server rejected, kept until the user has seen them. */
@@ -112,7 +115,11 @@ class SettingsStore(
         val TOKEN = stringPreferencesKey("token")
         val TOKEN_REJECTED = booleanPreferencesKey("token_rejected")
         val DEFAULT_PROJECT = longPreferencesKey("default_project_id")
-        val CONTEXT_LABEL = longPreferencesKey("context_label_id")
+        val CONTEXT_LABELS = listOf(
+            longPreferencesKey("context_label_id"),
+            longPreferencesKey("context_label_id_2"),
+            longPreferencesKey("context_label_id_3"),
+        )
         val NOTICES = stringPreferencesKey("notices")
         val PROJECT_COLORS = stringPreferencesKey("project_colors")
     }

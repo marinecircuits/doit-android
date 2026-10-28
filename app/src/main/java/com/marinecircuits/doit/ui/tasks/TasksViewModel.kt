@@ -42,7 +42,8 @@ data class TasksUiState(
     val signOutConfirmation: Int? = null,
     /** Set when the capture box opened a label. Mutually exclusive with [path]. */
     val openLabel: LabelEntity? = null,
-    val contextLabelId: Long? = null,
+    val contextLabelIds: List<Long?> = listOf(null, null, null),
+    val contextIndex: Int? = null,
     val contextScreen: Boolean = false,
     val serverAddress: String? = null,
 )
@@ -80,7 +81,7 @@ class TasksViewModel(
 
     /** The label opened from the capture box, or null when a project or the main view is showing. */
     private val openLabelId = MutableStateFlow<Long?>(null)
-    private val contextScreen = MutableStateFlow(false)
+    private val contextIndex = MutableStateFlow<Int?>(null)
 
     private val inputs = combine(
         repository.openTasks,
@@ -94,16 +95,20 @@ class TasksViewModel(
         LabelInputs(labels, taskLabels.groupBy({ it.taskId }, { it.title }))
     }
 
-    private val list = combine(inputs, projectPath, labelInputs, openLabelId, settings.contextLabelId, contextScreen) { values ->
+    private val list = combine(inputs, projectPath, labelInputs, openLabelId, settings.contextLabelIds, contextIndex) { values ->
         val latest = values[0] as ListInputs
         val path = values[1] as List<Long>
         val labels = values[2] as LabelInputs
         val labelId = values[3] as Long?
-        val contextId = values[4] as Long?
-        val inContext = values[5] as Boolean
-        view(latest, path, labels, if (inContext) contextId else labelId).copy(
-            contextLabelId = contextId,
-            contextScreen = inContext,
+        @Suppress("UNCHECKED_CAST")
+        val contextIds = values[4] as List<Long?>
+        val index = (values[5] as Int?)?.takeIf { slot ->
+            labels.labels.any { it.id == contextIds.getOrNull(slot) }
+        }
+        view(latest, path, labels, if (index != null) contextIds[index] else labelId).copy(
+            contextLabelIds = contextIds,
+            contextIndex = index,
+            contextScreen = index != null,
         )
     }
 
@@ -186,7 +191,7 @@ class TasksViewModel(
 
     /** Opens a project shown as a tile in the current view. */
     fun openProject(projectId: Long) {
-        contextScreen.value = false
+        contextIndex.value = null
         onLeave()
         openLabelId.value = null
         projectPath.value = openPath + projectId
@@ -194,9 +199,9 @@ class TasksViewModel(
 
     /** Back from a label or project screen: closes the label, or returns to the parent project or the main view. */
     fun navigateUp() {
-        if (contextScreen.value) {
+        if (state.value.contextScreen) {
             onLeave()
-            contextScreen.value = false
+            contextIndex.value = null
             return
         }
         if (openLabelId.value != null) {
@@ -210,27 +215,39 @@ class TasksViewModel(
     }
 
     fun navigateHome() {
-        if (openPath.isEmpty() && openLabelId.value == null && !contextScreen.value) return
-        contextScreen.value = false
+        if (openPath.isEmpty() && openLabelId.value == null && contextIndex.value == null) return
+        contextIndex.value = null
         onLeave()
         openLabelId.value = null
         projectPath.value = emptyList()
     }
 
-    fun openContext() {
-        if (state.value.contextLabelId == null || state.value.path.isNotEmpty() || openLabelId.value != null) return
+    /** Swipe right from home through configured label screens; missing and disabled slots are skipped. */
+    fun nextContext() {
+        val current = state.value
+        if (current.path.isNotEmpty() || (!current.contextScreen && openLabelId.value != null)) return
+        val active = current.contextLabelIds.indices.filter { slot ->
+            current.labels.any { it.id == current.contextLabelIds[slot] }
+        }
+        val next = active.firstOrNull { it > (current.contextIndex ?: -1) } ?: return
         onLeave()
-        contextScreen.value = true
+        contextIndex.value = next
     }
 
-    fun closeContext() {
-        if (!contextScreen.value) return
+    /** Swipe left to the previous configured screen, or home from the first one. */
+    fun previousContext() {
+        val current = state.value
+        val index = current.contextIndex ?: return
+        val previous = current.contextLabelIds.indices.lastOrNull { slot ->
+            slot < index && current.labels.any { it.id == current.contextLabelIds[slot] }
+        }
         onLeave()
-        contextScreen.value = false
+        contextIndex.value = previous
     }
 
-    fun setContextLabel(id: Long?) {
-        viewModelScope.launch { settings.setContextLabelId(id) }
+    fun setContextLabel(slot: Int, id: Long?) {
+        if (state.value.contextIndex == slot && id == null) contextIndex.value = null
+        viewModelScope.launch { settings.setContextLabelId(slot, id) }
     }
 
     /** The app came to the foreground: the date may have changed, and the list should catch up with the server. */
@@ -260,13 +277,13 @@ class TasksViewModel(
         val current = state.value
         when (val destination = CaptureSyntax.destination(text, current.labels, current.projects)) {
             is CaptureSyntax.Destination.Project -> {
-                contextScreen.value = false
+                contextIndex.value = null
                 onLeave()
                 openLabelId.value = null
                 projectPath.value = ProjectTree.pathTo(destination.id, current.projects)
             }
             is CaptureSyntax.Destination.Label -> {
-                contextScreen.value = false
+                contextIndex.value = null
                 onLeave()
                 projectPath.value = emptyList()
                 openLabelId.value = destination.id

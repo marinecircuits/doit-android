@@ -119,9 +119,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     val openLabel = state.openLabel
     val isContext = state.contextScreen
     var labelPickerOpen by remember { mutableStateOf(false) }
+    var labelPickerSlot by remember { mutableStateOf<Int?>(null) }
     val currentProject = state.path.lastOrNull()
     // Each view starts at the top of its own list.
-    val listState = key(Triple(currentProject?.id, openLabel?.id, isContext)) { rememberLazyListState() }
+    val listState = key(Triple(currentProject?.id, openLabel?.id, state.contextIndex)) { rememberLazyListState() }
     val captureFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -134,7 +135,17 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var colorOpen by remember { mutableStateOf(false) }
 
     if (labelPickerOpen) {
-        ContextLabelPicker(state.labels, state.contextLabelId, viewModel::setContextLabel) { labelPickerOpen = false }
+        val slot = labelPickerSlot
+        if (slot == null) {
+            ContextLabelSettings(state.labels, state.contextLabelIds, onChoose = { labelPickerSlot = it }) {
+                labelPickerOpen = false
+            }
+        } else {
+            ContextLabelPicker(state.labels, state.contextLabelIds.getOrNull(slot), onSelect = { id ->
+                viewModel.setContextLabel(slot, id)
+                labelPickerSlot = null
+            }) { labelPickerSlot = null }
+        }
     }
 
     // Leaving the screen (or the app) is a view change: rows completed here are gone when the user returns.
@@ -214,13 +225,13 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         contentWindowInsets = WindowInsets(0),
         snackbarHost = { SnackbarHost(snackbarHostState, Modifier.navigationBarsPadding().imePadding()) },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).imePadding().pointerInput(isContext, state.contextLabelId, currentProject, openLabel) {
+        Column(Modifier.fillMaxSize().padding(padding).imePadding().pointerInput(isContext, state.contextLabelIds, currentProject, openLabel) {
             var drag = 0f
             detectHorizontalDragGestures(
                 onDragStart = { drag = 0f },
                 onDragEnd = {
-                    if (drag < -100f && !isContext) viewModel.openContext()
-                    if (drag > 100f && isContext) viewModel.closeContext()
+                    if (drag > 100f) viewModel.nextContext()
+                    if (drag < -100f && isContext) viewModel.previousContext()
                     drag = 0f
                 },
                 onHorizontalDrag = { change, amount ->
@@ -230,7 +241,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             )
         }) {
             val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else currentProject?.title
-            headerTitle?.let { ProjectHeader(it, onBack = viewModel::navigateUp) }
+            headerTitle?.let { ProjectHeader(it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
             CaptureBar(
                 hint = currentProject?.let { stringResource(R.string.capture_hint_project, it.title) }
                     ?: stringResource(R.string.capture_hint),
@@ -442,15 +453,40 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
 }
 
 @Composable
+private fun ContextLabelSettings(
+    labels: List<com.marinecircuits.doit.data.local.LabelEntity>,
+    selected: List<Long?>,
+    onChoose: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.menu_context_label)) },
+        text = {
+            Column {
+                repeat(3) { slot ->
+                    val name = labels.firstOrNull { it.id == selected.getOrNull(slot) }?.title
+                        ?: stringResource(R.string.context_not_configured)
+                    TextButton(onClick = { onChoose(slot) }, modifier = Modifier.fillMaxWidth()) {
+                        Text(stringResource(R.string.context_slot, slot + 1, name))
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } },
+    )
+}
+
+@Composable
 private fun ContextLabelPicker(labels: List<com.marinecircuits.doit.data.local.LabelEntity>, selected: Long?, onSelect: (Long?) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.menu_context_label)) },
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                item { TextButton(onClick = { onSelect(null); onDismiss() }) { Text(stringResource(R.string.context_disabled)) } }
+                item { TextButton(onClick = { onSelect(null) }) { Text(stringResource(R.string.context_disabled)) } }
                 items(labels, key = { it.id }) { label ->
-                    TextButton(onClick = { onSelect(label.id); onDismiss() }, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { onSelect(label.id) }, modifier = Modifier.fillMaxWidth()) {
                         Text((if (selected == label.id) "✓ " else "") + label.title)
                     }
                 }
@@ -629,7 +665,7 @@ private fun ColorSwatch(hex: String, selected: Boolean, onClick: () -> Unit) {
 
 /** Title row of a project screen; the back arrow goes to the parent project or the main view. */
 @Composable
-private fun ProjectHeader(title: String, onBack: () -> Unit) {
+private fun ProjectHeader(title: String, onBack: () -> Unit, onHome: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 16.dp, top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -641,7 +677,8 @@ private fun ProjectHeader(title: String, onBack: () -> Unit) {
                 modifier = Modifier.size(30.dp),
             )
         }
-        Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        TextButton(onClick = onHome) { Text(stringResource(R.string.home)) }
     }
 }
 

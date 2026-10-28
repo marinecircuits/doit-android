@@ -27,6 +27,7 @@
     <string name="capture_send">Add task</string>
     <string name="capture_hint_project">Add to %1$s…</string>
     <string name="back">Back</string>
+    <string name="home">Home</string>
     <plurals name="tile_open_count">
         <item quantity="one">%d open</item>
         <item quantity="other">%d open</item>
@@ -94,7 +95,9 @@
     <string name="widget_description">Open tasks with tap-to-complete</string>
     <string name="widget_not_connected">Open doit to connect</string>
     <string name="widget_add">Add a task</string>
-    <string name="menu_context_label">Context label</string>
+    <string name="menu_context_label">Label screens</string>
     <string name="context_title">Context</string>
-    <string name="context_disabled">Disable context screen</string>
+    <string name="context_disabled">Disable this screen</string>
+    <string name="context_not_configured">Not configured</string>
+    <string name="context_slot">Screen %1$d: %2$s</string>
 </resources>
