@@ -72,6 +72,18 @@ Tapping a task row (outside the circle) SHALL open a bottom sheet with the task'
 - **WHEN** the user changes the title and closes the sheet without leaving the field first
 - **THEN** the new title is saved
 
+### Requirement: Hierarchical project picker
+The edit sheet's project picker SHALL list each non-archived project once, placing descendants directly beneath their parent in depth-first order. Existing order among roots and siblings SHALL be preserved. Each visible nesting level SHALL add 16 dp of start indentation. A project with a missing or archived parent SHALL appear at the root level. Malformed parent cycles SHALL NOT prevent selection or cause an infinite traversal. Selecting a row SHALL continue to move the task to that row's project ID.
+
+#### Scenario: Nested project selection
+- **WHEN** Work contains Firmware, Firmware contains Drivers, and Home is another root
+- **THEN** the picker groups Work, Firmware, and Drivers together, with Firmware indented one level and Drivers two levels
+- **AND** selecting Drivers moves the task to Drivers, not Work or Firmware
+
+#### Scenario: Parent is unavailable
+- **WHEN** a visible project's parent is archived or inaccessible
+- **THEN** the project remains selectable at the root level with its own children grouped beneath it
+
 ### Requirement: Delete a task
 The edit sheet SHALL offer deleting the task. Confirming SHALL remove it from the list at once. A task the server has never seen SHALL drop its unsent create and SHALL NOT be created. Any other task SHALL be deleted on the server at the next successful sync, including when it was already gone there. Cancelling the confirmation SHALL leave the task as it is.
 
