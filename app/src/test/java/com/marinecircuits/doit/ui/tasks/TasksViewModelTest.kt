@@ -77,6 +77,19 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun recentTasksTracksCompletionUndoAndDeletion() {
+        seedProjects()
+        waitUntil { row(10) != null && row(11) != null }
+        viewModel.complete(row(10)!!.task)
+        waitUntil { viewModel.recentTasks.value.completed.any { it.taskId == 10L } }
+        viewModel.uncomplete(row(10)!!.task)
+        waitUntil { viewModel.recentTasks.value.completed.none { it.taskId == 10L } }
+        viewModel.delete(row(11)!!.task)
+        waitUntil { viewModel.recentTasks.value.deleted.any { it.taskId == 11L } }
+        assertEquals("Review PR", viewModel.recentTasks.value.deleted.single().title)
+    }
+
+    @Test
     fun completedTaskStaysStruckThroughUntilTheUserLeaves() {
         runBlocking { db.tasks().upsert(TaskEntity(10, "Call dentist", dueAt = null, projectId = 1, done = false, createdAt = 0)) }
         waitUntil { row(10) != null }
