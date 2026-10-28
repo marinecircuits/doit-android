@@ -1,3 +1,11 @@
+## 0.17.0 (2026-10-28)
+
+### Feat
+
+- show label shortcuts on home
+- show current doing task at the top
+- make home project tiles slightly smaller
+
 ## 0.16.0 (2026-10-28)
 
 ### Feat
