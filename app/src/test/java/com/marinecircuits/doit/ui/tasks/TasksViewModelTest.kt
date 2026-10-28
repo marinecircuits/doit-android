@@ -268,6 +268,29 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun doingHeaderFollowsOpenTasksAcrossProjectsAndNormalTaskOrder() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(8, "Doing")))
+            db.taskLabels().set(10, listOf("Doing"))
+        }
+        waitUntil { viewModel.state.value.doingCount == 1 && viewModel.state.value.doingTask?.task?.id == 10L }
+        assertEquals("Inbox", viewModel.state.value.doingTask!!.projectTitle)
+
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 2L }
+        assertEquals(10L, viewModel.state.value.doingTask!!.task.id)
+        viewModel.setDoing(row(11)!!.task, true)
+        waitUntil { viewModel.state.value.doingCount == 2 }
+        assertEquals(10L, viewModel.state.value.doingTask!!.task.id) // newer undated task is first
+
+        viewModel.setDoing(viewModel.state.value.doingTask!!.task, false)
+        waitUntil { viewModel.state.value.doingCount == 1 && viewModel.state.value.doingTask?.task?.id == 11L }
+        viewModel.complete(row(11)!!.task)
+        waitUntil { viewModel.state.value.doingCount == 0 && viewModel.state.value.doingTask == null }
+    }
+
+    @Test
     fun configuredLabelScreensNavigateInOrderAndHomeReturnsDirectly() {
         seedProjects()
         runBlocking {

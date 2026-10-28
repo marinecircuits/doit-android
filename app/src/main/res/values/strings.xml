@@ -88,6 +88,11 @@
     <string name="stop_working">Stop working</string>
     <string name="doing_warning">%1$d tasks marked @doing</string>
     <string name="doing_review">Review</string>
+    <string name="doing_top_title">Doing</string>
+    <plurals name="doing_more">
+        <item quantity="one">+%d more</item>
+        <item quantity="other">+%d more</item>
+    </plurals>
     <string name="delete_title">Delete this task?</string>
     <string name="delete_body">It is removed here and on the server.</string>
     <string name="delete_confirm">Delete</string>

@@ -257,10 +257,20 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         }) {
             val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else currentProject?.title
             headerTitle?.let { ProjectHeader(it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
+            state.doingTask?.let { row ->
+                DoingTop(
+                    row = row,
+                    count = state.doingCount,
+                    onOpen = {
+                        if (state.doingCount > 1) viewModel.reviewDoing() else editTarget = row.task
+                    },
+                    modifier = if (headerTitle == null) Modifier.statusBarsPadding() else Modifier,
+                )
+            }
             CaptureBar(
                 hint = currentProject?.let { stringResource(R.string.capture_hint_project, it.title) }
                     ?: stringResource(R.string.capture_hint),
-                belowStatusBar = headerTitle == null,
+                belowStatusBar = headerTitle == null && state.doingTask == null,
                 text = captureText,
                 onTextChange = { value ->
                     val withoutTrigger = DateTrigger.consume(captureText, value)
@@ -493,6 +503,32 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             confirmButton = { TextButton(onClick = viewModel::confirmSignOut) { Text(stringResource(R.string.menu_sign_out)) } },
             dismissButton = { TextButton(onClick = viewModel::dismissSignOut) { Text(stringResource(R.string.cancel)) } },
         )
+    }
+}
+
+/** A persistent shortcut to the current working task or the complete doing list. */
+@Composable
+private fun DoingTop(row: TaskRow, count: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onOpen,
+        modifier = modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_start_work), contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.doing_top_title), style = MaterialTheme.typography.labelMedium)
+                Text(row.task.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                row.projectTitle?.let { Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            }
+            if (count > 1) {
+                Spacer(Modifier.width(8.dp))
+                Text(pluralStringResource(R.plurals.doing_more, count - 1, count - 1), style = MaterialTheme.typography.labelMedium)
+            }
+        }
     }
 }
 
