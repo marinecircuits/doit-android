@@ -90,4 +90,7 @@
     <string name="widget_description">Open tasks with tap-to-complete</string>
     <string name="widget_not_connected">Open doit to connect</string>
     <string name="widget_add">Add a task</string>
+    <string name="menu_context_label">Context label</string>
+    <string name="context_title">Context</string>
+    <string name="context_disabled">Disable context screen</string>
 </resources>
