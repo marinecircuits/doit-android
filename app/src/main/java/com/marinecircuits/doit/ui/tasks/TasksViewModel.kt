@@ -140,7 +140,7 @@ class TasksViewModel(
         viewModelScope.launch {
             val changed = try {
                 when (entry.kind) {
-                    TaskHistoryEntity.COMTED -> repository.undoHistoryCompletion(entry)
+                    TaskHistoryEntity.COMPLETED -> repository.undoHistoryCompletion(entry)
                     TaskHistoryEntity.DELETED -> repository.undoHistoryDeletion(entry.id)
                     else -> false
                 }
