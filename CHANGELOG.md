@@ -1,3 +1,9 @@
+## 0.16.0 (2026-10-28)
+
+### Feat
+
+- start and stop tasks with doing label
+
 ## 0.15.0 (2026-10-28)
 
 ### Feat
