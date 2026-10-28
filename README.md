@@ -33,7 +33,7 @@ New tasks go to the default project set in Vikunja under **Settings → General*
 - While the capture box, edit sheet, or share title is focused, **`@`** and **`#`** keys sit above the keyboard. Tapping one inserts that sign at the cursor without closing the keyboard.
 - Swipe left to reschedule, or tap a task to edit its title, date and project. Changes save as you make them; the title saves when you leave its field. `@` and `#` in that title add labels and move the task.
 - In a project, choose **Color** from the three-dot menu and pick one of the eight colours, or no colour. The page and the tile change immediately, and the colour is saved to Vikunja on the next sync. The token needs permission to update projects; without it, doit tells you and the previous colour comes back.
-- On the main view, the three-dot menu has **Sync now**, **About doit**, and **Sign out**. Inside a project that menu only has **Color**.
+- On the main view, the three-dot menu has **Sync now**, **About & server**, and **Sign out**. About & server shows the app version, configured server address and the latest sync status without showing the token. Inside a project that menu only has **Color**.
 
 ## Installing
 

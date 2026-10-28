@@ -44,6 +44,7 @@ data class TasksUiState(
     val openLabel: LabelEntity? = null,
     val contextLabelId: Long? = null,
     val contextScreen: Boolean = false,
+    val serverAddress: String? = null,
 )
 
 private data class ListInputs(
@@ -173,6 +174,7 @@ class TasksViewModel(
         }
             .combine(refreshing) { state, refreshing -> state.copy(refreshing = refreshing) }
             .combine(signOutConfirmation) { state, pending -> state.copy(signOutConfirmation = pending) }
+            .combine(settings.serverAddress) { state, address -> state.copy(serverAddress = address) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, TasksUiState(today = today.value))
 
     /** The user left the view: tasks completed here leave the list. */

@@ -32,8 +32,12 @@
         <item quantity="other">%d open</item>
     </plurals>
     <string name="menu">More options</string>
-    <string name="app_info">About doit</string>
+    <string name="app_info">About &amp; server</string>
     <string name="app_version">Version %1$s</string>
+    <string name="server_info_address">Server: %1$s</string>
+    <string name="server_info_unavailable">Unavailable</string>
+    <string name="server_info_synced">Last sync succeeded</string>
+    <string name="server_info_not_synced">Sync has not run yet</string>
     <string name="no_projects">No projects yet</string>
     <string name="menu_sync">Sync now</string>
     <string name="menu_sign_out">Sign out</string>
