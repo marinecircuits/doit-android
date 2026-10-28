@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -637,6 +639,7 @@ private fun CaptureBar(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var infoOpen by remember { mutableStateOf(false) }
+    var releaseNotesOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val appVersion = remember(context) {
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
@@ -720,6 +723,9 @@ private fun CaptureBar(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(R.string.app_version, appVersion))
+                    TextButton(onClick = { infoOpen = false; releaseNotesOpen = true }) {
+                        Text(stringResource(R.string.release_notes))
+                    }
                     Text(stringResource(R.string.server_info_address, serverAddress ?: stringResource(R.string.server_info_unavailable)))
                     when {
                         tokenRejected -> Text(stringResource(R.string.token_rejected_banner))
@@ -733,6 +739,21 @@ private fun CaptureBar(
                 }
             },
             confirmButton = { TextButton(onClick = { infoOpen = false }) { Text(stringResource(R.string.ok)) } },
+        )
+    }
+    if (releaseNotesOpen) {
+        val notes = remember(context, appVersion) {
+            val changelog = runCatching { context.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() } }.getOrDefault("")
+            ReleaseNotes.forVersion(changelog, appVersion)
+        }
+        AlertDialog(
+            onDismissRequest = { releaseNotesOpen = false },
+            title = { Text(stringResource(R.string.release_notes_version, appVersion)) },
+            text = {
+                Text(notes.ifEmpty { stringResource(R.string.release_notes_unavailable) },
+                    modifier = Modifier.verticalScroll(rememberScrollState()))
+            },
+            confirmButton = { TextButton(onClick = { releaseNotesOpen = false }) { Text(stringResource(R.string.ok)) } },
         )
     }
 }
