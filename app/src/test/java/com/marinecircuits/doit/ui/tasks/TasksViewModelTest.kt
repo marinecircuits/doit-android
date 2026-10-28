@@ -235,6 +235,61 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun configuredLabelScreensNavigateInOrderAndHomeReturnsDirectly() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Home"), LabelEntity(9, "Work")))
+            db.taskLabels().set(10, listOf("Home"))
+            db.taskLabels().set(11, listOf("Errand"))
+            db.taskLabels().set(12, listOf("Work"))
+            settings.setContextLabelId(0, 7)
+            settings.setContextLabelId(1, 8)
+            settings.setContextLabelId(2, 9)
+        }
+        waitUntil { viewModel.state.value.contextLabelIds == listOf(7L, 8L, 9L) && viewModel.state.value.labels.size == 3 }
+        viewModel.nextContext()
+        waitUntil { viewModel.state.value.contextIndex == 0 }
+        assertEquals(listOf("Review PR"), titles())
+        viewModel.nextContext()
+        waitUntil { viewModel.state.value.contextIndex == 1 }
+        assertEquals(listOf("Buy milk"), titles())
+        viewModel.nextContext()
+        waitUntil { viewModel.state.value.contextIndex == 2 }
+        assertEquals(listOf("Flash board"), titles())
+        viewModel.previousContext()
+        waitUntil { viewModel.state.value.contextIndex == 1 }
+        viewModel.navigateHome()
+        waitUntil { !viewModel.state.value.contextScreen && viewModel.state.value.openLabel == null }
+        assertTrue(viewModel.state.value.path.isEmpty())
+    }
+
+    @Test
+    fun navigationSkipsUnconfiguredAndDeletedLabels() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(9, "Work")))
+            settings.setContextLabelId(0, 7)
+            settings.setContextLabelId(1, 8) // deleted since it was configured
+            settings.setContextLabelId(2, 9)
+        }
+        waitUntil { viewModel.state.value.contextLabelIds == listOf(7L, 8L, 9L) && viewModel.state.value.labels.size == 2 }
+        viewModel.nextContext()
+        waitUntil { viewModel.state.value.contextIndex == 0 }
+        viewModel.nextContext()
+        waitUntil { viewModel.state.value.contextIndex == 2 }
+        viewModel.previousContext()
+        waitUntil { viewModel.state.value.contextIndex == 0 }
+        viewModel.previousContext()
+        waitUntil { !viewModel.state.value.contextScreen }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.isNotEmpty() }
+        viewModel.nextContext()
+        assertFalse(viewModel.state.value.contextScreen)
+        viewModel.navigateHome()
+        waitUntil { viewModel.state.value.path.isEmpty() }
+    }
+
+    @Test
     fun anUnknownProjectOnItsOwnStaysATask() {
         seedProjects()
         waitUntil { tiles().size == 2 }
