@@ -14,6 +14,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -50,7 +51,9 @@ class TaskRepository(
 ) {
     val openTasks: Flow<List<TaskEntity>> = db.tasks().observeOpen()
     val projects: Flow<List<ProjectEntity>> = db.projects().observeAll()
-    val pendingCount: Flow<Int> = db.pendingChanges().observeCount()
+    val pendingCount: Flow<Int> = combine(db.pendingChanges().observeCount(), settings.pendingProjectMarkers) { tasks, projects ->
+        tasks + projects.size
+    }
     val labels: Flow<List<LabelEntity>> = db.labels().observeAll()
     val taskLabels: Flow<List<TaskLabelEntity>> = db.taskLabels().observeAll()
 
@@ -69,14 +72,13 @@ class TaskRepository(
      * Returns the task's (temporary) id, or null when nothing is left of the title.
      */
     suspend fun capture(text: String, description: String? = null, projectId: Long? = null, dueDate: LocalDate? = null): Long? {
-        val projects = db.projects().all()
         val fallback = projectId ?: defaultProjectId() ?: 0
-        val (title, parsedLabels, namedProjectId) = Shopping.parseCapture(text, db.labels().all(), projects, fallback)
+        val shopping = settings.shoppingProjects.first()
+        val (title, parsedLabels, namedProjectId) = Shopping.parse(text, db.labels().all(), db.projects().all(), fallback, shopping)
         if (title.isEmpty()) return null
         val destination = namedProjectId ?: fallback
-        val shopping = destination in Shopping.projectIds(projects)
-        val labelNames = parsedLabels.filterNot { shopping && it.equals("doing", ignoreCase = true) }
-        if (parsedLabels != labelNames) settings.addNotice("Added “$title” without @doing: this project is a shopping list")
+        val labelNames = if (destination in shopping) parsedLabels.filterNot { it.equals("doing", ignoreCase = true) } else parsedLabels
+        if (labelNames.size != parsedLabels.size) settings.addNotice("Added “$title” without @doing: this project is a shopping list")
         val dueAt = dueDate?.let { DueDates.withDate(null, it, clock.zone).toEpochMilli() }
         val id = db.withTransaction {
             val id = minOf(db.tasks().minId() ?: 0, 0) - 1
@@ -125,13 +127,10 @@ class TaskRepository(
             db.tasks().upsert(current.copy(done = false, dueAt = previous.dueAt))
             record(id, fields(DONE to JsonPrimitive(false), DUE_DATE to dueJson(previous.dueAt)))
             val label = db.labels().all().firstOrNull { it.id == doingLabelId }
-            if (label != null) {
-                val shopping = current.projectId in Shopping.projectIds(db.projects().all())
-                recordDoing(id, label, !shopping, required = shopping)
-            }
+            if (label != null && current.projectId !in settings.shoppingProjects.first()) recordDoing(id, label, true)
             true
         }
-        if (written) onLocalChange()
+        if (written) { Shopping.enforce(db, settings); onLocalChange() }
     }
 
     /** Changes only the existing doing label, storing the latest desired membership with the task. */
@@ -140,7 +139,7 @@ class TaskRepository(
         val changed = db.withTransaction {
             val task = db.tasks().get(id) ?: return@withTransaction false
             if (task.done || db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE) return@withTransaction false
-            if (active && task.projectId in Shopping.projectIds(db.projects().all())) return@withTransaction false
+            if (active && task.projectId in settings.shoppingProjects.first()) return@withTransaction false
             val label = Doing.label(db.labels().all()) ?: return@withTransaction false
             if (Doing.contains(db.taskLabels().forTask(id), label) == active) return@withTransaction false
             recordDoing(id, label, active)
@@ -149,25 +148,12 @@ class TaskRepository(
         if (changed) onLocalChange()
     }
 
-    suspend fun enforceShoppingProjects(): Boolean = db.withTransaction {
-        val projects = Shopping.projectIds(db.projects().all())
-        val label = Doing.label(db.labels().all()) ?: return@withTransaction false
-        var changed = false
-        for (task in db.tasks().open()) {
-            if (task.projectId in projects && Doing.contains(db.taskLabels().forTask(task.id), label)) {
-                recordDoing(task.id, label, false, required = true)
-                changed = true
-            }
-        }
-        changed
-    }
-
-    private suspend fun recordDoing(id: Long, label: LabelEntity, active: Boolean, required: Boolean = false) {
+    private suspend fun recordDoing(id: Long, label: LabelEntity, active: Boolean) {
         val names = db.taskLabels().forTask(id).filterNot { it.equals(label.title, ignoreCase = true) }
         db.taskLabels().set(id, names + if (active) listOf(label.title) else emptyList())
         val pending = db.pendingChanges().forTask(id)?.let { PendingChanges.decode(it.fields) }
         val fields = buildJsonObject {
-            put(DOING, buildJsonObject { put("id", label.id); put("active", active); if (required) put("required", true) })
+            put(DOING, buildJsonObject { put("id", label.id); put("active", active) })
             pending?.get(LABELS)?.jsonArray?.let { queued ->
                 put(LABELS, JsonArray(queued.filterNot { it.jsonPrimitive.contentOrNull?.equals(label.title, ignoreCase = true) == true }))
             }
@@ -201,14 +187,12 @@ class TaskRepository(
         val id = idRemap.resolve(taskId)
         val written = db.withTransaction {
             val task = db.tasks().get(id) ?: return@withTransaction false
-            val projects = db.projects().all()
-            val parsed = Shopping.parseCapture(raw, db.labels().all(), projects, task.projectId)
+            val shopping = settings.shoppingProjects.first()
+            val parsed = Shopping.parse(raw, db.labels().all(), db.projects().all(), task.projectId, shopping)
             val newTitle = parsed.title.ifEmpty { task.title }
             val existing = db.taskLabels().forTask(id)
             val projectId = parsed.projectId ?: task.projectId
-            val shopping = projectId in Shopping.projectIds(projects)
-            val added = parsed.labels.filter { name -> existing.none { it.equals(name, ignoreCase = true) } &&
-                !(shopping && name.equals("doing", ignoreCase = true)) }
+            val added = parsed.labels.filter { name -> (projectId !in shopping || !name.equals("doing", ignoreCase = true)) && existing.none { it.equals(name, ignoreCase = true) } }
             val queued = db.pendingChanges().forTask(id)?.let { change ->
                 PendingChanges.decode(change.fields)[LABELS]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }
             }.orEmpty()
@@ -228,10 +212,9 @@ class TaskRepository(
             db.tasks().upsert(task.copy(title = newTitle, projectId = projectId))
             if (added.isNotEmpty()) db.taskLabels().set(id, existing + added)
             record(id, fields)
-            enforceShoppingProjects()
             true
         }
-        if (written) onLocalChange()
+        if (written) { Shopping.enforce(db, settings); onLocalChange() }
     }
 
     /**
@@ -263,6 +246,13 @@ class TaskRepository(
      * Sets the open project's colour locally and queues it for sync. [hexColor] is six hex digits,
      * with or without a leading #, or empty to clear it. Anything else is ignored.
      */
+    suspend fun setShoppingProject(projectId: Long, active: Boolean) {
+        if (db.projects().all().none { it.id == projectId }) return
+        settings.setShoppingProject(projectId, active)
+        if (active) Shopping.enforce(db, settings)
+        onLocalChange()
+    }
+
     suspend fun setProjectColor(projectId: Long, hexColor: String) {
         val hex = normalizeHex(hexColor) ?: return
         val project = db.projects().all().find { it.id == projectId } ?: return
@@ -304,10 +294,9 @@ class TaskRepository(
             val task = db.tasks().get(id) ?: return@withTransaction false
             db.tasks().upsert(update(task))
             record(id, fields)
-            enforceShoppingProjects()
             true
         }
-        if (written) onLocalChange()
+        if (written) { Shopping.enforce(db, settings); onLocalChange() }
     }
 
     private suspend fun record(taskId: Long, fields: JsonObject) {

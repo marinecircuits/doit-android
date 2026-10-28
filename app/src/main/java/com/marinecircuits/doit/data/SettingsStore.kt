@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -13,6 +14,7 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 data class Credentials(val apiBase: HttpUrl, val token: String)
+data class ProjectMarkerChange(val active: Boolean, val revision: Long)
 
 /** Everything the app remembers outside the task database. The token is stored encrypted. */
 class SettingsStore(
@@ -43,6 +45,67 @@ class SettingsStore(
         val key = CONTEXT_LABELS[slot]
         dataStore.edit { prefs -> if (id == null) prefs.remove(key) else prefs[key] = id }
     }
+
+    /** Server markers with offline changes overlaid; the legacy local choice is kept until migrated. */
+    val shoppingProjects: Flow<Set<Long>> = dataStore.data.map { prefs ->
+        val ids = (prefs[SYNCED_SHOPPING_PROJECTS].orEmpty() + prefs[SHOPPING_PROJECTS].orEmpty())
+            .mapNotNull { it.toLongOrNull() }.toMutableSet()
+        for ((id, change) in decodeProjectMarkers(prefs[PROJECT_MARKERS])) {
+            if (change.active) ids.add(id) else ids.remove(id)
+        }
+        ids
+    }
+
+    val pendingProjectMarkers: Flow<Map<Long, ProjectMarkerChange>> = dataStore.data.map { decodeProjectMarkers(it[PROJECT_MARKERS]) }
+
+    suspend fun migrateShoppingProjects() { dataStore.edit { migrateShoppingProjects(it) } }
+
+    private fun migrateShoppingProjects(prefs: androidx.datastore.preferences.core.MutablePreferences) {
+        val pending = decodeProjectMarkers(prefs[PROJECT_MARKERS]).toMutableMap()
+        for (id in prefs[SHOPPING_PROJECTS].orEmpty().mapNotNull { it.toLongOrNull() }) {
+            if (id !in pending) {
+                val revision = (prefs[PROJECT_MARKER_REVISION] ?: 0) + 1
+                prefs[PROJECT_MARKER_REVISION] = revision
+                pending[id] = ProjectMarkerChange(true, revision)
+            }
+        }
+        prefs.remove(SHOPPING_PROJECTS)
+        prefs[PROJECT_MARKERS] = encodeProjectMarkers(pending)
+    }
+
+    suspend fun setSyncedShoppingProjects(ids: Set<Long>) {
+        dataStore.edit { it[SYNCED_SHOPPING_PROJECTS] = ids.map { id -> id.toString() }.toSet() }
+    }
+
+    suspend fun setShoppingProject(id: Long, active: Boolean) {
+        dataStore.edit { prefs ->
+            migrateShoppingProjects(prefs)
+            val pending = decodeProjectMarkers(prefs[PROJECT_MARKERS]).toMutableMap()
+            val revision = (prefs[PROJECT_MARKER_REVISION] ?: 0) + 1
+            prefs[PROJECT_MARKER_REVISION] = revision
+            pending[id] = ProjectMarkerChange(active, revision)
+            prefs[PROJECT_MARKERS] = encodeProjectMarkers(pending)
+        }
+    }
+
+    suspend fun acknowledgeProjectMarker(id: Long, change: ProjectMarkerChange) {
+        dataStore.edit { prefs ->
+            val pending = decodeProjectMarkers(prefs[PROJECT_MARKERS]).toMutableMap()
+            if (pending[id] == change) pending.remove(id)
+            prefs[PROJECT_MARKERS] = encodeProjectMarkers(pending)
+        }
+    }
+
+    private fun decodeProjectMarkers(raw: String?): Map<Long, ProjectMarkerChange> =
+        raw.orEmpty().lineSequence().mapNotNull { line ->
+            val id = line.substringBefore('=', "").toLongOrNull() ?: return@mapNotNull null
+            val value = line.substringAfter('=')
+            val revision = value.substringAfter(':', "").toLongOrNull() ?: return@mapNotNull null
+            id to ProjectMarkerChange(value.substringBefore(':') == "1", revision)
+        }.toMap()
+
+    private fun encodeProjectMarkers(changes: Map<Long, ProjectMarkerChange>) =
+        changes.entries.joinToString("\n") { "${it.key}=${if (it.value.active) 1 else 0}:${it.value.revision}" }
 
     /** Messages about changes the server rejected, kept until the user has seen them. */
     val notices: Flow<List<String>> = dataStore.data.map { prefs ->
@@ -121,6 +184,10 @@ class SettingsStore(
             longPreferencesKey("context_label_id_3"),
         )
         val NOTICES = stringPreferencesKey("notices")
+        val SHOPPING_PROJECTS = stringSetPreferencesKey("shopping_projects")
+        val SYNCED_SHOPPING_PROJECTS = stringSetPreferencesKey("synced_shopping_projects")
+        val PROJECT_MARKERS = stringPreferencesKey("pending_project_markers")
+        val PROJECT_MARKER_REVISION = longPreferencesKey("project_marker_revision")
         val PROJECT_COLORS = stringPreferencesKey("project_colors")
     }
 }

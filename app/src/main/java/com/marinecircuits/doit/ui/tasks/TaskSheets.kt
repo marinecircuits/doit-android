@@ -111,6 +111,7 @@ fun EditSheet(
     task: TaskEntity,
     projects: List<ProjectEntity>,
     labels: List<LabelEntity>,
+    shoppingProjects: Set<Long>,
     today: LocalDate,
     words: DueWords,
     locale: Locale,
@@ -139,7 +140,7 @@ fun EditSheet(
             title = TextFieldValue(savedTitle, TextRange(savedTitle.length))
             return
         }
-        val parsed = Shopping.parseCapture(raw, labels, projects, projectId)
+        val parsed = Shopping.parse(raw, labels, projects, projectId, shoppingProjects)
         val shown = parsed.title.ifEmpty { savedTitle }
         parsed.projectId?.let { projectId = it }
         savedTitle = shown
@@ -221,7 +222,7 @@ fun EditSheet(
                     }
                 }
             }
-            if (onWork != null && projectId !in Shopping.projectIds(projects)) {
+            if (onWork != null && projectId !in shoppingProjects) {
                 TextButton(onClick = onWork) {
                     Text(stringResource(if (working) R.string.stop_working else R.string.start_working))
                 }

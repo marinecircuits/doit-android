@@ -55,6 +55,88 @@ class SyncEngineTest {
     private suspend fun openTitles() = db.tasks().open().map { it.title }.toSet()
 
     @Test
+    fun shoppingSwitchSharesTheMarkerAndPreservesFormattedNotes() = runTest {
+        val notes = "<p>Keep <strong>notes</strong> &amp; links.</p>"
+        fake.projectDescriptions[1] = notes
+        engine.sync()
+        repository.setShoppingProject(1, true)
+        assertEquals(1, repository.pendingCount.first())
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(notes + "<p>doit:type=shopping</p>", fake.projectDescriptions[1])
+        assertEquals(0, repository.pendingCount.first())
+        assertEquals(setOf(1L), settings.shoppingProjects.first())
+        repository.setShoppingProject(1, false)
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(notes, fake.projectDescriptions[1])
+        assertTrue(settings.shoppingProjects.first().isEmpty())
+    }
+
+    @Test
+    fun concurrentDescriptionEditIsRetriedWithoutLosingNotesOrNewToggle() = runTest {
+        fake.projectDescriptions[1] = "<p>Original</p>"
+        engine.sync()
+        repository.setShoppingProject(1, true)
+        var patches = 0
+        fake.intercept = { request ->
+            if (request.method == "PATCH" && request.requestUrl!!.encodedPath == "/api/v2/projects/1") {
+                assertEquals("html", request.getHeader("X-Vikunja-Format"))
+                assertTrue(request.getHeader("If-Match") != null)
+                patches++
+                if (patches == 1) fake.projectDescriptions[1] = "<p>Edited on web</p>"
+                if (patches == 2) runBlocking { repository.setShoppingProject(1, false) }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(3, patches)
+        assertEquals("<p>Edited on web</p>", fake.projectDescriptions[1])
+        assertTrue(settings.pendingProjectMarkers.first().isEmpty())
+        assertTrue(settings.shoppingProjects.first().isEmpty())
+    }
+
+    @Test
+    fun markerPermissionFailureKeepsTheChoiceQueuedUntilRetry() = runTest {
+        engine.sync()
+        repository.setShoppingProject(1, true)
+        fake.projectsUpdatable = false
+        val result = engine.sync()
+        assertTrue(result is SyncResult.ServerError && result.message.contains("read_one and update"))
+        assertEquals(setOf(1L), settings.shoppingProjects.first())
+        assertEquals(1, repository.pendingCount.first())
+        assertFalse(settings.tokenRejected.first())
+        fake.projectsUpdatable = true
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("<p>doit:type=shopping</p>", fake.projectDescriptions[1])
+        assertEquals(0, repository.pendingCount.first())
+    }
+
+    @Test
+    fun shoppingCleanupUploadsDownloadedDoingAndKeepsOtherLabels() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk [two]", projectId = 2, labelIds = mutableListOf(7, 8))
+        settings.setShoppingProject(2, true)
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(7L), fake.tasks[1]!!.labelIds)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(1))
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun shoppingCleanupPermissionFailureRetainsRemovalForRetry() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk", projectId = 2, labelIds = mutableListOf(8))
+        settings.setShoppingProject(2, true)
+        fake.labelsRemovable = false
+        val result = engine.sync()
+        assertTrue(result is SyncResult.ServerError && result.message.contains("Milk"))
+        assertEquals(1, db.pendingChanges().count())
+        fake.labelsRemovable = true
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(fake.tasks[1]!!.labelIds.isEmpty())
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
     fun sharedMarkerIsCachedAndRemoteDoingIsRemovedInSameSync() = runTest {
         fake.projectDescriptions[1] = "<p>Notes</p><p><strong>doit:type=shopping</strong></p>"
         fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
@@ -91,7 +173,7 @@ class SyncEngineTest {
         fake.labels += FakeVikunja.Label(8, "Doing")
         fake.tasks[1] = FakeVikunja.Task(1, "Milk", labelIds = mutableListOf(8))
         fake.labelsRemovable = false
-        assertEquals(SyncResult.MissingPermission, engine.sync())
+        assertTrue(engine.sync() is SyncResult.ServerError)
         assertTrue(db.pendingChanges().forTask(1)!!.fields.contains("\"required\":true"))
         assertTrue(db.taskLabels().forTask(1).isEmpty())
         fake.labelsRemovable = true

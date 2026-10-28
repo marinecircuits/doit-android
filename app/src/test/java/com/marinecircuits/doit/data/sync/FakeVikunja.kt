@@ -6,6 +6,8 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import kotlinx.serialization.json.longOrNull
@@ -68,13 +70,26 @@ class FakeVikunja : Dispatcher() {
                     """{"id":$id,"title":"$title","hex_color":"${projectColors[id].orEmpty()}","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}"""
                 },
             )
+            request.method == "GET" && path.matches(Regex("projects/\\d+")) -> {
+                val id = path.removePrefix("projects/").toLong()
+                val title = projects.find { it.first == id }?.second ?: return json(404, """{"title":"Not Found"}""")
+                json(200, """{"id":$id,"title":"$title","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}""")
+                    .setHeader("ETag", "\"${projectDescriptions[id].orEmpty().hashCode()}\"")
+            }
             request.method == "PATCH" && path.matches(Regex("projects/\\d+")) -> {
                 if (!projectsUpdatable) return json(403, """{"title":"Forbidden","detail":"missing permission to update projects"}""")
                 val id = path.removePrefix("projects/").toLong()
                 val title = projects.find { it.first == id }?.second ?: return json(404, """{"title":"Not Found"}""")
-                val hex = parse(body)["hex_color"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                projectColors[id] = hex
-                json(200, """{"id":$id,"title":"$title","hex_color":"$hex"}""")
+                if (request.getHeader("Content-Type")?.startsWith("application/json-patch+json") == true) {
+                    val patch = VikunjaJson.parseToJsonElement(body).jsonArray
+                    val previous = patch[0].jsonObject.getValue("value").jsonPrimitive.content
+                    if (previous != projectDescriptions[id].orEmpty()) return json(412, """{"title":"Precondition Failed"}""")
+                    projectDescriptions[id] = patch[1].jsonObject.getValue("value").jsonPrimitive.content
+                } else {
+                    projectColors[id] = parse(body)["hex_color"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                }
+                val hex = projectColors[id].orEmpty()
+                json(200, """{"id":$id,"title":"$title","hex_color":"$hex","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}""")
             }
             request.method == "GET" && path == "tasks" -> page(tasks.values.filterNot { it.done }.map(::encode))
             request.method == "GET" && path == "labels" ->

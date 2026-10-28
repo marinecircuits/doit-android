@@ -114,4 +114,8 @@
     <string name="context_disabled">Disable this screen</string>
     <string name="context_not_configured">Not configured</string>
     <string name="context_slot">Screen %1$d: %2$s</string>
+    <string name="project_settings">Project settings</string>
+    <string name="shopping_list">Shopping list</string>
+    <string name="shopping_explanation">Synced using doit:type=shopping in the project description. Subprojects have their own setting. Shopping items cannot be marked doing; existing doing labels are removed when synced.</string>
+    <string name="shopping_quantity_hint">Add a quantity at the end, for example Milk [one carton].</string>
 </resources>

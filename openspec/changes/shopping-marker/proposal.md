@@ -6,6 +6,7 @@ Shopping-list identity must be shared across Doit clients. Vikunja descriptions 
 
 ## What Changes
 
+- Connect the existing Shopping list switch to safe, queued description updates. Migrate previous local choices once, preserve notes and concurrent edits, and retain refused updates.
 - Cache project descriptions and recognize a standalone visible `doit:type=shopping` line, including rich-text paragraphs.
 - Show cart markers and free-text quantity badges, keeping complete task titles for edits and sync.
 - Exclude shopping items from working-state controls and warnings; block doing in capture, edits, moves and undo.
@@ -19,4 +20,4 @@ Shopping-list identity must be shared across Doit clients. Vikunja descriptions 
 
 ## Impact
 
-Android reads the shared marker; users change it in Vikunja or Doit Linux. No new API permissions are needed for recognition. Cleanup uses the existing task-label delete permission. Other clients can still add doing until Doit syncs. The Linux client and Android share parser fixtures. Server-enforced validation and an Android marker editor are outside this change.
+Android and Linux read and write the shared marker; users can also change it in Vikunja. Reading needs no extra permission. The switch needs projects read_one/update and project write access. Cleanup uses the existing task-label delete permission. Other clients can still add doing until Doit syncs. The Linux client and Android share parser fixtures. Server-enforced validation is outside this change.

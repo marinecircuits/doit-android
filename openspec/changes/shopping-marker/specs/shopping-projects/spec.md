@@ -11,6 +11,17 @@ The app SHALL recognize the exact standalone visible line `doit:type=shopping` i
 - **WHEN** a user upgrades from a database without project descriptions
 - **THEN** existing tasks, labels and pending changes survive, descriptions default empty, and sync fills them
 
+### Requirement: Shared marker updates
+The Shopping list switch SHALL queue additions or removals of the description marker, preserve unrelated HTML, and report failures without dropping the choice. Sync SHALL read fresh HTML and use conditional updates to avoid overwriting concurrent edits. Pending choices SHALL remain effective offline and newer toggles SHALL survive acknowledgements. Previous local choices SHALL migrate once into queued updates; sign-out SHALL NOT remove server markers.
+
+#### Scenario: Another editor changes notes
+- **WHEN** notes change between reading and writing the description
+- **THEN** sync fetches the new description and reapplies only the marker change
+
+#### Scenario: Missing project permission
+- **WHEN** the server refuses a marker update
+- **THEN** the choice remains queued and Connected server explains the required project permissions
+
 ### Requirement: Shopping items exclude working state
 Shopping tasks SHALL offer no work controls and SHALL NOT count toward doing warnings or the doing view. Capture and title edits SHALL omit the doing label, and moves or completion undo SHALL NOT restore it. Sync SHALL durably remove doing from cached and downloaded shopping items while preserving other labels, fields and newer intents. Failed required removal SHALL remain queued and report sync failure.
 

@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import okhttp3.HttpUrl
@@ -47,6 +48,24 @@ class VikunjaApi(
     suspend fun currentUser(): UserDto = get(url("user"), UserDto.serializer())
 
     suspend fun projects(): List<ProjectDto> = getAllPages(url("projects"), ProjectDto.serializer())
+
+    suspend fun project(projectId: Long): Pair<ProjectDto, String?> {
+        var etag: String? = null
+        val request = authorized(url("projects/$projectId").newBuilder().addQueryParameter("format", "html").build()).get().build()
+        val project = execute(request, ProjectDto.serializer()) { etag = it["ETag"] }
+        return project to etag
+    }
+
+    suspend fun updateProjectDescription(projectId: Long, previous: String, description: String, etag: String?): ProjectDto {
+        val patch = JsonArray(listOf(
+            buildJsonObject { put("op", "test"); put("path", "/description"); put("value", previous) },
+            buildJsonObject { put("op", "replace"); put("path", "/description"); put("value", description) },
+        ))
+        val request = authorized(url("projects/$projectId")).header("X-Vikunja-Format", "html")
+            .apply { if (etag != null) header("If-Match", etag) }
+            .patch(patch.toString().toRequestBody("application/json-patch+json".toMediaType())).build()
+        return execute(request, ProjectDto.serializer())
+    }
 
     /** JSON merge patch. [fields] uses Vikunja's names, e.g. `hex_color`. */
     suspend fun updateProject(projectId: Long, fields: JsonObject): ProjectDto {
@@ -120,10 +139,11 @@ class VikunjaApi(
             if (token != null) header("Authorization", "Bearer $token")
         }
 
-    private suspend fun <T> execute(request: Request, serializer: KSerializer<T>): T = withContext(Dispatchers.IO) {
+    private suspend fun <T> execute(request: Request, serializer: KSerializer<T>, headers: (okhttp3.Headers) -> Unit = {}): T = withContext(Dispatchers.IO) {
         client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) throw ApiException(response.code, problemText(body))
+            headers(response.headers)
             try {
                 VikunjaJson.decodeFromString(serializer, body)
             } catch (e: SerializationException) {
