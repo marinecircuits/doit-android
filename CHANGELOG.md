@@ -1,3 +1,15 @@
+## 0.20.0 (2026-10-28)
+
+### Feat
+
+- undo recent task actions
+- show release notes in about
+
+### Fix
+
+- correct completed history action
+- register generated release notes directory
+
 ## 0.19.0 (2026-10-28)
 
 ### Feat
