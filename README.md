@@ -40,6 +40,10 @@ Configure up to three **Label screens** from the home menu. Swipe right from hom
 - In a project, choose **Color** from the three-dot menu and pick one of the eight colours, or no colour. The page and the tile change immediately, and the colour is saved to Vikunja on the next sync. The token needs permission to update projects; without it, doit tells you and the previous colour comes back.
 - The app syncs automatically when opened, after local changes, and periodically in the background when a network is available. The main menu's **About & server** shows the latest sync status and any server error details; its menu label marks sync issues. It also shows the app version and configured server address without showing the token. Inside a project the menu only has **Color**.
 
+## Home label shortcuts
+
+The home screen lists all cached labels beneath the project tiles as colored `@name` shortcuts. Tap one to see its tasks across projects, even offline. Projects and labels scroll together; labels without tasks are included.
+
 ## Installing
 
 Release APKs are attached to this repository's GitHub Releases as `doit-<version>.apk`. To get updates automatically, add the repo to [Obtainium](https://github.com/ImranR98/Obtainium). Because the repo is private, Obtainium needs a GitHub personal access token with read access to it.
