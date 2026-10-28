@@ -1,3 +1,15 @@
+## 0.14.0 (2026-10-28)
+
+### Feat
+
+- choose due dates while typing
+- add three configurable label screens
+- show connected server information
+
+### Fix
+
+- do not abandon a release when the pull request build fails
+
 ## 0.13.0 (2026-10-28)
 
 ### Feat
