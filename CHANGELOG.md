@@ -1,3 +1,13 @@
+## 0.19.0 (2026-10-28)
+
+### Feat
+
+- show recent completed and deleted tasks
+
+### Fix
+
+- show server completions ahead of cached open tasks
+
 ## 0.18.1 (2026-10-28)
 
 ### Fix
