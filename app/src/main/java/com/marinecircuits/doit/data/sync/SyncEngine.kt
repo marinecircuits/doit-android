@@ -23,10 +23,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
 
 sealed interface SyncResult {
     data object Synced : SyncResult
@@ -96,11 +98,29 @@ class SyncEngine(
     }
 
     private suspend fun push(api: VikunjaApi) {
+        pushProjectColors(api)
         // A change kept because it was edited mid-flight is sent again on the next turn; the cap only guards
         // against a server that keeps accepting without the queue shrinking.
         repeat(MAX_PUSHES) {
             val change = db.pendingChanges().first() ?: return
             pushOne(api, change)
+        }
+    }
+
+    /** Sends colours chosen in the app. A refusal is reported and dropped; the next pull restores the server colour. */
+    private suspend fun pushProjectColors(api: VikunjaApi) {
+        for ((id, hex) in settings.pendingProjectColors()) {
+            try {
+                val updated = api.updateProject(id, buildJsonObject { put("hex_color", hex) })
+                settings.removePendingProjectColor(id)
+                db.projects().setColor(id, updated.hexColor)
+            } catch (e: ApiException) {
+                if (e.isUnauthorized || e.isTransient) throw e
+                settings.removePendingProjectColor(id)
+                val title = db.projects().all().find { it.id == id }?.title ?: "project"
+                val reason = e.problem ?: "the server refused the change (${e.status})"
+                settings.addNotice("Couldn't set the colour of \u201c$title\u201d: $reason")
+            }
         }
     }
 
@@ -321,8 +341,14 @@ class SyncEngine(
 
         db.withTransaction {
             val generation = db.tasks().maxSyncGeneration() + 1
+            val pendingColors = settings.pendingProjectColors()
             db.projects().clear()
-            db.projects().insertAll(projects.filter { it.id > 0 }.map { it.toEntity() })
+            db.projects().insertAll(
+                projects.filter { it.id > 0 }.map { dto ->
+                    val entity = dto.toEntity()
+                    pendingColors[dto.id]?.let { entity.copy(hexColor = it) } ?: entity
+                },
+            )
             if (labels != null) replaceLabels(labels)
             val pending = db.pendingChanges().all().map { it.taskId }.toSet()
             val pulled = tasks.filter { it.id !in pending }

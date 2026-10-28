@@ -183,6 +183,19 @@ class TaskRepository(
         if (removed) onLocalChange()
     }
 
+    /**
+     * Sets the open project's colour locally and queues it for sync. [hexColor] is six hex digits,
+     * with or without a leading #, or empty to clear it. Anything else is ignored.
+     */
+    suspend fun setProjectColor(projectId: Long, hexColor: String) {
+        val hex = normalizeHex(hexColor) ?: return
+        val project = db.projects().all().find { it.id == projectId } ?: return
+        if (project.hexColor.equals(hex, ignoreCase = true)) return
+        db.projects().setColor(projectId, hex)
+        settings.setPendingProjectColor(projectId, hex)
+        onLocalChange()
+    }
+
     suspend fun move(taskId: Long, projectId: Long) {
         val task = db.tasks().get(idRemap.resolve(taskId)) ?: return
         if (projectId == task.projectId) return
@@ -200,6 +213,13 @@ class TaskRepository(
         }
         if (changed.isEmpty()) return
         write(task.id, changed) { it.copy(title = newTitle, dueAt = dueAt, projectId = projectId) }
+    }
+
+    private fun normalizeHex(hexColor: String): String? {
+        val digits = hexColor.trim().removePrefix("#")
+        if (digits.isEmpty()) return ""
+        if (digits.length != 6 || digits.any { it !in HEX_DIGITS }) return null
+        return digits.lowercase()
     }
 
     private suspend fun write(taskId: Long, fields: JsonObject, update: (TaskEntity) -> TaskEntity) {
@@ -227,6 +247,7 @@ class TaskRepository(
 
         /** Label names; only ever set by a capture, and sent once the task exists on the server. */
         const val LABELS = "labels"
+        private const val HEX_DIGITS = "0123456789abcdefABCDEF"
 
         fun dueJson(dueAt: Long?): JsonElement =
             dueAt?.let { JsonPrimitive(VikunjaDates.format(Instant.ofEpochMilli(it))) } ?: JsonNull

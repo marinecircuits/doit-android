@@ -3,6 +3,7 @@ package com.marinecircuits.doit.ui.tasks
 import com.marinecircuits.doit.ui.tasks.ProjectColors.DARK_TEXT
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ProjectColorsTest {
@@ -22,6 +23,14 @@ class ProjectColorsTest {
     @Test
     fun noColourForEmptyOrUnreadableValues() {
         listOf("", "#", "12345", "1973ffa", "zzzzzz", "e8e8e").forEach { assertNull(it, ProjectColors.tile(it)) }
+    }
+
+    @Test
+    fun paletteColoursStayDistinctOnceLightened() {
+        assertEquals(8, ProjectColors.PALETTE.size)
+        assertTrue(ProjectColors.PALETTE.all { ProjectColors.parse(it) != null && it.length == 6 })
+        val containers = ProjectColors.PALETTE.map { ProjectColors.tile(it)!!.container }
+        assertEquals(containers.size, containers.distinct().size)
     }
 
     @Test

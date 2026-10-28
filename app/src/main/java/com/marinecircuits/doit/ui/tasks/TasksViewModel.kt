@@ -239,6 +239,12 @@ class TasksViewModel(
         }
     }
 
+    /** Sets the colour of the open project. Ignored on the main view and on a label screen. */
+    fun setProjectColor(hexColor: String) {
+        val projectId = state.value.path.lastOrNull()?.id ?: return
+        viewModelScope.launch { repository.setProjectColor(projectId, hexColor) }
+    }
+
     fun complete(task: TaskEntity) {
         completedHere.update { it + (task.id to task) }
         viewModelScope.launch { repository.complete(task.id) }
