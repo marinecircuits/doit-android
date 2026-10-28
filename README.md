@@ -14,7 +14,7 @@ A deliberately small Android app for a self-hosted [Vikunja](https://vikunja.io)
    | Group | Permissions |
    |---|---|
    | tasks | `read_all`, `create`, `update` |
-   | projects | `read_all` |
+   | projects | `read_all`, `update` (`update` is only for setting a project colour) |
    | other | `user` |
    | labels | `read_all` (optional, for `@labels`) |
    | tasks_labels | `create` (optional, for `@labels`) |
@@ -32,6 +32,7 @@ New tasks go to the default project set in Vikunja under **Settings → General*
 - Tap a task's circle or swipe it right to complete it. It stays struck through until you leave the screen; tap the circle again to undo.
 - While the capture box, edit sheet, or share title is focused, **`@`** and **`#`** keys sit above the keyboard. Tapping one inserts that sign at the cursor without closing the keyboard.
 - Swipe left to reschedule, or tap a task to edit its title, date and project. Changes save as you make them; the title saves when you leave its field. `@` and `#` in that title add labels and move the task.
+- In a project, choose **Color** from the three-dot menu and pick one of the eight colours, or no colour. The page and the tile change immediately, and the colour is saved to Vikunja on the next sync. The token needs permission to update projects; without it, doit tells you and the previous colour comes back.
 - Choose **About doit** from the three-dot menu to see the installed app version.
 
 ## Installing

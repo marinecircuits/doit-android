@@ -68,11 +68,40 @@ class SettingsStore(
         dataStore.edit { it.clear() }
     }
 
+    /** Project colours chosen locally and not yet accepted by the server. An empty value clears the colour. */
+    suspend fun pendingProjectColors(): Map<Long, String> = decodeProjectColors(dataStore.data.first()[PROJECT_COLORS])
+
+    suspend fun setPendingProjectColor(projectId: Long, hexColor: String) {
+        dataStore.edit { prefs ->
+            val colors = decodeProjectColors(prefs[PROJECT_COLORS]).toMutableMap()
+            colors[projectId] = hexColor
+            prefs[PROJECT_COLORS] = encodeProjectColors(colors)
+        }
+    }
+
+    suspend fun removePendingProjectColor(projectId: Long) {
+        dataStore.edit { prefs ->
+            val colors = decodeProjectColors(prefs[PROJECT_COLORS]).toMutableMap()
+            if (colors.remove(projectId) == null) return@edit
+            if (colors.isEmpty()) prefs.remove(PROJECT_COLORS) else prefs[PROJECT_COLORS] = encodeProjectColors(colors)
+        }
+    }
+
+    private fun decodeProjectColors(raw: String?): Map<Long, String> =
+        raw.orEmpty().lineSequence().mapNotNull { line ->
+            val id = line.substringBefore('=', "").toLongOrNull() ?: return@mapNotNull null
+            id to line.substringAfter('=')
+        }.toMap()
+
+    private fun encodeProjectColors(colors: Map<Long, String>): String =
+        colors.entries.joinToString("\n") { "${it.key}=${it.value}" }
+
     private companion object {
         val API_BASE = stringPreferencesKey("api_base")
         val TOKEN = stringPreferencesKey("token")
         val TOKEN_REJECTED = booleanPreferencesKey("token_rejected")
         val DEFAULT_PROJECT = longPreferencesKey("default_project_id")
         val NOTICES = stringPreferencesKey("notices")
+        val PROJECT_COLORS = stringPreferencesKey("project_colors")
     }
 }

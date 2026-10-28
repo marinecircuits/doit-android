@@ -64,6 +64,9 @@ interface ProjectDao {
     @Insert
     suspend fun insertAll(projects: List<ProjectEntity>)
 
+    @Query("UPDATE projects SET hexColor = :hexColor WHERE id = :id")
+    suspend fun setColor(id: Long, hexColor: String)
+
     @Query("DELETE FROM projects")
     suspend fun clear()
 }

@@ -27,6 +27,10 @@ class FakeVikunja : Dispatcher() {
 
     val tasks = linkedMapOf<Long, Task>()
     val projects = mutableListOf(1L to "Inbox", 2L to "Work")
+    val projectColors = mutableMapOf<Long, String>()
+
+    /** False: the token may not update projects (403 on that route). */
+    var projectsUpdatable = true
     var defaultProjectId = 1L
     var tokenValid = true
     var userAllowed = true
@@ -55,7 +59,19 @@ class FakeVikunja : Dispatcher() {
             request.method == "GET" && path == "user" ->
                 if (userAllowed) json(200, """{"id":1,"settings":{"default_project_id":$defaultProjectId}}""")
                 else json(401, """{"message":"Unauthorized"}""")
-            request.method == "GET" && path == "projects" -> page(projects.map { (id, title) -> """{"id":$id,"title":"$title"}""" })
+            request.method == "GET" && path == "projects" -> page(
+                projects.map { (id, title) ->
+                    """{"id":$id,"title":"$title","hex_color":"${projectColors[id].orEmpty()}"}"""
+                },
+            )
+            request.method == "PATCH" && path.matches(Regex("projects/\\d+")) -> {
+                if (!projectsUpdatable) return json(403, """{"title":"Forbidden","detail":"missing permission to update projects"}""")
+                val id = path.removePrefix("projects/").toLong()
+                val title = projects.find { it.first == id }?.second ?: return json(404, """{"title":"Not Found"}""")
+                val hex = parse(body)["hex_color"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                projectColors[id] = hex
+                json(200, """{"id":$id,"title":"$title","hex_color":"$hex"}""")
+            }
             request.method == "GET" && path == "tasks" -> page(tasks.values.filterNot { it.done }.map(::encode))
             request.method == "GET" && path == "labels" ->
                 if (labelsReadable) page(labels.map(::encode)) else json(401, """{"message":"Unauthorized"}""")

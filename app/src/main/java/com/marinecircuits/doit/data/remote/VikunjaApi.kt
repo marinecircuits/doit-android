@@ -48,6 +48,12 @@ class VikunjaApi(
 
     suspend fun projects(): List<ProjectDto> = getAllPages(url("projects"), ProjectDto.serializer())
 
+    /** JSON merge patch. [fields] uses Vikunja's names, e.g. `hex_color`. */
+    suspend fun updateProject(projectId: Long, fields: JsonObject): ProjectDto {
+        val request = authorized(url("projects/$projectId")).patch(fields.toString().toRequestBody(MERGE_PATCH)).build()
+        return execute(request, ProjectDto.serializer())
+    }
+
     /** Lists one page of projects; used to check the token during setup. */
     suspend fun firstProjects(): List<ProjectDto> =
         get(url("projects").newBuilder().addQueryParameter("per_page", "1").build(), PageDto.serializer(ProjectDto.serializer())).items

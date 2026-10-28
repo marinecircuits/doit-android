@@ -37,6 +37,9 @@
     <string name="no_projects">No projects yet</string>
     <string name="menu_sync">Sync now</string>
     <string name="menu_sign_out">Sign out</string>
+    <string name="menu_color">Color</string>
+    <string name="project_color_title">Project color</string>
+    <string name="project_color_none">No color</string>
     <string name="empty_list">Nothing to do</string>
     <string name="due_today">today</string>
     <string name="due_tomorrow">tomorrow</string>

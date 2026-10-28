@@ -9,6 +9,21 @@ data class TileColors(val container: Int, val content: Int)
 /** Turns Vikunja's project colours into tile colours. */
 object ProjectColors {
     /**
+     * The colours a project can be set to from the app, as six hex digits without a leading #.
+     * Saturated enough that the lightened tile and page colours stay distinct.
+     */
+    val PALETTE = listOf(
+        "c62828",
+        "ef6c00",
+        "f9a825",
+        "2e7d32",
+        "00897b",
+        "1565c0",
+        "6a1b9a",
+        "ad1457",
+    )
+
+    /**
      * How far each channel moves towards white. 0.75 is about twice as bright as 0.55:
      * a black project becomes grey 191 instead of 140.
      */

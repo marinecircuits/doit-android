@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -66,6 +68,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -124,6 +127,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var rescheduleTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var datePickTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
+    var colorOpen by remember { mutableStateOf(false) }
 
     // Leaving the screen (or the app) is a view change: rows completed here are gone when the user returns.
     LifecycleStartEffect(viewModel) {
@@ -215,6 +219,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onSend = ::capture,
                 onSyncNow = viewModel::refresh,
                 onSignOut = viewModel::requestSignOut,
+                onProjectColor = currentProject?.let { { colorOpen = true } },
                 focusRequester = captureFocus,
             )
             val suggestions = if (captureFocused && captureText.selection.collapsed) {
@@ -340,6 +345,17 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
     }
 
+    if (colorOpen) {
+        ProjectColorDialog(
+            selected = currentProject?.hexColor.orEmpty(),
+            onPick = { hex ->
+                colorOpen = false
+                viewModel.setProjectColor(hex)
+            },
+            onDismiss = { colorOpen = false },
+        )
+    }
+
     rescheduleTarget?.let { task ->
         RescheduleSheet(
             hasDate = task.dueAt != null,
@@ -407,6 +423,7 @@ private fun CaptureBar(
     onSend: () -> Unit,
     onSyncNow: () -> Unit,
     onSignOut: () -> Unit,
+    onProjectColor: (() -> Unit)?,
     focusRequester: FocusRequester,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -444,6 +461,15 @@ private fun CaptureBar(
                 Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.menu))
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                if (onProjectColor != null) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_color)) },
+                        onClick = {
+                            menuOpen = false
+                            onProjectColor()
+                        },
+                    )
+                }
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.menu_sync)) },
                     onClick = {
@@ -476,6 +502,58 @@ private fun CaptureBar(
             confirmButton = { TextButton(onClick = { infoOpen = false }) { Text(stringResource(R.string.ok)) } },
         )
     }
+}
+
+/** The fixed palette, plus no colour. Choosing one closes the dialog. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ProjectColorDialog(selected: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    val current = ProjectColors.parse(selected)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.project_color_title)) },
+        text = {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ProjectColors.PALETTE.forEach { hex ->
+                    ColorSwatch(
+                        hex = hex,
+                        selected = ProjectColors.parse(hex) == current,
+                        onClick = { onPick(hex) },
+                    )
+                }
+                ColorSwatch(
+                    hex = "",
+                    selected = selected.isBlank(),
+                    onClick = { onPick("") },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}
+
+@Composable
+private fun ColorSwatch(hex: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = ProjectColors.tile(hex)
+    val description = if (hex.isEmpty()) stringResource(R.string.project_color_none) else "#$hex"
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(colors?.let { Color(it.container) } ?: Color.Transparent)
+            .border(
+                width = if (selected) 3.dp else 1.dp,
+                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                shape = CircleShape,
+            )
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = description },
+    )
 }
 
 /** Title row of a project screen; the back arrow goes to the parent project or the main view. */

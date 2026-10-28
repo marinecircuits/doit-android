@@ -105,6 +105,30 @@ class SyncEngineTest {
     }
 
     @Test
+    fun projectColourIsSentAndSurvivesTheNextPull() = runTest {
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.setProjectColor(2, "#1565C0")
+        assertEquals("1565c0", db.projects().all().single { it.id == 2L }.hexColor)
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("1565c0", db.projects().all().single { it.id == 2L }.hexColor)
+        assertTrue(settings.pendingProjectColors().isEmpty())
+        assertTrue(fake.requests.any { it.startsWith("PATCH projects/2") && "1565c0" in it })
+    }
+
+    @Test
+    fun refusedProjectColourComesBackFromTheServer() = runTest {
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.setProjectColor(2, "c62828")
+        fake.projectsUpdatable = false
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("", db.projects().all().single { it.id == 2L }.hexColor)
+        assertTrue(settings.pendingProjectColors().isEmpty())
+        assertTrue(settings.notices.first().single().contains("Work"))
+    }
+
+    @Test
     fun pullsLabelsAndTaskLabels() = runTest {
         fake.labels += listOf(FakeVikunja.Label(7, "errand", "e8a33d"), FakeVikunja.Label(9, "15 min"))
         fake.tasks[1] = FakeVikunja.Task(1, "Order capacitors", labelIds = mutableListOf(9, 7))

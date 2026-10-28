@@ -246,6 +246,21 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun settingAProjectColourUpdatesTheOpenProject() {
+        seedProjects()
+        waitUntil { tiles().size == 2 }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 2L }
+
+        viewModel.setProjectColor("#1565C0")
+        waitUntil { viewModel.state.value.path.last().hexColor == "1565c0" }
+        assertEquals("1565c0", viewModel.state.value.projects.single { it.id == 2L }.hexColor)
+
+        viewModel.setProjectColor("")
+        waitUntil { viewModel.state.value.path.last().hexColor.isEmpty() }
+    }
+
+    @Test
     fun navigatingClearsStruckThroughRows() {
         seedProjects()
         waitUntil { tiles().size == 2 }
