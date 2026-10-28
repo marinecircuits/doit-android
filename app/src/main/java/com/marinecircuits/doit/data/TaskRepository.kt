@@ -56,6 +56,9 @@ class TaskRepository(
 
     suspend fun openTasks(): List<TaskEntity> = db.tasks().open()
 
+    /** Resolve a task captured offline after the server assigned its permanent ID. */
+    fun resolveTaskId(id: Long): Long = idRemap.resolve(id)
+
     /** The Vikunja default project if known and usable, otherwise the first non-archived project. */
     suspend fun defaultProjectId(): Long? {
         val projects = db.projects().all().filterNot { it.archived }

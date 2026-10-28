@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -67,6 +69,22 @@ private data class ListInputs(
 )
 
 private data class LabelInputs(val labels: List<LabelEntity>, val byTask: Map<Long, List<String>>)
+private data class LabelViewKey(val labelId: Long, val contextIndex: Int?, val generation: Long)
+private data class ListInputsForView(
+    val inputs: ListInputs,
+    val path: List<Long>,
+    val labels: LabelInputs,
+    val labelId: Long?,
+    val contextIds: List<Long?>,
+    val index: Int?,
+    val generation: Long,
+)
+private data class LabelViewFrame(
+    val key: LabelViewKey? = null,
+    /** IDs and creation times of tasks seen while this label view was open. */
+    val seen: Map<Long, Long> = emptyMap(),
+    val state: TasksUiState? = null,
+)
 
 class TasksViewModel(
     private val repository: TaskRepository,
@@ -92,6 +110,7 @@ class TasksViewModel(
     /** The label opened from the capture box, or null when a project or the main view is showing. */
     private val openLabelId = MutableStateFlow<Long?>(null)
     private val contextIndex = MutableStateFlow<Int?>(null)
+    private val viewGeneration = MutableStateFlow(0L)
 
     private val inputs = combine(
         repository.openTasks,
@@ -105,7 +124,7 @@ class TasksViewModel(
         LabelInputs(labels, taskLabels.groupBy({ it.taskId }, { it.title }))
     }
 
-    private val list = combine(inputs, projectPath, labelInputs, openLabelId, settings.contextLabelIds, contextIndex) { values ->
+    private val viewInputs = combine(inputs, projectPath, labelInputs, openLabelId, settings.contextLabelIds, contextIndex, viewGeneration) { values ->
         val latest = values[0] as ListInputs
         val path = values[1] as List<Long>
         val labels = values[2] as LabelInputs
@@ -115,6 +134,31 @@ class TasksViewModel(
         val index = (values[5] as Int?)?.takeIf { slot ->
             labels.labels.any { it.id == contextIds.getOrNull(slot) }
         }
+        ListInputsForView(latest, path, labels, if (index != null) contextIds[index] else labelId, contextIds, index, values[6] as Long)
+    }
+
+    // Keep tasks already seen in this label view even if their membership changes, until navigation changes the view.
+    private val list = viewInputs.scan(LabelViewFrame()) { previous, current ->
+        val latest = current.inputs
+        val labels = current.labels
+        val label = labels.labels.firstOrNull { it.id == current.labelId }
+        val key = label?.let { LabelViewKey(it.id, current.index, current.generation) }
+        val seen = if (key != null && previous.key == key) previous.seen.toMutableMap() else mutableMapOf()
+        if (label != null) {
+            latest.open.filter { task ->
+                labels.byTask[task.id].orEmpty().any { it.equals(label.title, ignoreCase = true) }
+            }.forEach { task -> seen[task.id] = task.createdAt }
+        }
+        val retained = if (key == null) emptySet() else seen.flatMap { (id, createdAt) ->
+            val resolved = repository.resolveTaskId(id)
+            val task = latest.open.firstOrNull { it.id == resolved }
+            val completed = latest.completed[id]?.task ?: latest.completed[resolved]?.task
+            // Positive server IDs are unique; a reused temporary ID must still be the same captured task.
+            listOfNotNull(
+                resolved.takeIf { task != null && (id != resolved || id > 0 || task.createdAt == createdAt) },
+                completed?.let { saved -> saved.id.takeIf { id != resolved || id > 0 || saved.createdAt == createdAt } },
+            )
+        }.toSet()
         val doing = Doing.label(labels.labels)
         val doingIds = if (doing == null) emptySet() else latest.open.filter { task ->
             Doing.contains(labels.byTask[task.id].orEmpty(), doing)
@@ -123,18 +167,19 @@ class TasksViewModel(
             latest.open.filter { it.id in doingIds }, latest.projects, null, latest.today, clock.zone,
             taskLabels = labels.byTask, labels = labels.labels,
         ).firstOrNull()
-        view(latest, path, labels, if (index != null) contextIds[index] else labelId).copy(
-            contextLabelIds = contextIds,
-            contextIndex = index,
-            contextScreen = index != null,
+        val state = view(latest, current.path, labels, current.labelId, retained).copy(
+            contextLabelIds = current.contextIds,
+            contextIndex = current.index,
+            contextScreen = current.index != null,
             doingLabel = doing,
             doingCount = doingIds.size,
             doingTaskIds = doingIds,
             doingTask = doingTask,
         )
-    }
+        LabelViewFrame(key, seen, state)
+    }.mapNotNull { it.state }
 
-    private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs, labelId: Long?): TasksUiState {
+    private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs, labelId: Long?, retainedIds: Set<Long>): TasksUiState {
         val (open, projects, defaultProjectId, day, completed) = inputs
         val visible = projects.filterNot { it.archived }
         val byId = visible.associateBy { it.id }
@@ -154,7 +199,7 @@ class TasksViewModel(
         val openLabel = labelId?.let { id -> labels.labels.find { it.id == id } }
         if (openLabel != null) {
             val shown = tasks.filter { task ->
-                labelsForMatch[task.id].orEmpty().any { it.equals(openLabel.title, ignoreCase = true) }
+                task.id in retainedIds || labelsForMatch[task.id].orEmpty().any { it.equals(openLabel.title, ignoreCase = true) }
             }
             return TasksUiState(
                 today = day,
@@ -216,10 +261,16 @@ class TasksViewModel(
         completedHere.value = emptyMap()
     }
 
+    /** A screen transition ends the previous label view, including its retained rows. */
+    private fun viewChanged() {
+        viewGeneration.update { it + 1 }
+    }
+
     private val openPath: List<Long> get() = state.value.path.map { it.id }
 
     /** Opens a project shown as a tile in the current view. */
     fun openProject(projectId: Long) {
+        viewChanged()
         contextIndex.value = null
         onLeave()
         openLabelId.value = null
@@ -229,22 +280,26 @@ class TasksViewModel(
     /** Back from a label or project screen: closes the label, or returns to the parent project or the main view. */
     fun navigateUp() {
         if (state.value.contextScreen) {
+            viewChanged()
             onLeave()
             contextIndex.value = null
             return
         }
         if (openLabelId.value != null) {
+            viewChanged()
             onLeave()
             openLabelId.value = null
             return
         }
         if (openPath.isEmpty()) return
+        viewChanged()
         onLeave()
         projectPath.value = openPath.dropLast(1)
     }
 
     fun navigateHome() {
         if (openPath.isEmpty() && openLabelId.value == null && contextIndex.value == null) return
+        viewChanged()
         contextIndex.value = null
         onLeave()
         openLabelId.value = null
@@ -259,6 +314,7 @@ class TasksViewModel(
             current.labels.any { it.id == current.contextLabelIds[slot] }
         }
         val next = active.firstOrNull { it > (current.contextIndex ?: -1) } ?: return
+        viewChanged()
         onLeave()
         contextIndex.value = next
     }
@@ -270,11 +326,13 @@ class TasksViewModel(
         val previous = current.contextLabelIds.indices.lastOrNull { slot ->
             slot < index && current.labels.any { it.id == current.contextLabelIds[slot] }
         }
+        viewChanged()
         onLeave()
         contextIndex.value = previous
     }
 
     fun setContextLabel(slot: Int, id: Long?) {
+        if (state.value.contextIndex == slot && state.value.contextLabelIds.getOrNull(slot) != id) viewChanged()
         if (state.value.contextIndex == slot && id == null) contextIndex.value = null
         viewModelScope.launch { settings.setContextLabelId(slot, id) }
     }
@@ -282,6 +340,7 @@ class TasksViewModel(
     /** Open a cached label's cross-project task list without creating a task. */
     fun openLabel(labelId: Long) {
         if (state.value.labels.none { it.id == labelId }) return
+        if (state.value.openLabel?.id != labelId || state.value.contextScreen) viewChanged()
         contextIndex.value = null
         onLeave()
         projectPath.value = emptyList()
@@ -315,10 +374,12 @@ class TasksViewModel(
         val current = state.value
         when (val destination = CaptureSyntax.destination(text, current.labels, current.projects)) {
             is CaptureSyntax.Destination.Project -> {
+                val target = ProjectTree.pathTo(destination.id, current.projects)
+                if (current.openLabel != null || current.contextScreen || current.path.map { it.id } != target) viewChanged()
                 contextIndex.value = null
                 onLeave()
                 openLabelId.value = null
-                projectPath.value = ProjectTree.pathTo(destination.id, current.projects)
+                projectPath.value = target
             }
             is CaptureSyntax.Destination.Label -> {
                 openLabel(destination.id)
@@ -361,6 +422,7 @@ class TasksViewModel(
     /** Open the cross-project list of tasks bearing the doing label. */
     fun reviewDoing() {
         val label = state.value.doingLabel ?: return
+        if (state.value.openLabel?.id != label.id || state.value.contextScreen) viewChanged()
         onLeave()
         contextIndex.value = null
         projectPath.value = emptyList()
