@@ -61,15 +61,17 @@ class SyncEngineTest {
         db.projects().insertAll(listOf(com.marinecircuits.doit.data.local.ProjectEntity(7, "Firmware", false, 0.0, 2)))
         fake.intercept = { request ->
             if (request.method == "POST" && request.requestUrl!!.encodedPath == "/api/v2/projects") {
-                val body = com.marinecircuits.doit.data.remote.VikunjaJson.decodeFromString<kotlinx.serialization.json.JsonObject>(request.body.readUtf8())
-                assertEquals(kotlinx.serialization.json.JsonPrimitive(7), body["parent_project_id"])
-                assertEquals(kotlinx.serialization.json.JsonPrimitive("Drivers"), body["title"])
                 okhttp3.mockwebserver.MockResponse().setResponseCode(201).setBody(
                     """{"id":8,"title":"Drivers","parent_project_id":7}"""
                 )
             } else null
         }
         engine.createSubproject(7, "  Drivers  ")
+        // The fake records and consumes the body before calling its interceptor.
+        val requestBody = fake.requests.single { it.startsWith("POST projects ") }.removePrefix("POST projects ")
+        val body = com.marinecircuits.doit.data.remote.VikunjaJson.decodeFromString<kotlinx.serialization.json.JsonObject>(requestBody)
+        assertEquals(kotlinx.serialization.json.JsonPrimitive(7), body["parent_project_id"])
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("Drivers"), body["title"])
         val child = db.projects().all().single { it.id == 8L }
         assertEquals(7L, child.parentProjectId)
         assertEquals("Drivers", child.title)
