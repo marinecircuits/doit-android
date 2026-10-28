@@ -1,3 +1,13 @@
+## 0.21.0 (2026-10-28)
+
+### Feat
+
+- show complete release history
+
+### Fix
+
+- disable task swipe actions
+
 ## 0.20.0 (2026-10-28)
 
 ### Feat
