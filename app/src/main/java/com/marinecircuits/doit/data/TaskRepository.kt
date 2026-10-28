@@ -96,18 +96,61 @@ class TaskRepository(
     }
 
     suspend fun complete(taskId: Long) {
-        write(taskId, fields(DONE to JsonPrimitive(true))) { it.copy(done = true) }
+        val id = idRemap.resolve(taskId)
+        val written = db.withTransaction {
+            val task = db.tasks().get(id) ?: return@withTransaction false
+            if (task.done || db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE) return@withTransaction false
+            val label = Doing.label(db.labels().all())
+            if (label != null && Doing.contains(db.taskLabels().forTask(id), label)) recordDoing(id, label, false)
+            db.tasks().upsert(task.copy(done = true))
+            record(id, fields(DONE to JsonPrimitive(true)))
+            true
+        }
+        if (written) onLocalChange()
     }
 
     /** Reopens a task exactly as it was before it was completed, even if the sync already removed it. */
-    suspend fun undoComplete(previous: TaskEntity) {
+    suspend fun undoComplete(previous: TaskEntity, labels: List<String>? = null, doingLabelId: Long? = null) {
         val id = idRemap.resolve(previous.id)
-        db.withTransaction {
-            val current = db.tasks().get(id) ?: previous.copy(id = id)
+        val written = db.withTransaction {
+            if (db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE) return@withTransaction false
+            val existing = db.tasks().get(id)
+            val current = existing ?: previous.copy(id = id)
+            if (existing == null && labels != null) db.taskLabels().set(id, labels)
             db.tasks().upsert(current.copy(done = false, dueAt = previous.dueAt))
             record(id, fields(DONE to JsonPrimitive(false), DUE_DATE to dueJson(previous.dueAt)))
+            val label = db.labels().all().firstOrNull { it.id == doingLabelId }
+            if (label != null) recordDoing(id, label, true)
+            true
         }
-        onLocalChange()
+        if (written) onLocalChange()
+    }
+
+    /** Changes only the existing doing label, storing the latest desired membership with the task. */
+    suspend fun setDoing(taskId: Long, active: Boolean) {
+        val id = idRemap.resolve(taskId)
+        val changed = db.withTransaction {
+            val task = db.tasks().get(id) ?: return@withTransaction false
+            if (task.done || db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE) return@withTransaction false
+            val label = Doing.label(db.labels().all()) ?: return@withTransaction false
+            if (Doing.contains(db.taskLabels().forTask(id), label) == active) return@withTransaction false
+            recordDoing(id, label, active)
+            true
+        }
+        if (changed) onLocalChange()
+    }
+
+    private suspend fun recordDoing(id: Long, label: LabelEntity, active: Boolean) {
+        val names = db.taskLabels().forTask(id).filterNot { it.equals(label.title, ignoreCase = true) }
+        db.taskLabels().set(id, names + if (active) listOf(label.title) else emptyList())
+        val pending = db.pendingChanges().forTask(id)?.let { PendingChanges.decode(it.fields) }
+        val fields = buildJsonObject {
+            put(DOING, buildJsonObject { put("id", label.id); put("active", active) })
+            pending?.get(LABELS)?.jsonArray?.let { queued ->
+                put(LABELS, JsonArray(queued.filterNot { it.jsonPrimitive.contentOrNull?.equals(label.title, ignoreCase = true) == true }))
+            }
+        }
+        record(id, fields)
     }
 
     /** Sets the due date to [date] (keeping the time of day, see [DueDates.withDate]) or clears it. */
@@ -144,12 +187,17 @@ class TaskRepository(
             val queued = db.pendingChanges().forTask(id)?.let { change ->
                 PendingChanges.decode(change.fields)[LABELS]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }
             }.orEmpty()
+            val doing = Doing.label(db.labels().all())
+            val supersedesDoing = doing != null && added.any { it.equals(doing.title, ignoreCase = true) } &&
+                db.pendingChanges().forTask(id)?.let { DOING in PendingChanges.decode(it.fields) } == true
             val fields = buildJsonObject {
                 if (newTitle != task.title) put(TITLE, newTitle)
                 if (projectId != task.projectId) put(PROJECT_ID, projectId)
                 if (added.isNotEmpty()) {
-                    put(LABELS, JsonArray((queued + added).distinctBy { it.lowercase() }.map { JsonPrimitive(it) }))
+                    val names = (queued + added).distinctBy { it.lowercase() }
+                    put(LABELS, JsonArray(names.filterNot { supersedesDoing && it.equals(doing?.title, ignoreCase = true) }.map { JsonPrimitive(it) }))
                 }
+                if (supersedesDoing && doing != null) put(DOING, buildJsonObject { put("id", doing.id); put("active", true) })
             }
             if (fields.isEmpty()) return@withTransaction false
             db.tasks().upsert(task.copy(title = newTitle, projectId = projectId))
@@ -249,6 +297,8 @@ class TaskRepository(
 
         /** Label names; only ever set by a capture, and sent once the task exists on the server. */
         const val LABELS = "labels"
+        /** Desired membership of the existing doing label, sent only through task-label routes. */
+        const val DOING = "_doing"
         private const val HEX_DIGITS = "0123456789abcdefABCDEF"
 
         fun dueJson(dueAt: Long?): JsonElement =

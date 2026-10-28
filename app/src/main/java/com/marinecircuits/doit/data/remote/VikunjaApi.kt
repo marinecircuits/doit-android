@@ -76,6 +76,17 @@ class VikunjaApi(
         execute(authorized(url("tasks/$taskId/labels")).post(body).build(), JsonObject.serializer())
     }
 
+    /** Removes one task-label association; Vikunja may return an empty response. */
+    suspend fun removeLabel(taskId: Long, labelId: Long) {
+        val request = authorized(url("tasks/$taskId/labels/$labelId")).delete().build()
+        withContext(Dispatchers.IO) {
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw ApiException(response.code, problemText(body))
+            }
+        }
+    }
+
     /** Gone already (404) is reported as [ApiException.isNotFound]; the caller treats that as success. */
     suspend fun deleteTask(taskId: Long) {
         execute(authorized(url("tasks/$taskId")).delete().build(), JsonObject.serializer())

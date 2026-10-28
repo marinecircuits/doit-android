@@ -91,6 +91,16 @@ class VikunjaApiTest {
     }
 
     @Test
+    fun removeLabelTargetsTheAssociationAndAcceptsEmptyResponse() = runTest {
+        server.enqueue(MockResponse().setResponseCode(204))
+        api.removeLabel(9, 8)
+        val request = server.takeRequest()
+        assertEquals("DELETE", request.method)
+        assertEquals("/api/v2/tasks/9/labels/8", request.requestUrl!!.encodedPath)
+        assertEquals("Bearer tk_test", request.getHeader("Authorization"))
+    }
+
+    @Test
     fun errorsCarryStatusAndProblemDetail() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(422).setHeader("Content-Type", "application/problem+json")

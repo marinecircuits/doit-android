@@ -245,6 +245,29 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun doingCountReviewAndCompletionUndoPreserveWorkingState() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Doing")))
+            db.taskLabels().set(10, listOf("Doing"))
+            db.taskLabels().set(11, listOf("Errand"))
+        }
+        waitUntil { viewModel.state.value.doingCount == 1 && row(11) != null }
+        viewModel.setDoing(row(11)!!.task, true)
+        waitUntil { viewModel.state.value.doingCount == 2 }
+        assertEquals(setOf(10L, 11L), viewModel.state.value.doingTaskIds)
+        viewModel.reviewDoing()
+        waitUntil { viewModel.state.value.openLabel?.id == 8L && viewModel.state.value.rows.size == 2 }
+        val task = row(11)!!.task
+        viewModel.complete(task)
+        waitUntil { row(11)?.completed == true && viewModel.state.value.doingCount == 1 }
+        assertFalse(row(11)!!.labels.any { it.title.equals("doing", ignoreCase = true) })
+        viewModel.uncomplete(task)
+        waitUntil { row(11)?.completed == false && viewModel.state.value.doingCount == 2 }
+        assertTrue(row(11)!!.labels.any { it.title == "Doing" })
+    }
+
+    @Test
     fun configuredLabelScreensNavigateInOrderAndHomeReturnsDirectly() {
         seedProjects()
         runBlocking {
