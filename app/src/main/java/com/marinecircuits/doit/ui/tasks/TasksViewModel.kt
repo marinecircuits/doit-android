@@ -52,6 +52,8 @@ data class TasksUiState(
     val doingLabel: LabelEntity? = null,
     val doingCount: Int = 0,
     val doingTaskIds: Set<Long> = emptySet(),
+    /** The first open doing task in the app's normal task order, across all projects. */
+    val doingTask: TaskRow? = null,
 )
 
 private data class CompletedSnapshot(val task: TaskEntity, val labels: List<String>, val doingLabelId: Long?)
@@ -117,6 +119,10 @@ class TasksViewModel(
         val doingIds = if (doing == null) emptySet() else latest.open.filter { task ->
             Doing.contains(labels.byTask[task.id].orEmpty(), doing)
         }.mapTo(HashSet()) { it.id }
+        val doingTask = TaskListModel.rows(
+            latest.open.filter { it.id in doingIds }, latest.projects, null, latest.today, clock.zone,
+            taskLabels = labels.byTask, labels = labels.labels,
+        ).firstOrNull()
         view(latest, path, labels, if (index != null) contextIds[index] else labelId).copy(
             contextLabelIds = contextIds,
             contextIndex = index,
@@ -124,6 +130,7 @@ class TasksViewModel(
             doingLabel = doing,
             doingCount = doingIds.size,
             doingTaskIds = doingIds,
+            doingTask = doingTask,
         )
     }
 
