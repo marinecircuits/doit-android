@@ -1,3 +1,9 @@
+## 0.18.1 (2026-10-28)
+
+### Fix
+
+- retain tasks in label view until navigation
+
 ## 0.18.0 (2026-10-28)
 
 ### Feat
