@@ -4,6 +4,7 @@ package com.marinecircuits.doit.ui.tasks
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
@@ -73,6 +74,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -115,9 +117,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     )
     val snackbarHostState = remember { SnackbarHostState() }
     val openLabel = state.openLabel
+    val isContext = state.contextScreen
+    var labelPickerOpen by remember { mutableStateOf(false) }
     val currentProject = state.path.lastOrNull()
     // Each view starts at the top of its own list.
-    val listState = key(currentProject?.id to openLabel?.id) { rememberLazyListState() }
+    val listState = key(Triple(currentProject?.id, openLabel?.id, isContext)) { rememberLazyListState() }
     val captureFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -129,13 +133,17 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var colorOpen by remember { mutableStateOf(false) }
 
+    if (labelPickerOpen) {
+        ContextLabelPicker(state.labels, state.contextLabelId, viewModel::setContextLabel) { labelPickerOpen = false }
+    }
+
     // Leaving the screen (or the app) is a view change: rows completed here are gone when the user returns.
     LifecycleStartEffect(viewModel) {
         viewModel.onForeground()
         onStopOrDispose { viewModel.onLeave() }
     }
 
-    BackHandler(enabled = openLabel != null || currentProject != null) { viewModel.navigateUp() }
+    BackHandler(enabled = isContext || openLabel != null || currentProject != null) { viewModel.navigateUp() }
 
     LaunchedEffect(focusCaptureRequests) {
         if (focusCaptureRequests > 0) {
@@ -206,8 +214,22 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         contentWindowInsets = WindowInsets(0),
         snackbarHost = { SnackbarHost(snackbarHostState, Modifier.navigationBarsPadding().imePadding()) },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).imePadding()) {
-            val headerTitle = openLabel?.title ?: currentProject?.title
+        Column(Modifier.fillMaxSize().padding(padding).imePadding().pointerInput(isContext, state.contextLabelId, currentProject, openLabel) {
+            var drag = 0f
+            detectHorizontalDragGestures(
+                onDragStart = { drag = 0f },
+                onDragEnd = {
+                    if (drag < -100f && !isContext) viewModel.openContext()
+                    if (drag > 100f && isContext) viewModel.closeContext()
+                    drag = 0f
+                },
+                onHorizontalDrag = { change, amount ->
+                    drag += amount
+                    if ((isContext || (currentProject == null && openLabel == null)) && kotlin.math.abs(drag) > 12f) change.consume()
+                },
+            )
+        }) {
+            val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else currentProject?.title
             headerTitle?.let { ProjectHeader(it, onBack = viewModel::navigateUp) }
             CaptureBar(
                 hint = currentProject?.let { stringResource(R.string.capture_hint_project, it.title) }
@@ -219,6 +241,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onSend = ::capture,
                 onSyncNow = viewModel::refresh,
                 onSignOut = viewModel::requestSignOut,
+                onConfigureContext = { labelPickerOpen = true },
+                showContextOption = currentProject == null && (openLabel == null || isContext),
                 onProjectColor = currentProject?.let { { colorOpen = true } },
                 focusRequester = captureFocus,
             )
@@ -414,6 +438,25 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
 }
 
 @Composable
+private fun ContextLabelPicker(labels: List<com.marinecircuits.doit.data.local.LabelEntity>, selected: Long?, onSelect: (Long?) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.menu_context_label)) },
+        text = {
+            LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                item { TextButton(onClick = { onSelect(null); onDismiss() }) { Text(stringResource(R.string.context_disabled)) } }
+                items(labels, key = { it.id }) { label ->
+                    TextButton(onClick = { onSelect(label.id); onDismiss() }, modifier = Modifier.fillMaxWidth()) {
+                        Text((if (selected == label.id) "✓ " else "") + label.title)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+@Composable
 private fun CaptureBar(
     hint: String,
     belowStatusBar: Boolean,
@@ -423,6 +466,8 @@ private fun CaptureBar(
     onSend: () -> Unit,
     onSyncNow: () -> Unit,
     onSignOut: () -> Unit,
+    onConfigureContext: () -> Unit,
+    showContextOption: Boolean,
     onProjectColor: (() -> Unit)?,
     focusRequester: FocusRequester,
 ) {
@@ -461,6 +506,12 @@ private fun CaptureBar(
                 Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.menu))
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                if (showContextOption) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.menu_context_label)) },
+                        onClick = { menuOpen = false; onConfigureContext() },
+                    )
+                }
                 if (onProjectColor != null) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_color)) },
