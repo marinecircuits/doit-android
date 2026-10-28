@@ -63,7 +63,7 @@ class DatabaseMigrationTest {
             execSQL("INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration) VALUES (-1, 'Milk [one carton]', NULL, 7, 0, 5, 0)")
             execSQL("INSERT INTO pending_changes (taskId, kind, fields, revision) VALUES (-1, 'create', '{\"title\":\"Milk [one carton]\"}', 0)")
             execSQL("INSERT INTO labels (id, title, hexColor) VALUES (8, 'Doing', '')")
-            execSQL("INSERT INTO task_labels (taskId, title) VALUES (-1, 'Doing')")
+            execSQL("INSERT INTO task_labels (taskId, title, position) VALUES (-1, 'Doing', 0)")
         }
         upgrade { upgraded ->
             assertEquals("", upgraded.projects().all().single().description)

@@ -13,7 +13,6 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -27,6 +26,7 @@ class ShoppingMarkerTest {
             val test = item.jsonObject
             val description = test.getValue("description").jsonPrimitive.content
             assertEquals(description, test.getValue("shopping").jsonPrimitive.boolean, Shopping.isProject(description))
+            assertFalse(description, Shopping.isProject(Shopping.withMarker(description, false)))
         }
     }
 

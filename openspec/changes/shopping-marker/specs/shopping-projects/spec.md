@@ -20,7 +20,7 @@ The Shopping list switch SHALL queue additions or removals of the description ma
 
 #### Scenario: Missing project permission
 - **WHEN** the server refuses a marker update
-- **THEN** the choice remains queued and Connected server explains the required project permissions
+- **THEN** the choice remains queued and About & server explains the required project permissions
 
 ### Requirement: Shopping items exclude working state
 Shopping tasks SHALL offer no work controls and SHALL NOT count toward doing warnings or the doing view. Capture and title edits SHALL omit the doing label, and moves or completion undo SHALL NOT restore it. Sync SHALL durably remove doing from cached and downloaded shopping items while preserving other labels, fields and newer intents. Failed required removal SHALL remain queued and report sync failure.
