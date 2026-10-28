@@ -12,7 +12,7 @@
     <string name="setup_token_hint">tk_…</string>
     <string name="setup_connect">Connect</string>
     <string name="setup_permissions_title">Create the token in Vikunja under Settings → API Tokens with these permissions:</string>
-    <string name="setup_permissions">• tasks: read_all, create, update, delete\n• projects: read_all\n• other: user\n• for @labels (optional): labels: read_all, tasks_labels: create\n• for @doing: tasks_labels: delete</string>
+    <string name="setup_permissions">• tasks: read_all, create, update, delete\n• projects: read_all\n• for shopping settings: projects: read_one, update\n• other: user\n• for @labels (optional): labels: read_all, tasks_labels: create\n• for @doing: tasks_labels: delete</string>
     <string name="setup_error_blank_url">Enter your server address.</string>
     <string name="setup_error_http">HTTPS is required. Use an https:// address.</string>
     <string name="setup_error_invalid_url">That doesn\'t look like a web address.</string>

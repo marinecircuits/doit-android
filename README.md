@@ -14,7 +14,7 @@ A deliberately small Android app for a self-hosted [Vikunja](https://vikunja.io)
    | Group | Permissions |
    |---|---|
    | tasks | `read_all`, `create`, `update` |
-   | projects | `read_all`, `update` (`update` is only for setting a project colour) |
+   | projects | `read_all`; `update` for colours; `read_one`, `update` for shopping settings |
    | other | `user` |
    | labels | `read_all` (optional, for `@labels`) |
    | tasks_labels | `create`, `delete` (optional, for `@labels` and `@doing`) |
