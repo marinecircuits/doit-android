@@ -1,3 +1,9 @@
+## 0.18.0 (2026-10-28)
+
+### Feat
+
+- support local shopping list projects
+
 ## 0.17.0 (2026-10-28)
 
 ### Feat
