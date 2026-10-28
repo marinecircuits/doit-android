@@ -288,6 +288,22 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun shoppingProjectsAreExcludedFromDoingViewsAndCounts() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(8, "Doing")))
+            db.taskLabels().set(10, listOf("Doing"))
+            db.taskLabels().set(11, listOf("Doing"))
+            settings.setShoppingProject(2, true)
+        }
+        waitUntil { viewModel.state.value.shoppingProjects == setOf(2L) && viewModel.state.value.doingCount == 1 }
+        assertEquals(setOf(10L), viewModel.state.value.doingTaskIds)
+        viewModel.reviewDoing()
+        waitUntil { viewModel.state.value.openLabel?.id == 8L }
+        assertEquals(listOf(10L), viewModel.state.value.rows.map { it.task.id })
+    }
+
+    @Test
     fun doingCountReviewAndCompletionUndoPreserveWorkingState() {
         seedProjects()
         runBlocking {
