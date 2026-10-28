@@ -1,6 +1,7 @@
 package com.marinecircuits.doit.ui.tasks
 
 import com.marinecircuits.doit.data.DueDates
+import com.marinecircuits.doit.data.Shopping
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
@@ -24,6 +25,9 @@ data class TaskRow(
     val completed: Boolean = false,
     /** Shown as chips under the title. */
     val labels: List<LabelChip> = emptyList(),
+    val shopping: Boolean = false,
+    val displayTitle: String = task.title,
+    val quantity: String? = null,
 )
 
 /** A label on a row; [hexColor] is empty for a label without a colour or one the app doesn't know. */
@@ -45,19 +49,26 @@ object TaskListModel {
         labels: List<LabelEntity> = emptyList(),
     ): List<TaskRow> {
         val titles = projects.associate { it.id to it.title }
+        val shopping = Shopping.projectIds(projects)
         val colors = labels.reversed().associate { it.title.lowercase() to it.hexColor } // the first of equal names wins
         val (dated, undated) = tasks.partition { it.dueAt != null }
         val ordered = dated.sortedWith(compareBy<TaskEntity> { it.dueAt }.thenBy { it.id }) +
             undated.sortedWith(compareByDescending<TaskEntity> { it.createdAt }.thenBy { it.id })
         return ordered.map { task ->
             val dueDate = task.dueAt?.let { DueDates.localDate(it, zone) }
+            val isShopping = task.projectId in shopping
+            val (name, amount) = if (isShopping) Shopping.item(task.title) else task.title to null
             TaskRow(
                 task = task,
                 dueDate = dueDate,
                 overdue = !task.done && dueDate != null && dueDate < today,
                 projectTitle = titles[task.projectId]?.takeIf { task.projectId != defaultProjectId },
                 completed = task.done,
-                labels = taskLabels[task.id].orEmpty().map { LabelChip(it, colors[it.lowercase()].orEmpty()) },
+                labels = taskLabels[task.id].orEmpty().filterNot { isShopping && it.equals("doing", ignoreCase = true) }
+                    .map { LabelChip(it, colors[it.lowercase()].orEmpty()) },
+                shopping = isShopping,
+                displayTitle = name,
+                quantity = amount,
             )
         }
     }

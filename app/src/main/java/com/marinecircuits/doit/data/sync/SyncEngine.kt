@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.marinecircuits.doit.data.Credentials
 import com.marinecircuits.doit.data.IdRemap
 import com.marinecircuits.doit.data.SettingsStore
+import com.marinecircuits.doit.data.Shopping
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.DoitDatabase
 import com.marinecircuits.doit.data.local.LabelEntity
@@ -16,6 +17,7 @@ import com.marinecircuits.doit.data.remote.TaskDto
 import com.marinecircuits.doit.data.remote.VikunjaApi
 import com.marinecircuits.doit.data.remote.VikunjaDates
 import java.io.IOException
+import java.time.Clock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,6 +42,8 @@ sealed interface SyncResult {
     data object Offline : SyncResult
     data class ServerError(val message: String) : SyncResult
 }
+
+private class ShoppingCleanupException(val permission: Boolean, message: String) : Exception(message)
 
 /**
  * Sends pending changes in order, then replaces local data with the server's open tasks, projects and labels.
@@ -74,13 +78,31 @@ class SyncEngine(
         val api = apiFor(credentials)
         labelsRefetched = false
         return try {
+            refreshProjects(api)
+            val repository = TaskRepository(db, settings, idRemap, Clock.systemDefaultZone()) {}
+            repository.enforceShoppingProjects()
             push(api)
             pull(api)
+            if (repository.enforceShoppingProjects()) push(api)
             SyncResult.Synced
+        } catch (e: ShoppingCleanupException) {
+            if (e.permission) SyncResult.MissingPermission else SyncResult.ServerError(e.message.orEmpty())
         } catch (e: ApiException) {
             if (e.isUnauthorized) unauthorized(api) else SyncResult.ServerError(e.message.orEmpty())
         } catch (e: IOException) {
             SyncResult.Offline
+        }
+    }
+
+    private suspend fun refreshProjects(api: VikunjaApi) {
+        val projects = api.projects()
+        val colors = settings.pendingProjectColors()
+        db.withTransaction {
+            db.projects().clear()
+            db.projects().insertAll(projects.filter { it.id > 0 }.map { dto ->
+                val entity = dto.toEntity()
+                colors[dto.id]?.let { entity.copy(hexColor = it) } ?: entity
+            })
         }
     }
 
@@ -228,6 +250,18 @@ class SyncEngine(
                 }
             }
         } catch (e: ApiException) {
+            val current = db.pendingChanges().get(change.seq)
+            val task = db.tasks().get(change.taskId)
+            val required = intent["required"]?.jsonPrimitive?.booleanOrNull == true && task != null &&
+                task.projectId in Shopping.projectIds(db.projects().all()) && current != null &&
+                current.kind != PendingChangeEntity.DELETE && PendingChanges.decode(current.fields)[TaskRepository.DOING] == intent
+            if (required && !e.isNotFound && !e.isTransient) {
+                val permission = e.isUnauthorized || e.isForbidden
+                if (permission) api.tokenTest()
+                val message = "Couldn't remove @doing from shopping item “${task?.title}”. Removal is still queued."
+                settings.addNotice(message)
+                throw ShoppingCleanupException(permission, message)
+            }
             when {
                 e.isNotFound -> return reject(change, e)
                 e.isUnauthorized || e.isForbidden -> {
@@ -430,6 +464,6 @@ class SyncEngine(
             syncGeneration = generation,
         )
 
-        fun ProjectDto.toEntity() = ProjectEntity(id, title, isArchived, position, parentProjectId, hexColor)
+        fun ProjectDto.toEntity() = ProjectEntity(id, title, isArchived, position, parentProjectId, hexColor, description)
     }
 }

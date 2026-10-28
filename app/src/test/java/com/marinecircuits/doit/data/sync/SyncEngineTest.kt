@@ -55,6 +55,52 @@ class SyncEngineTest {
     private suspend fun openTitles() = db.tasks().open().map { it.title }.toSet()
 
     @Test
+    fun sharedMarkerIsCachedAndRemoteDoingIsRemovedInSameSync() = runTest {
+        fake.projectDescriptions[1] = "<p>Notes</p><p><strong>doit:type=shopping</strong></p>"
+        fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk [one carton]", labelIds = mutableListOf(7, 8))
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(fake.projectDescriptions[1], db.projects().all().first { it.id == 1L }.description)
+        assertEquals(listOf(7L), fake.tasks[1]!!.labelIds)
+        assertEquals("Milk [one carton]", fake.tasks[1]!!.title)
+        assertEquals(0, db.pendingChanges().count())
+        repository.setDoing(1, true)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(1))
+        fake.projectDescriptions[1] = "<p>Notes</p>"
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.setDoing(1, true)
+        assertEquals(listOf("Errand", "Doing"), db.taskLabels().forTask(1))
+    }
+
+    @Test
+    fun remoteMarkerBlocksQueuedStartBeforeUpload() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk")
+        engine.sync()
+        repository.setDoing(1, true)
+        fake.projectDescriptions[1] = "<p>doit:type=shopping</p>"
+        fake.requests.clear()
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertFalse(fake.requests.any { it.startsWith("POST tasks/1/labels") })
+        assertTrue(fake.tasks[1]!!.labelIds.isEmpty())
+    }
+
+    @Test
+    fun requiredCleanupRetainsIntentWhenPermissionIsMissing() = runTest {
+        fake.projectDescriptions[1] = "<p>doit:type=shopping</p>"
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk", labelIds = mutableListOf(8))
+        fake.labelsRemovable = false
+        assertEquals(SyncResult.MissingPermission, engine.sync())
+        assertTrue(db.pendingChanges().forTask(1)!!.fields.contains("\"required\":true"))
+        assertTrue(db.taskLabels().forTask(1).isEmpty())
+        fake.labelsRemovable = true
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(fake.tasks[1]!!.labelIds.isEmpty())
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
     fun doingStartAndStopPreserveOtherLabels() = runTest {
         fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
         fake.tasks[1] = FakeVikunja.Task(1, "Work on it", labelIds = mutableListOf(7))

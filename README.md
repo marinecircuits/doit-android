@@ -40,6 +40,14 @@ Configure up to three **Label screens** from the home menu. Swipe right from hom
 - In a project, choose **Color** from the three-dot menu and pick one of the eight colours, or no colour. The page and the tile change immediately, and the colour is saved to Vikunja on the next sync. The token needs permission to update projects; without it, doit tells you and the previous colour comes back.
 - The app syncs automatically when opened, after local changes, and periodically in the background when a network is available. The main menu's **About & server** shows the latest sync status and any server error details; its menu label marks sync issues. It also shows the app version and configured server address without showing the token. Inside a project the menu only has **Color**.
 
+## Shopping lists
+
+Projects whose description contains **`doit:type=shopping` on its own line** are shopping lists. Add or remove the line in Vikunja's project editor or with Doit Linux's Shopping list switch. The marker is shared through the server, cached for offline use, and applies only to that project's tasks; subprojects are independent. A cart marks shopping tiles and headers. Android recognizes the shared setting; its project menu still manages color only.
+
+Shopping items cannot be marked doing: work controls disappear, capture and title edits omit `@doing`, moves and completion undo cannot restore it, and sync removes doing downloaded from another client. Other labels are preserved. Refused cleanup remains queued and is reported as a sync failure. Vikunja's web app can still add the label; Doit removes it on its next sync.
+
+A title such as **`Milk [one carton]`** shows Milk with a separate quantity badge in shopping project and label views. Quantities are free text, with no unit or number interpretation. Put capture tokens before the final brackets: `Milk #Groceries @errand [one carton]`. `@` and `#` inside the quantity stay literal. Editing and syncing retain the entire title. Long badges are abbreviated; Edit shows the full text. Ordinary projects display titles unchanged.
+
 ## Home label shortcuts
 
 The home screen lists all cached labels beneath the project tiles as colored `@name` shortcuts. Tap one to see its tasks across projects, even offline. Projects and labels scroll together; labels without tasks are included.

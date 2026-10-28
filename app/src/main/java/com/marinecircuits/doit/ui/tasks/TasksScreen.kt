@@ -3,6 +3,7 @@
 package com.marinecircuits.doit.ui.tasks
 
 import android.app.Activity
+import com.marinecircuits.doit.data.Shopping
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -38,6 +40,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -257,7 +260,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 },
             )
         }) {
-            val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else currentProject?.title
+            val projectTitle = currentProject?.let { if (Shopping.isProject(it.description)) "🛒 ${it.title}" else it.title }
+            val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else projectTitle
             headerTitle?.let { ProjectHeader(it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
             state.doingTask?.let { row ->
                 DoingTop(
@@ -369,7 +373,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                                 },
                                                 onOpen = { editTarget = row.task },
                                                 working = row.task.id in state.doingTaskIds,
-                                                onWork = if (state.doingLabel != null && !row.completed) {
+                                                onWork = if (state.doingLabel != null && !row.completed && !row.shopping) {
                                                     { viewModel.setDoing(row.task, row.task.id !in state.doingTaskIds) }
                                                 } else null,
                                             )
@@ -809,7 +813,7 @@ private fun ProjectTiles(
                     verticalArrangement = if (largeTiles) Arrangement.Center else Arrangement.Top,
                 ) {
                     Text(
-                        tile.project.title,
+                        if (Shopping.isProject(tile.project.description)) "🛒 ${tile.project.title}" else tile.project.title,
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -940,7 +944,7 @@ private fun TaskRowItem(
             }
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                 Text(
-                    row.task.title,
+                    row.displayTitle,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         textDecoration = if (row.completed) TextDecoration.LineThrough else null,
                     ),
@@ -953,6 +957,16 @@ private fun TaskRowItem(
                 }
                 if (row.labels.isNotEmpty()) {
                     LabelChips(row.labels, dimmed = row.completed, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+            row.quantity?.let { quantity ->
+                Spacer(Modifier.width(8.dp))
+                Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Text(
+                        quantity, modifier = Modifier.widthIn(max = 128.dp).padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        color = if (row.completed) muted else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             dueLabel?.let {

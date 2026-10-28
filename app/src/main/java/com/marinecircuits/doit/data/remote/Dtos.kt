@@ -42,6 +42,7 @@ data class ProjectDto(
     @SerialName("parent_project_id") val parentProjectId: Long = 0,
     /** Six hex digits, normally without a leading #; empty for no colour. */
     @SerialName("hex_color") val hexColor: String = "",
+    val description: String = "",
 )
 
 @Serializable

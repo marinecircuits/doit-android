@@ -3,6 +3,7 @@ package com.marinecircuits.doit.data.sync
 import com.marinecircuits.doit.data.remote.VikunjaJson
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -28,6 +29,7 @@ class FakeVikunja : Dispatcher() {
     val tasks = linkedMapOf<Long, Task>()
     val projects = mutableListOf(1L to "Inbox", 2L to "Work")
     val projectColors = mutableMapOf<Long, String>()
+    val projectDescriptions = mutableMapOf<Long, String>()
 
     /** False: the token may not update projects (403 on that route). */
     var projectsUpdatable = true
@@ -63,7 +65,7 @@ class FakeVikunja : Dispatcher() {
                 else json(401, """{"message":"Unauthorized"}""")
             request.method == "GET" && path == "projects" -> page(
                 projects.map { (id, title) ->
-                    """{"id":$id,"title":"$title","hex_color":"${projectColors[id].orEmpty()}"}"""
+                    """{"id":$id,"title":"$title","hex_color":"${projectColors[id].orEmpty()}","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}"""
                 },
             )
             request.method == "PATCH" && path.matches(Regex("projects/\\d+")) -> {

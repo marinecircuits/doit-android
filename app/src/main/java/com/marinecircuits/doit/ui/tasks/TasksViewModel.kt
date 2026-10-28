@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.data.Doing
+import com.marinecircuits.doit.data.Shopping
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.LabelEntity
@@ -116,8 +117,9 @@ class TasksViewModel(
             labels.labels.any { it.id == contextIds.getOrNull(slot) }
         }
         val doing = Doing.label(labels.labels)
+        val shopping = Shopping.projectIds(latest.projects)
         val doingIds = if (doing == null) emptySet() else latest.open.filter { task ->
-            Doing.contains(labels.byTask[task.id].orEmpty(), doing)
+            task.projectId !in shopping && Doing.contains(labels.byTask[task.id].orEmpty(), doing)
         }.mapTo(HashSet()) { it.id }
         val doingTask = TaskListModel.rows(
             latest.open.filter { it.id in doingIds }, latest.projects, null, latest.today, clock.zone,
@@ -154,7 +156,8 @@ class TasksViewModel(
         val openLabel = labelId?.let { id -> labels.labels.find { it.id == id } }
         if (openLabel != null) {
             val shown = tasks.filter { task ->
-                labelsForMatch[task.id].orEmpty().any { it.equals(openLabel.title, ignoreCase = true) }
+                !(openLabel.title.equals("doing", ignoreCase = true) && task.projectId in Shopping.projectIds(projects)) &&
+                    labelsForMatch[task.id].orEmpty().any { it.equals(openLabel.title, ignoreCase = true) }
             }
             return TasksUiState(
                 today = day,

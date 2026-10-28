@@ -47,6 +47,51 @@ class TaskRepositoryTest {
     @After
     fun tearDown() = db.close()
 
+    private suspend fun markShoppingProject() {
+        val projects = db.projects().all()
+        db.projects().clear()
+        db.projects().insertAll(projects.map { if (it.id == 1L) it.copy(description = "<p>doit:type=shopping</p>") else it })
+        db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Doing")))
+    }
+
+    @Test
+    fun shoppingCaptureKeepsFreeQuantityAndBlocksDoing() = runTest {
+        markShoppingProject()
+        val id = repository.capture("Milk #Inbox @doing @errand [ask @doing or #Work for two bags]", projectId = 2)!!
+        assertEquals("Milk [ask @doing or #Work for two bags]", db.tasks().get(id)!!.title)
+        assertEquals(1L, db.tasks().get(id)!!.projectId)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(id))
+        repository.setDoing(id, true)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(id))
+    }
+
+    @Test
+    fun movingAndEditingIntoShoppingRemoveOnlyDoing() = runTest {
+        markShoppingProject()
+        val id = repository.capture("Work #Work @doing @errand")!!
+        repository.move(id, 1)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(id))
+        repository.applyEditedTitle(id, "Milk @doing [family pack]")
+        assertEquals("Milk [family pack]", db.tasks().get(id)!!.title)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(id))
+        val other = repository.capture("Work #Work @doing @errand")!!
+        repository.applyEditedTitle(other, "Apples #Inbox @doing [a couple]")
+        assertEquals(1L, db.tasks().get(other)!!.projectId)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(other))
+    }
+
+    @Test
+    fun undoCannotRestoreDoingInShoppingProject() = runTest {
+        markShoppingProject()
+        val id = repository.capture("Milk @errand")!!
+        val task = db.tasks().get(id)!!
+        repository.complete(id)
+        repository.undoComplete(task, listOf("Errand", "Doing"), doingLabelId = 8)
+        assertEquals(false, db.tasks().get(id)!!.done)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(id))
+        assertTrue(pendingFields(id)[TaskRepository.DOING].toString().contains("\"required\":true"))
+    }
+
     private suspend fun pendingFields(taskId: Long): JsonObject =
         PendingChanges.decode(db.pendingChanges().forTask(taskId)!!.fields)
 

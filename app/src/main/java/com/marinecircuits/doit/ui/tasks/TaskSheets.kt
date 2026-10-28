@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.marinecircuits.doit.R
 import com.marinecircuits.doit.data.CaptureSyntax
+import com.marinecircuits.doit.data.Shopping
 import com.marinecircuits.doit.data.DueDates
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
@@ -138,7 +139,7 @@ fun EditSheet(
             title = TextFieldValue(savedTitle, TextRange(savedTitle.length))
             return
         }
-        val parsed = CaptureSyntax.parse(raw, labels, projects)
+        val parsed = Shopping.parseCapture(raw, labels, projects, projectId)
         val shown = parsed.title.ifEmpty { savedTitle }
         parsed.projectId?.let { projectId = it }
         savedTitle = shown
@@ -220,7 +221,7 @@ fun EditSheet(
                     }
                 }
             }
-            if (onWork != null) {
+            if (onWork != null && projectId !in Shopping.projectIds(projects)) {
                 TextButton(onClick = onWork) {
                     Text(stringResource(if (working) R.string.stop_working else R.string.start_working))
                 }
