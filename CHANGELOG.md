@@ -1,3 +1,9 @@
+## 0.13.0 (2026-10-28)
+
+### Feat
+
+- add configurable context screen (#40)
+
 ## 0.12.1 (2026-10-28)
 
 ### Fix
