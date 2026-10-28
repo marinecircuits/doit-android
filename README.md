@@ -24,6 +24,10 @@ A deliberately small Android app for a self-hosted [Vikunja](https://vikunja.io)
 
 New tasks go to the default project set in Vikunja under **Settings → General**, or to the project whose screen is open. A `#project` in the title overrides that destination.
 
+## Label screens
+
+Configure up to three **Label screens** from the home menu. Swipe right from home to move through them, and left to move back; unconfigured or deleted labels are skipped. Each screen shows matching tasks across projects. The previous context label is kept as screen 1, and the **Home** button returns directly to the main view from a label or project screen.
+
 ## Using it
 
 - The main view shows large top-level project tiles only. Tiles take their project's Vikunja colour, a little lighter. Tap a tile to see that project's tasks, with smaller subproject tiles below; back returns to the parent. The open project screen uses that same lightened colour for the whole page, including the task list. A project without a colour keeps the normal background.
@@ -31,7 +35,6 @@ New tasks go to the default project set in Vikunja under **Settings → General*
 - Pick a project with **`#`** in those same fields: type `#`, narrow the suggestions, and tap a project to complete its name. For example, `Buy lamp #"Home office" @errand` creates **Buy lamp** in **Home office** with the **errand** label. Sending only `#Work` or `#"Home office"` opens that project, parents included, instead of creating a task. Quotes are only needed when the name contains a space. The same tokens in the edit sheet move the task and add labels. Projects and subprojects from the last sync are available offline; archived projects are excluded. Unknown `#names` stay in the title. If you name several known projects, the last one wins. When projects share a name, the first active one in the cached project order is used and suggested. `C#`, URL fragments, `+`, `!` and dates stay as typed, and shared descriptions are never parsed.
 - Tap a task's circle or swipe it right to complete it. It stays struck through until you leave the screen; tap the circle again to undo.
 - While the capture box, edit sheet, or share title is focused, **`@`** and **`#`** keys sit above the keyboard. Tapping one inserts that sign at the cursor without closing the keyboard.
-- Configure up to three **Label screens** from the home menu. Swipe right from home to move through them, and left to move back; unconfigured or deleted labels are skipped. Each screen shows matching tasks across projects. The previous context label is kept as screen 1, and the **Home** button returns directly to the main view from a label or project screen.
 - Swipe left to reschedule, or tap a task to edit its title, date and project. Changes save as you make them; the title saves when you leave its field. `@` and `#` in that title add labels and move the task.
 - In a project, choose **Color** from the three-dot menu and pick one of the eight colours, or no colour. The page and the tile change immediately, and the colour is saved to Vikunja on the next sync. The token needs permission to update projects; without it, doit tells you and the previous colour comes back.
 - On the main view, the three-dot menu has **Sync now**, **About doit**, and **Sign out**. Inside a project that menu only has **Color**.
