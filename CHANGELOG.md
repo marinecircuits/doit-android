@@ -1,3 +1,13 @@
+## 0.22.0 (2026-10-28)
+
+### Feat
+
+- group and indent subprojects in the project picker (#70)
+
+### Fix
+
+- hide doing from home label shortcuts
+
 ## 0.21.0 (2026-10-28)
 
 ### Feat
