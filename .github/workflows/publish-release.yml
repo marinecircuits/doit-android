@@ -47,35 +47,54 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       # The signed APK was built from this commit by Build. R8 is the slow part, so it is not repeated here.
+      # A pull_request Build on the release branch often fails before it starts. That must not
+      # cancel publishing while the workflow_dispatch Build is still signing.
       - name: Wait for the signed build
         id: signed
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          set -euo pipefail
-          short="${HEAD_SHA::7}"
-          echo "short_sha=$short" >> "$GITHUB_OUTPUT"
-          for attempt in $(seq 1 40); do
-            run_id=$(gh run list --workflow build.yml --commit "$HEAD_SHA" --limit 20 \
-              --json databaseId,conclusion,event \
-              --jq '[.[] | select((.event=="workflow_dispatch" or .event=="pull_request") and .conclusion=="success")][0].databaseId')
-            if [ -n "$run_id" ] && [ "$run_id" != "null" ]; then
-              echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            failed=$(gh run list --workflow build.yml --commit "$HEAD_SHA" --limit 20 \
-              --json conclusion,event \
-              --jq '[.[] | select((.event=="workflow_dispatch" or .event=="pull_request") and .conclusion=="failure")] | length')
-            if [ "$failed" != "0" ]; then
-              echo "::error::The signed build for $HEAD_SHA failed"
-              exit 1
-            fi
-            echo "Signed build for $HEAD_SHA is not ready (attempt $attempt)"
-            sleep 15
-          done
-          echo "::error::Timed out waiting for the signed build of $HEAD_SHA"
-          exit 1
+          python3 - << 'PY'
+          import json, os, subprocess, sys, time
+          sha = os.environ["HEAD_SHA"]
+          output = os.environ["GITHUB_OUTPUT"]
+          with open(output, "a", encoding="utf-8") as handle:
+              handle.write(f"short_sha={sha[:7]}\n")
+
+          def runs():
+              raw = subprocess.check_output(
+                  [
+                      "gh", "run", "list", "--workflow", "build.yml", "--commit", sha,
+                      "--limit", "20", "--json", "databaseId,conclusion,event,status",
+                  ],
+                  text=True,
+              )
+              return json.loads(raw)
+
+          for attempt in range(1, 41):
+              found = runs()
+              dispatch = [run for run in found if run["event"] == "workflow_dispatch"]
+              pull_requests = [run for run in found if run["event"] == "pull_request"]
+              chosen = next((run for run in dispatch if run.get("conclusion") == "success"), None)
+              if chosen is None:
+                  chosen = next((run for run in pull_requests if run.get("conclusion") == "success"), None)
+              if chosen is not None:
+                  with open(output, "a", encoding="utf-8") as handle:
+                      handle.write(f"run_id={chosen['databaseId']}\n")
+                  sys.exit(0)
+              if any(run.get("conclusion") == "failure" for run in dispatch):
+                  print(f"::error::The signed build for {sha} failed", flush=True)
+                  for run in found:
+                      print(run["databaseId"], run["event"], run.get("status"), run.get("conclusion"), flush=True)
+                  sys.exit(1)
+              print(f"Signed build for {sha} is not ready (attempt {attempt})", flush=True)
+              time.sleep(15)
+          print(f"::error::Timed out waiting for the signed build of {sha}", flush=True)
+          for run in runs():
+              print(run["databaseId"], run["event"], run.get("status"), run.get("conclusion"), flush=True)
+          sys.exit(1)
+          PY
 
       - uses: actions/download-artifact@v7
         with:
