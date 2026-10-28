@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -42,6 +43,19 @@ class SettingsStore(
         require(slot in CONTEXT_LABELS.indices)
         val key = CONTEXT_LABELS[slot]
         dataStore.edit { prefs -> if (id == null) prefs.remove(key) else prefs[key] = id }
+    }
+
+    /** Local to this installation, independent for each project. */
+    val shoppingProjects: Flow<Set<Long>> = dataStore.data.map { prefs ->
+        prefs[SHOPPING_PROJECTS].orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+    }
+
+    suspend fun setShoppingProject(id: Long, active: Boolean) {
+        dataStore.edit { prefs ->
+            val ids = prefs[SHOPPING_PROJECTS].orEmpty().toMutableSet()
+            if (active) ids.add(id.toString()) else ids.remove(id.toString())
+            prefs[SHOPPING_PROJECTS] = ids
+        }
     }
 
     /** Messages about changes the server rejected, kept until the user has seen them. */
@@ -121,6 +135,7 @@ class SettingsStore(
             longPreferencesKey("context_label_id_3"),
         )
         val NOTICES = stringPreferencesKey("notices")
+        val SHOPPING_PROJECTS = stringSetPreferencesKey("shopping_projects")
         val PROJECT_COLORS = stringPreferencesKey("project_colors")
     }
 }

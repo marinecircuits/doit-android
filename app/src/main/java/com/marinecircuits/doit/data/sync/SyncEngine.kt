@@ -5,6 +5,7 @@ import com.marinecircuits.doit.data.Credentials
 import com.marinecircuits.doit.data.IdRemap
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
+import com.marinecircuits.doit.data.Shopping
 import com.marinecircuits.doit.data.local.DoitDatabase
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.PendingChangeEntity
@@ -74,9 +75,13 @@ class SyncEngine(
         val api = apiFor(credentials)
         labelsRefetched = false
         return try {
+            Shopping.enforce(db, settings)
             push(api)
             pull(api)
+            if (Shopping.enforce(db, settings)) push(api)
             SyncResult.Synced
+        } catch (e: ShoppingCleanupException) {
+            SyncResult.ServerError(e.message.orEmpty())
         } catch (e: ApiException) {
             if (e.isUnauthorized) unauthorized(api) else SyncResult.ServerError(e.message.orEmpty())
         } catch (e: IOException) {
@@ -217,6 +222,7 @@ class SyncEngine(
         val intent = fields.getValue(TaskRepository.DOING).jsonObject
         val labelId = intent["id"]?.jsonPrimitive?.longOrNull ?: return
         val active = intent["active"]?.jsonPrimitive?.booleanOrNull ?: return
+        val required = intent["required"]?.jsonPrimitive?.booleanOrNull == true
         try {
             if (active) {
                 if (!addLabel(api, change.taskId, labelId)) doingNotice(change, active, "the label no longer exists")
@@ -228,6 +234,15 @@ class SyncEngine(
                 }
             }
         } catch (e: ApiException) {
+            if (required && (e.isUnauthorized || e.isForbidden)) {
+                api.tokenTest()
+                val title = db.tasks().get(change.taskId)?.title ?: "shopping item"
+                throw ShoppingCleanupException("Could not remove @doing from “$title”: the token needs permission to change task labels.")
+            }
+            if (required && !e.isTransient && e.status in 400..499) {
+                val title = db.tasks().get(change.taskId)?.title ?: "shopping item"
+                throw ShoppingCleanupException("Could not remove @doing from “$title”: ${e.problem ?: "the server refused the change"}")
+            }
             when {
                 e.isNotFound -> return reject(change, e)
                 e.isUnauthorized || e.isForbidden -> {
@@ -433,3 +448,5 @@ class SyncEngine(
         fun ProjectDto.toEntity() = ProjectEntity(id, title, isArchived, position, parentProjectId, hexColor)
     }
 }
+
+private class ShoppingCleanupException(message: String) : Exception(message)

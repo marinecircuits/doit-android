@@ -25,6 +25,19 @@ class TaskListModelTest {
         TaskEntity(id, title, due?.let(::at), projectId, done = false, createdAt = createdAt)
 
     @Test
+    fun quantitiesAppearOnlyForShoppingProjectsIncludingCompletedRows() {
+        val rows = TaskListModel.rows(
+            listOf(task(1, "Milk [one carton]", projectId = 2).copy(done = true), task(2, "Draft [one carton]")),
+            emptyList(), 1, today, zone, shoppingProjects = setOf(2),
+        ).associateBy { it.task.id }
+        assertEquals("Milk", rows[1]!!.displayTitle)
+        assertEquals("one carton", rows[1]!!.quantity)
+        assertEquals("Milk [one carton]", rows[1]!!.task.title)
+        assertEquals("Draft [one carton]", rows[2]!!.displayTitle)
+        assertNull(rows[2]!!.quantity)
+    }
+
+    @Test
     fun ordersOverdueThenDatedThenUndatedNewestFirst() {
         val rows = TaskListModel.rows(
             listOf(

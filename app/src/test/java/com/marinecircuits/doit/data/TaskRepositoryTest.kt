@@ -13,6 +13,7 @@ import com.marinecircuits.doit.testZone
 import java.time.LocalDate
 import java.time.ZonedDateTime
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -54,6 +55,36 @@ class TaskRepositoryTest {
 
     private suspend fun serverTask(id: Long, dueAt: Long? = null) =
         TaskEntity(id, "Server task", dueAt = dueAt, projectId = 1, done = false, createdAt = 0).also { db.tasks().upsert(it) }
+
+    @Test
+    fun shoppingCaptureKeepsQuantityLiteralAndOmitsDoing() = runTest {
+        db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Doing")))
+        repository.setShoppingProject(2, true)
+        val id = repository.capture("Milk #Work @errand @doing [ask @doing or #Inbox]")!!
+        assertEquals("Milk [ask @doing or #Inbox]", db.tasks().get(id)!!.title)
+        assertEquals(2L, db.tasks().get(id)!!.projectId)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(id))
+        assertTrue(settings.notices.first().any { it.contains("without @doing") })
+    }
+
+    @Test
+    fun movingOrMarkingShoppingProjectRemovesDoingAndUndoCannotRestoreIt() = runTest {
+        db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Doing")))
+        val task = serverTask(10)
+        db.taskLabels().set(10, listOf("Errand", "Doing"))
+        repository.setShoppingProject(2, true)
+        repository.move(10, 2)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(10))
+        repository.setDoing(10, true)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(10))
+        repository.complete(10)
+        repository.undoComplete(task.copy(projectId = 2), listOf("Errand", "Doing"), 8)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(10))
+        assertEquals(JsonPrimitive(false), (pendingFields(10)[TaskRepository.DOING] as JsonObject)["active"])
+        assertEquals(JsonPrimitive(true), (pendingFields(10)[TaskRepository.DOING] as JsonObject)["required"])
+        settings.clear()
+        assertTrue(settings.shoppingProjects.first().isEmpty())
+    }
 
     @Test
     fun captureCreatesLocalTaskAndQueuedCreateInDefaultProject() = runTest {
