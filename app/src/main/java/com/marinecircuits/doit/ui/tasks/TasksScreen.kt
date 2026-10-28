@@ -69,6 +69,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -447,7 +448,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
 
     if (recentOpen) {
-        RecentTasksDialog(recent, state.projects.associate { it.id to it.title }, onDismiss = { recentOpen = false })
+        RecentTasksDialog(recent, state.projects.associate { it.id to it.title },
+            onUndo = viewModel::undoRecentTask, onDismiss = { recentOpen = false })
     }
 
     if (shoppingOpen && currentProject != null) {
@@ -1033,9 +1035,18 @@ private fun TaskRowItem(
 internal fun dateLabel(date: LocalDate?, today: LocalDate, words: DueWords, locale: Locale): String =
     date?.let { DueLabels.label(it, today, words, locale) } ?: stringResource(R.string.edit_no_date)
 
-/** A read-only history. Server completions and this device's deletions have different sources. */
+/** Server completions and this device's deletions have different sources. */
 @Composable
-private fun RecentTasksDialog(state: RecentTasksState, projects: Map<Long, String>, onDismiss: () -> Unit) {
+private fun RecentTasksDialog(
+    state: RecentTasksState, projects: Map<Long, String>,
+    onUndo: (com.marinecircuits.doit.data.local.TaskHistoryEntity, (Boolean) -> Unit) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var completedLimit by remember { mutableIntStateOf(5) }
+    var deletedLimit by remember { mutableIntStateOf(5) }
+    var selected by remember { mutableStateOf<com.marinecircuits.doit.data.local.TaskHistoryEntity?>(null) }
+    var undoing by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
@@ -1050,26 +1061,55 @@ private fun RecentTasksDialog(state: RecentTasksState, projects: Map<Long, Strin
                     if (state.loading) item { CircularProgressIndicator(Modifier.padding(16.dp)) }
                     if (state.error) item { Text(stringResource(R.string.recent_offline), modifier = Modifier.padding(vertical = 8.dp)) }
                     if (!state.loading && state.completed.isEmpty()) item { Text(stringResource(R.string.recent_empty), Modifier.padding(vertical = 12.dp)) }
-                    items(state.completed, key = { "completed-${it.taskId}" }) { task -> HistoryRow(task, projects) }
+                    items(state.completed.take(completedLimit), key = { "completed-${it.taskId}" }) { task ->
+                        HistoryRow(task, projects) { if (!state.loading && !undoing) selected = task }
+                    }
+                    if (state.completed.size > completedLimit) item {
+                        TextButton(onClick = { completedLimit += 5 }) { Text(stringResource(R.string.recent_load_more)) }
+                    }
                     item { HorizontalDivider(Modifier.padding(vertical = 16.dp)); Text(stringResource(R.string.recent_deleted), style = MaterialTheme.typography.titleMedium) }
                     item { Text(stringResource(R.string.recent_deleted_scope), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 4.dp)) }
                     if (state.deleted.isEmpty()) item { Text(stringResource(R.string.recent_empty), Modifier.padding(vertical = 12.dp)) }
-                    items(state.deleted, key = { "deleted-${it.id}" }) { task -> HistoryRow(task, projects) }
+                    items(state.deleted.take(deletedLimit), key = { "deleted-${it.id}" }) { task ->
+                        HistoryRow(task, projects) { if (!undoing) selected = task }
+                    }
+                    if (state.deleted.size > deletedLimit) item {
+                        TextButton(onClick = { deletedLimit += 5 }) { Text(stringResource(R.string.recent_load_more)) }
+                    }
                 }
             }
         }
     }
+    selected?.let { task ->
+        val deleted = task.kind == com.marinecircuits.doit.data.local.TaskHistoryEntity.DELETED
+        AlertDialog(
+            onDismissRequest = { if (!undoing) selected = null },
+            title = { Text(task.title) },
+            text = { Text(stringResource(if (deleted) R.string.recent_restore_details else R.string.recent_reopen_details)) },
+            confirmButton = {
+                TextButton(enabled = !undoing, onClick = {
+                    undoing = true
+                    onUndo(task) { success -> undoing = false; selected = null; failed = !success }
+                }) { Text(stringResource(if (deleted) R.string.recent_restore else R.string.recent_reopen)) }
+            },
+            dismissButton = { TextButton(enabled = !undoing, onClick = { selected = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+    if (failed) AlertDialog(
+        onDismissRequest = { failed = false }, title = { Text(stringResource(R.string.recent_undo_failed)) },
+        confirmButton = { TextButton(onClick = { failed = false }) { Text(stringResource(R.string.ok)) } },
+    )
 }
 
 @Composable
-private fun HistoryRow(task: com.marinecircuits.doit.data.local.TaskHistoryEntity, projects: Map<Long, String>) {
+private fun HistoryRow(task: com.marinecircuits.doit.data.local.TaskHistoryEntity, projects: Map<Long, String>, onClick: () -> Unit) {
     val context = LocalContext.current
     val date = remember(task.happenedAt, context) {
         if (task.happenedAt <= 0) null else android.text.format.DateUtils.getRelativeTimeSpanString(
             task.happenedAt, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS,
         ).toString()
     }
-    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp)) {
         Text(task.title, style = MaterialTheme.typography.bodyLarge)
         val details = listOfNotNull(projects[task.projectId], date).joinToString(" · ")
         if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
