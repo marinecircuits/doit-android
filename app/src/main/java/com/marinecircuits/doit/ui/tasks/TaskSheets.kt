@@ -96,6 +96,7 @@ fun EditSheet(
     var projectId by remember(task.id) { mutableStateOf(task.projectId) }
     var pickingDate by remember { mutableStateOf(false) }
     var projectMenuOpen by remember { mutableStateOf(false) }
+    val projectPickerItems = remember(projects) { ProjectTree.pickerItems(projects) }
     var confirmingDelete by remember(task.id) { mutableStateOf(false) }
 
     fun commitTitle() {
@@ -172,9 +173,10 @@ fun EditSheet(
                         Text(projects.firstOrNull { it.id == projectId }?.title ?: "—")
                     }
                     DropdownMenu(expanded = projectMenuOpen, onDismissRequest = { projectMenuOpen = false }) {
-                        projects.forEach { project ->
+                        projectPickerItems.forEach { item ->
+                            val project = item.project
                             DropdownMenuItem(
-                                text = { Text(project.title) },
+                                text = { Text(project.title, Modifier.padding(start = (item.depth * 16).dp)) },
                                 onClick = {
                                     if (projectId != project.id) {
                                         projectId = project.id

@@ -48,6 +48,39 @@ class ProjectTreeTest {
     }
 
     @Test
+    fun pickerGroupsDescendantsAndPreservesRootAndSiblingOrder() {
+        val hardware = ProjectEntity(8, "Hardware", archived = false, position = 7.0, parentProjectId = 1)
+        val shuffled = listOf(drivers, home, hardware, firmware, work)
+        val items = ProjectTree.pickerItems(shuffled)
+        assertEquals(listOf(home, work, hardware, firmware, drivers), items.map { it.project })
+        assertEquals(listOf(0, 0, 1, 1, 2), items.map { it.depth })
+    }
+
+    @Test
+    fun pickerKeepsOrphansVisibleAndExcludesArchivedProjects() {
+        val noteChild = ProjectEntity(8, "Note child", archived = false, position = 7.0, parentProjectId = 6)
+        val items = ProjectTree.pickerItems(listOf(noteChild, old, notes, shared))
+        assertEquals(listOf(notes, noteChild, shared), items.map { it.project })
+        assertEquals(listOf(0, 1, 0), items.map { it.depth })
+    }
+
+    @Test
+    fun pickerHandlesCyclesAndSelfParentsWithoutDuplicates() {
+        val a = work.copy(parentProjectId = 2)
+        val b = firmware.copy(parentProjectId = 1)
+        val self = home.copy(parentProjectId = 4)
+        val items = ProjectTree.pickerItems(listOf(a, b, self, drivers))
+        assertEquals(listOf(self, a, b, drivers), items.map { it.project })
+        assertEquals(listOf(0, 0, 1, 2), items.map { it.depth })
+    }
+
+    @Test
+    fun pickerIsEmptyWithoutVisibleProjects() {
+        assertEquals(emptyList<ProjectPickerItem>(), ProjectTree.pickerItems(emptyList()))
+        assertEquals(emptyList<ProjectPickerItem>(), ProjectTree.pickerItems(listOf(old)))
+    }
+
+    @Test
     fun tilesCountOpenTasksDirectlyInTheProject() {
         val tasks = listOf(
             TaskEntity(1, "a", null, projectId = 1, done = false, createdAt = 0),
