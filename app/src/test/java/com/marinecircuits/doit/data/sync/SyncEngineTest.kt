@@ -55,6 +55,32 @@ class SyncEngineTest {
     private suspend fun openTitles() = db.tasks().open().map { it.title }.toSet()
 
     @Test
+    fun shoppingCleanupUploadsDownloadedDoingAndKeepsOtherLabels() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk [two]", projectId = 2, labelIds = mutableListOf(7, 8))
+        settings.setShoppingProject(2, true)
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(7L), fake.tasks[1]!!.labelIds)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(1))
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun shoppingCleanupPermissionFailureRetainsRemovalForRetry() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk", projectId = 2, labelIds = mutableListOf(8))
+        settings.setShoppingProject(2, true)
+        fake.labelsRemovable = false
+        val result = engine.sync()
+        assertTrue(result is SyncResult.ServerError && result.message.contains("Milk"))
+        assertEquals(1, db.pendingChanges().count())
+        fake.labelsRemovable = true
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(fake.tasks[1]!!.labelIds.isEmpty())
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
     fun doingStartAndStopPreserveOtherLabels() = runTest {
         fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
         fake.tasks[1] = FakeVikunja.Task(1, "Work on it", labelIds = mutableListOf(7))

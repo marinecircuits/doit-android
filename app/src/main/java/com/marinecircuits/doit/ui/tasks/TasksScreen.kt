@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -58,6 +59,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -140,6 +142,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var datePickTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var colorOpen by remember { mutableStateOf(false) }
+    var shoppingOpen by remember { mutableStateOf(false) }
 
     if (labelPickerOpen) {
         val slot = labelPickerSlot
@@ -258,7 +261,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             )
         }) {
             val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else currentProject?.title
-            headerTitle?.let { ProjectHeader(it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
+            headerTitle?.let { ProjectHeader(if (currentProject != null && currentProject.id in state.shoppingProjects) "🛒 $it" else it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
             state.doingTask?.let { row ->
                 DoingTop(
                     row = row,
@@ -285,6 +288,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onConfigureContext = { labelPickerOpen = true },
                 showContextOption = currentProject == null && (openLabel == null || isContext),
                 onProjectColor = currentProject?.let { { colorOpen = true } },
+                onProjectSettings = currentProject?.let { { shoppingOpen = true } },
                 serverAddress = state.serverAddress,
                 status = state.status,
                 syncedOnce = state.syncedOnce,
@@ -323,6 +327,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                     Modifier.fillMaxSize(),
                                     largeTiles = true,
                                     homeLabels = state.labels,
+                                    shoppingProjects = state.shoppingProjects,
                                     onOpenLabel = viewModel::openLabel,
                                 )
                                 else -> Box(Modifier.fillMaxSize(), Alignment.Center) {
@@ -369,7 +374,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                                 },
                                                 onOpen = { editTarget = row.task },
                                                 working = row.task.id in state.doingTaskIds,
-                                                onWork = if (state.doingLabel != null && !row.completed) {
+                                                onWork = if (state.doingLabel != null && !row.completed && row.task.projectId !in state.shoppingProjects) {
                                                     { viewModel.setDoing(row.task, row.task.id !in state.doingTaskIds) }
                                                 } else null,
                                             )
@@ -397,6 +402,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                             ProjectTiles(
                                 state.tiles,
                                 onOpen = viewModel::openProject,
+                                shoppingProjects = state.shoppingProjects,
                                 modifier = Modifier.fillMaxWidth().weight(1f),
                             )
                         }
@@ -432,6 +438,25 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             initial = captureDueDate ?: state.today,
             onPicked = { date -> captureDueDate = date; pickingCaptureDate = false },
             onDismiss = { pickingCaptureDate = false },
+        )
+    }
+
+    if (shoppingOpen && currentProject != null) {
+        AlertDialog(
+            onDismissRequest = { shoppingOpen = false },
+            title = { Text(stringResource(R.string.project_settings)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(currentProject.title, style = MaterialTheme.typography.titleMedium)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(stringResource(R.string.shopping_list), Modifier.weight(1f))
+                        Switch(checked = currentProject.id in state.shoppingProjects, onCheckedChange = viewModel::setShoppingProject)
+                    }
+                    Text(stringResource(R.string.shopping_explanation))
+                    Text(stringResource(R.string.shopping_quantity_hint))
+                }
+            },
+            confirmButton = { TextButton(onClick = { shoppingOpen = false }) { Text(stringResource(R.string.ok)) } },
         )
     }
 
@@ -478,6 +503,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             task = task,
             projects = state.projects,
             labels = state.labels,
+            shoppingProjects = state.shoppingProjects,
             today = state.today,
             words = words,
             locale = locale,
@@ -589,6 +615,7 @@ private fun CaptureBar(
     onConfigureContext: () -> Unit,
     showContextOption: Boolean,
     onProjectColor: (() -> Unit)?,
+    onProjectSettings: (() -> Unit)?,
     serverAddress: String?,
     status: List<StatusPart>,
     syncedOnce: Boolean,
@@ -638,6 +665,10 @@ private fun CaptureBar(
                     )
                 }
                 if (onProjectColor != null) {
+                    if (onProjectSettings != null) DropdownMenuItem(
+                        text = { Text(stringResource(R.string.project_settings)) },
+                        onClick = { menuOpen = false; onProjectSettings() },
+                    )
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_color)) },
                         onClick = {
@@ -772,6 +803,7 @@ private fun ProjectTiles(
     modifier: Modifier = Modifier,
     largeTiles: Boolean = false,
     homeLabels: List<LabelEntity>? = null,
+    shoppingProjects: Set<Long> = emptySet(),
     onOpenLabel: (Long) -> Unit = {},
 ) {
     val navigationBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -809,7 +841,7 @@ private fun ProjectTiles(
                     verticalArrangement = if (largeTiles) Arrangement.Center else Arrangement.Top,
                 ) {
                     Text(
-                        tile.project.title,
+                        if (tile.project.id in shoppingProjects) "🛒 ${tile.project.title}" else tile.project.title,
                         style = MaterialTheme.typography.titleSmall,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -940,7 +972,7 @@ private fun TaskRowItem(
             }
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                 Text(
-                    row.task.title,
+                    row.displayTitle,
                     style = MaterialTheme.typography.bodyLarge.copy(
                         textDecoration = if (row.completed) TextDecoration.LineThrough else null,
                     ),
@@ -954,6 +986,12 @@ private fun TaskRowItem(
                 if (row.labels.isNotEmpty()) {
                     LabelChips(row.labels, dimmed = row.completed, modifier = Modifier.padding(top = 4.dp))
                 }
+            }
+            row.quantity?.let { quantity ->
+                Text(quantity, modifier = Modifier.padding(start = 8.dp).width(90.dp)
+                    .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp)).padding(6.dp), maxLines = 2,
+                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary)
             }
             dueLabel?.let {
                 Spacer(Modifier.width(12.dp))

@@ -51,6 +51,7 @@ data class TasksUiState(
     val contextIndex: Int? = null,
     val contextScreen: Boolean = false,
     val serverAddress: String? = null,
+    val shoppingProjects: Set<Long> = emptySet(),
     val doingLabel: LabelEntity? = null,
     val doingCount: Int = 0,
     val doingTaskIds: Set<Long> = emptySet(),
@@ -78,6 +79,7 @@ private data class ListInputsForView(
     val contextIds: List<Long?>,
     val index: Int?,
     val generation: Long,
+    val shopping: Set<Long>,
 )
 private data class LabelViewFrame(
     val key: LabelViewKey? = null,
@@ -124,7 +126,7 @@ class TasksViewModel(
         LabelInputs(labels, taskLabels.groupBy({ it.taskId }, { it.title }))
     }
 
-    private val viewInputs = combine(inputs, projectPath, labelInputs, openLabelId, settings.contextLabelIds, contextIndex, viewGeneration) { values ->
+    private val viewInputs = combine(inputs, projectPath, labelInputs, openLabelId, settings.contextLabelIds, contextIndex, viewGeneration, settings.shoppingProjects) { values ->
         val latest = values[0] as ListInputs
         val path = values[1] as List<Long>
         val labels = values[2] as LabelInputs
@@ -134,7 +136,9 @@ class TasksViewModel(
         val index = (values[5] as Int?)?.takeIf { slot ->
             labels.labels.any { it.id == contextIds.getOrNull(slot) }
         }
-        ListInputsForView(latest, path, labels, if (index != null) contextIds[index] else labelId, contextIds, index, values[6] as Long)
+        @Suppress("UNCHECKED_CAST")
+        val shopping = values[7] as Set<Long>
+        ListInputsForView(latest, path, labels, if (index != null) contextIds[index] else labelId, contextIds, index, values[6] as Long, shopping)
     }
 
     // Keep tasks already seen in this label view even if their membership changes, until navigation changes the view.
@@ -159,15 +163,17 @@ class TasksViewModel(
                 completed?.let { saved -> saved.id.takeIf { id != resolved || id > 0 || saved.createdAt == createdAt } },
             )
         }.toSet()
+        val shopping = current.shopping
         val doing = Doing.label(labels.labels)
         val doingIds = if (doing == null) emptySet() else latest.open.filter { task ->
-            Doing.contains(labels.byTask[task.id].orEmpty(), doing)
+            task.projectId !in shopping && Doing.contains(labels.byTask[task.id].orEmpty(), doing)
         }.mapTo(HashSet()) { it.id }
         val doingTask = TaskListModel.rows(
             latest.open.filter { it.id in doingIds }, latest.projects, null, latest.today, clock.zone,
             taskLabels = labels.byTask, labels = labels.labels,
         ).firstOrNull()
-        val state = view(latest, current.path, labels, current.labelId, retained).copy(
+        val state = view(latest, current.path, labels, current.labelId, retained, shopping).copy(
+            shoppingProjects = shopping,
             contextLabelIds = current.contextIds,
             contextIndex = current.index,
             contextScreen = current.index != null,
@@ -179,7 +185,7 @@ class TasksViewModel(
         LabelViewFrame(key, seen, state)
     }.mapNotNull { it.state }
 
-    private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs, labelId: Long?, retainedIds: Set<Long>): TasksUiState {
+    private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs, labelId: Long?, retainedIds: Set<Long>, shopping: Set<Long>): TasksUiState {
         val (open, projects, defaultProjectId, day, completed) = inputs
         val visible = projects.filterNot { it.archived }
         val byId = visible.associateBy { it.id }
@@ -199,7 +205,8 @@ class TasksViewModel(
         val openLabel = labelId?.let { id -> labels.labels.find { it.id == id } }
         if (openLabel != null) {
             val shown = tasks.filter { task ->
-                task.id in retainedIds || labelsForMatch[task.id].orEmpty().any { it.equals(openLabel.title, ignoreCase = true) }
+                (doing?.id != openLabel.id || task.projectId !in shopping) &&
+                    (task.id in retainedIds || labelsForMatch[task.id].orEmpty().any { it.equals(openLabel.title, ignoreCase = true) })
             }
             return TasksUiState(
                 today = day,
@@ -211,6 +218,7 @@ class TasksViewModel(
                     clock.zone,
                     taskLabels = taskLabels,
                     labels = labels.labels,
+                    shoppingProjects = shopping,
                 ),
                 loaded = true,
                 projects = visible,
@@ -231,6 +239,7 @@ class TasksViewModel(
                 clock.zone,
                 taskLabels = taskLabels,
                 labels = labels.labels,
+                shoppingProjects = shopping,
             ),
             loaded = true,
             projects = visible,
@@ -413,6 +422,11 @@ class TasksViewModel(
             // Dropped only now: the reopened task is in the open list, so the row never flickers out.
             completedHere.update { it - task.id }
         }
+    }
+
+    fun setShoppingProject(active: Boolean) {
+        val project = state.value.path.lastOrNull() ?: return
+        viewModelScope.launch { repository.setShoppingProject(project.id, active) }
     }
 
     fun setDoing(task: TaskEntity, active: Boolean) {
