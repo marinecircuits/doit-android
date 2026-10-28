@@ -244,6 +244,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onConfigureContext = { labelPickerOpen = true },
                 showContextOption = currentProject == null && (openLabel == null || isContext),
                 onProjectColor = currentProject?.let { { colorOpen = true } },
+                serverAddress = state.serverAddress,
+                status = state.status,
+                syncedOnce = state.syncedOnce,
+                tokenRejected = state.tokenRejected,
                 focusRequester = captureFocus,
             )
             val suggestions = if (captureFocused && captureText.selection.collapsed) {
@@ -469,6 +473,10 @@ private fun CaptureBar(
     onConfigureContext: () -> Unit,
     showContextOption: Boolean,
     onProjectColor: (() -> Unit)?,
+    serverAddress: String?,
+    status: List<StatusPart>,
+    syncedOnce: Boolean,
+    tokenRejected: Boolean,
     focusRequester: FocusRequester,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -550,7 +558,18 @@ private fun CaptureBar(
         AlertDialog(
             onDismissRequest = { infoOpen = false },
             title = { Text(stringResource(R.string.app_info)) },
-            text = { Text(stringResource(R.string.app_version, appVersion)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(stringResource(R.string.app_version, appVersion))
+                    Text(stringResource(R.string.server_info_address, serverAddress ?: stringResource(R.string.server_info_unavailable)))
+                    when {
+                        tokenRejected -> Text(stringResource(R.string.token_rejected_banner))
+                        status.isNotEmpty() -> StatusLine(status)
+                        syncedOnce -> Text(stringResource(R.string.server_info_synced))
+                        else -> Text(stringResource(R.string.server_info_not_synced))
+                    }
+                }
+            },
             confirmButton = { TextButton(onClick = { infoOpen = false }) { Text(stringResource(R.string.ok)) } },
         )
     }

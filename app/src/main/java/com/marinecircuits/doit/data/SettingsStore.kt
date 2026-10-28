@@ -25,6 +25,11 @@ class SettingsStore(
         Credentials(apiBase, token)
     }
 
+    /** Display-only server address; this flow never exposes or decrypts the token. */
+    val serverAddress: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[API_BASE]?.toHttpUrlOrNull()?.let(ServerUrl::display)
+    }
+
     /** Set when the server rejected the stored token; sync stays paused until a new token is saved. */
     val tokenRejected: Flow<Boolean> = dataStore.data.map { it[TOKEN_REJECTED] ?: false }
 

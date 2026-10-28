@@ -5,6 +5,19 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /** Turns whatever the user typed into the API v2 base URL. */
 object ServerUrl {
+    /** The configured server's public address, without the API suffix or any embedded credentials. */
+    fun display(apiBase: HttpUrl): String {
+        val segments = apiBase.encodedPathSegments.filter { it.isNotEmpty() }
+        val path = if (segments.takeLast(2) == listOf("api", "v2")) segments.dropLast(2) else segments
+        return apiBase.newBuilder()
+            .username("")
+            .password("")
+            .query(null)
+            .fragment(null)
+            .encodedPath(path.joinToString("/", prefix = "/", postfix = if (path.isEmpty()) "" else "/"))
+            .build().toString()
+    }
+
     sealed interface Result {
         /** [apiBase] always ends in `/api/v2/`. */
         data class Valid(val apiBase: HttpUrl) : Result

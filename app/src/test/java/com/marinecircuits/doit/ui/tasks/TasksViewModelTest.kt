@@ -1,6 +1,7 @@
 package com.marinecircuits.doit.ui.tasks
 
 import android.os.Looper
+import com.marinecircuits.doit.data.Credentials
 import com.marinecircuits.doit.data.IdRemap
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
@@ -16,6 +17,7 @@ import com.marinecircuits.doit.testSettings
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonPrimitive
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -65,6 +67,14 @@ class TasksViewModelTest {
     }
 
     private fun row(id: Long) = viewModel.state.value.rows.firstOrNull { it.task.id == id }
+
+    @Test
+    fun serverAddressFollowsCredentialsWithoutExposingSecrets() {
+        runBlocking { settings.saveCredentials(Credentials("https://user:password@example.com/vikunja/api/v2/".toHttpUrl(), "tk_secret")) }
+        waitUntil { viewModel.state.value.serverAddress == "https://example.com/vikunja/" }
+        runBlocking { settings.clear() }
+        waitUntil { viewModel.state.value.serverAddress == null }
+    }
 
     @Test
     fun completedTaskStaysStruckThroughUntilTheUserLeaves() {

@@ -2,6 +2,7 @@ package com.marinecircuits.doit.data
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import okhttp3.HttpUrl.Companion.toHttpUrl
 
 class ServerUrlTest {
     private fun apiBase(input: String): String =
@@ -23,6 +24,15 @@ class ServerUrlTest {
     @Test
     fun keepsSubpathAndPort() {
         assertEquals("https://example.com:8443/vikunja/api/v2/", apiBase("example.com:8443/vikunja/"))
+    }
+
+    @Test
+    fun displayRemovesApiSuffixAndCredentialsButKeepsServerPathAndPort() {
+        assertEquals("https://todo.example.com/", ServerUrl.display("https://todo.example.com/api/v2/".toHttpUrl()))
+        assertEquals(
+            "https://example.com:8443/vikunja/",
+            ServerUrl.display("https://user:secret@example.com:8443/vikunja/api/v2/?token=secret#fragment".toHttpUrl()),
+        )
     }
 
     @Test
