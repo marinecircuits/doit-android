@@ -2,6 +2,7 @@
 
 ### Feat
 
+- create subprojects from project menu
 - show complete release history
 
 ### Fix
