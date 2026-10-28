@@ -288,6 +288,22 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun movingDoingTaskIntoShoppingProjectExcludesItEvenFromTheCurrentDoingView() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(8, "Doing")))
+            db.taskLabels().set(10, listOf("Doing"))
+            settings.setShoppingProject(2, true)
+        }
+        waitUntil { viewModel.state.value.shoppingProjects == setOf(2L) && viewModel.state.value.doingCount == 1 }
+        viewModel.reviewDoing()
+        waitUntil { viewModel.state.value.openLabel?.id == 8L && row(10) != null }
+        viewModel.move(row(10)!!.task, 2)
+        waitUntil { row(10) == null && viewModel.state.value.doingCount == 0 }
+        assertTrue(viewModel.state.value.rows.isEmpty())
+    }
+
+    @Test
     fun shoppingProjectsAreExcludedFromDoingViewsAndCounts() {
         seedProjects()
         runBlocking {
@@ -324,6 +340,62 @@ class TasksViewModelTest {
         viewModel.uncomplete(task)
         waitUntil { row(11)?.completed == false && viewModel.state.value.doingCount == 2 }
         assertTrue(row(11)!!.labels.any { it.title == "Doing" })
+    }
+
+    @Test
+    fun removingDoingKeepsTheTaskUntilLeavingItsLabelView() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(8, "Doing")))
+            db.taskLabels().set(10, listOf("Doing"))
+            db.taskLabels().set(11, listOf("Doing"))
+        }
+        waitUntil { viewModel.state.value.doingCount == 2 }
+        viewModel.reviewDoing()
+        waitUntil { viewModel.state.value.openLabel?.id == 8L && row(10) != null && row(11) != null }
+
+        viewModel.setDoing(row(10)!!.task, false)
+        waitUntil { viewModel.state.value.doingCount == 1 && row(10)?.labels?.isEmpty() == true }
+        assertEquals(setOf(10L, 11L), viewModel.state.value.rows.map { it.task.id }.toSet())
+        viewModel.onLeave() // Backgrounding does not change the view.
+        viewModel.reviewDoing() // Opening the same view does not change it either.
+        waitUntil { row(10) != null && viewModel.state.value.doingCount == 1 }
+
+        viewModel.navigateHome()
+        waitUntil { viewModel.state.value.openLabel == null }
+        viewModel.openLabel(8)
+        waitUntil { viewModel.state.value.openLabel?.id == 8L }
+        assertEquals(listOf(11L), viewModel.state.value.rows.map { it.task.id })
+    }
+
+    @Test
+    fun syncLabelChangesRemainVisibleUntilSwitchingContextScreens() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Home")))
+            db.taskLabels().set(10, listOf("Errand"))
+            settings.setContextLabelId(0, 7)
+            settings.setContextLabelId(1, 8)
+        }
+        waitUntil { viewModel.state.value.contextLabelIds == listOf(7L, 8L, null) && viewModel.state.value.labels.size == 2 }
+        viewModel.nextContext()
+        waitUntil { viewModel.state.value.contextIndex == 0 && row(10) != null }
+        runBlocking { db.taskLabels().set(11, listOf("Errand")) }
+        waitUntil { row(11) != null }
+        runBlocking {
+            db.taskLabels().set(10, emptyList())
+            db.taskLabels().set(11, emptyList())
+        }
+        waitUntil { row(10)?.labels?.isEmpty() == true && row(11)?.labels?.isEmpty() == true }
+        viewModel.delete(row(10)!!.task)
+        waitUntil { row(10) == null }
+        assertTrue(row(11) != null)
+
+        viewModel.nextContext()
+        waitUntil { viewModel.state.value.contextIndex == 1 }
+        viewModel.previousContext()
+        waitUntil { viewModel.state.value.contextIndex == 0 }
+        assertTrue(viewModel.state.value.rows.isEmpty())
     }
 
     @Test
