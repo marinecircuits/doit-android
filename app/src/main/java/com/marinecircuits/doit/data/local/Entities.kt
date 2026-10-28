@@ -83,6 +83,10 @@ data class TaskHistoryEntity(
     val projectId: Long,
     val kind: String,
     val happenedAt: Long,
+    @ColumnInfo(defaultValue = "0") val createdAt: Long = 0,
+    val dueAt: Long? = null,
+    @ColumnInfo(defaultValue = "'[]'") val labelsJson: String = "[]",
+    @ColumnInfo(defaultValue = "'{}'") val pendingJson: String = "{}",
 ) {
     companion object {
         const val COMPLETED = "completed"

@@ -58,6 +58,20 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun version5HistoryGetsSafeDefaultsOnUpgrade() {
+        createVersion(5) {
+            execSQL("INSERT INTO task_history (taskId, title, projectId, kind, happenedAt) VALUES (12, 'Old deletion', 1, 'deleted', 6)")
+        }
+        upgrade { upgraded ->
+            val entry = upgraded.taskHistory().observeAll().first().single()
+            assertEquals("Old deletion", entry.title)
+            assertEquals("[]", entry.labelsJson)
+            assertEquals("{}", entry.pendingJson)
+            assertEquals(null, entry.dueAt)
+        }
+    }
+
+    @Test
     fun version4UpgradePreservesTasksAndAddsHistory() {
         createVersion(4) {
             execSQL("INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration) VALUES (12, 'Existing', NULL, 1, 0, 5, 0)")

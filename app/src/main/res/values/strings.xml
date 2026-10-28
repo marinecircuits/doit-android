@@ -124,4 +124,10 @@
     <string name="recent_deleted_scope">Deletions made on this device, since this feature was installed.</string>
     <string name="recent_offline">Could not load completed tasks from the server. Showing what this device has recorded.</string>
     <string name="recent_empty">No recent tasks</string>
+    <string name="recent_load_more">••• Show five more</string>
+    <string name="recent_restore">Restore task</string>
+    <string name="recent_restore_details">This recreates the task from the details saved on this device. Server-only details such as attachments may not be restored.</string>
+    <string name="recent_reopen">Mark as not done</string>
+    <string name="recent_reopen_details">Move this task back to your open tasks?</string>
+    <string name="recent_undo_failed">Could not restore this task. Please try again.</string>
 </resources>

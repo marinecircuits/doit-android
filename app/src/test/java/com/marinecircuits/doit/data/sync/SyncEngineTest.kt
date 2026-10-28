@@ -55,6 +55,63 @@ class SyncEngineTest {
     private suspend fun openTitles() = db.tasks().open().map { it.title }.toSet()
 
     @Test
+    fun restoreDuringDeleteRequestLeavesOneRecreatedTask() = runTest {
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk")
+        engine.sync()
+        repository.delete(1)
+        var restored = false
+        fake.intercept = { request ->
+            if (!restored && request.method == "DELETE" && request.requestUrl!!.encodedPath.endsWith("/tasks/1")) {
+                restored = true
+                runBlocking { repository.undoHistoryDeletion(db.taskHistory().observeAll().first().single().id) }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(restored)
+        assertEquals(listOf("Milk"), fake.tasks.values.map { it.title })
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun restoreWhileOriginalCaptureIsBeingCreatedDoesNotResurrectTheWrongId() = runTest {
+        engine.sync()
+        val id = repository.capture("Milk")!!
+        var restored = false
+        fake.intercept = { request ->
+            if (!restored && request.method == "POST" && request.requestUrl!!.encodedPath.endsWith("/projects/1/tasks")) {
+                restored = true
+                runBlocking {
+                    repository.delete(id)
+                    repository.undoHistoryDeletion(db.taskHistory().observeAll().first().single().id)
+                }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(restored)
+        assertEquals(listOf("Milk"), fake.tasks.values.map { it.title })
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun undoDeletedTaskEventuallyRemovesOriginalAndCreatesItsReplacement() = runTest {
+        fake.labels += FakeVikunja.Label(7, "Errand")
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk", dueDate = "2026-11-03T11:00:00Z", labelIds = mutableListOf(7))
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.delete(1)
+        val entry = db.taskHistory().observeAll().first().single()
+        assertTrue(repository.undoHistoryDeletion(entry.id))
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertFalse(fake.tasks.containsKey(1))
+        val restored = fake.tasks.values.single()
+        assertEquals("Milk", restored.title)
+        assertEquals("2026-11-03T11:00:00Z", restored.dueDate)
+        assertEquals(listOf(7L), restored.labelIds)
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
     fun shoppingCleanupUploadsDownloadedDoingAndKeepsOtherLabels() = runTest {
         fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
         fake.tasks[1] = FakeVikunja.Task(1, "Milk [two]", projectId = 2, labelIds = mutableListOf(7, 8))

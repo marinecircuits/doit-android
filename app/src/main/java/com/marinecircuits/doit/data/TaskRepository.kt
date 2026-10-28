@@ -17,6 +17,7 @@ import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -73,7 +74,10 @@ class TaskRepository(
             .map { task ->
                 TaskHistoryEntity(taskId = task.id, title = task.title, projectId = task.projectId,
                     kind = TaskHistoryEntity.COMPLETED,
-                    happenedAt = VikunjaDates.parse(task.doneAt)?.toEpochMilli() ?: 0)
+                    happenedAt = VikunjaDates.parse(task.doneAt)?.toEpochMilli() ?: 0,
+                    createdAt = VikunjaDates.parse(task.created)?.toEpochMilli() ?: 0,
+                    dueAt = VikunjaDates.parse(task.dueDate)?.toEpochMilli(),
+                    labelsJson = JsonArray(task.labels.map { JsonPrimitive(it.title) }).toString())
             }
     }
 
@@ -125,9 +129,10 @@ class TaskRepository(
         val written = db.withTransaction {
             val task = db.tasks().get(id) ?: return@withTransaction false
             if (task.done || db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE) return@withTransaction false
+            val names = db.taskLabels().forTask(id)
             val label = Doing.label(db.labels().all())
-            if (label != null && Doing.contains(db.taskLabels().forTask(id), label)) recordDoing(id, label, false)
-            db.taskHistory().insert(TaskHistoryEntity(taskId = task.id, title = task.title, projectId = task.projectId, kind = TaskHistoryEntity.COMPLETED, happenedAt = clock.millis()))
+            if (label != null && Doing.contains(names, label)) recordDoing(id, label, false)
+            db.taskHistory().insert(historySnapshot(task, TaskHistoryEntity.COMPLETED, names))
             db.taskHistory().trim(TaskHistoryEntity.COMPLETED)
             db.tasks().upsert(task.copy(done = true))
             record(id, fields(DONE to JsonPrimitive(true)))
@@ -152,6 +157,64 @@ class TaskRepository(
             true
         }
         if (written) { Shopping.enforce(db, settings); onLocalChange() }
+    }
+
+    private fun historySnapshot(task: TaskEntity, kind: String, labels: List<String>, pending: String? = null) =
+        TaskHistoryEntity(taskId = task.id, title = task.title, projectId = task.projectId, kind = kind,
+            happenedAt = clock.millis(), createdAt = task.createdAt, dueAt = task.dueAt,
+            labelsJson = JsonArray(labels.map { JsonPrimitive(it) }).toString(), pendingJson = pending ?: "{}")
+
+    private fun historyLabels(entry: TaskHistoryEntity): List<String> =
+        Json.parseToJsonElement(entry.labelsJson).jsonArray.mapNotNull { it.jsonPrimitive.contentOrNull }
+
+    /** Reopen without overwriting the server's due date or other fields that may not be cached locally. */
+    suspend fun undoHistoryCompletion(entry: TaskHistoryEntity): Boolean {
+        val id = idRemap.resolve(entry.taskId)
+        val shopping = settings.shoppingProjects.first()
+        val changed = db.withTransaction {
+            if (db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE) return@withTransaction false
+            val existing = db.tasks().get(id)
+            val task = existing ?: TaskEntity(id, entry.title, entry.dueAt, entry.projectId, done = true, createdAt = entry.createdAt)
+            val names = historyLabels(entry)
+            if (existing == null) db.taskLabels().set(id, names)
+            db.tasks().upsert(task.copy(done = false))
+            db.taskHistory().deleteForTask(id, TaskHistoryEntity.COMPLETED)
+            record(id, fields(DONE to JsonPrimitive(false)))
+            val doing = Doing.label(db.labels().all())
+            if (entry.id != 0L && doing != null && task.projectId !in shopping && Doing.contains(names, doing)) {
+                recordDoing(id, doing, true)
+            }
+            true
+        }
+        if (changed) { Shopping.enforce(db, settings); onLocalChange() }
+        return changed
+    }
+
+    /** Recreate a deleted task with the cached snapshot; any original delete remains queued. */
+    suspend fun undoHistoryDeletion(historyId: Long): Boolean {
+        val shopping = settings.shoppingProjects.first()
+        val changed = db.withTransaction {
+            val entry = db.taskHistory().get(historyId) ?: return@withTransaction false
+            if (entry.kind != TaskHistoryEntity.DELETED) return@withTransaction false
+            val id = minOf(db.tasks().minId() ?: 0, db.taskHistory().minTaskId() ?: 0, 0) - 1
+            val names = historyLabels(entry).filterNot { entry.projectId in shopping && it.equals("doing", ignoreCase = true) }
+            val old = PendingChanges.decode(entry.pendingJson)
+            val fields = buildJsonObject {
+                // An unsent create may contain description and other fields not stored in the task cache.
+                old.filterKeys { it != DONE && it != DOING && it != LABELS }.forEach { (key, value) -> put(key, value) }
+                put(TITLE, entry.title)
+                if (entry.projectId > 0) put(PROJECT_ID, entry.projectId)
+                if (entry.dueAt != null) put(DUE_DATE, dueJson(entry.dueAt))
+                if (names.isNotEmpty()) put(LABELS, JsonArray(names.map { JsonPrimitive(it) }))
+            }
+            db.tasks().upsert(TaskEntity(id, entry.title, entry.dueAt, entry.projectId, done = false, createdAt = entry.createdAt))
+            db.taskLabels().set(id, names)
+            db.pendingChanges().insert(PendingChangeEntity(taskId = id, kind = PendingChangeEntity.CREATE, fields = fields.toString()))
+            db.taskHistory().delete(historyId)
+            true
+        }
+        if (changed) onLocalChange()
+        return changed
     }
 
     /** Changes only the existing doing label, storing the latest desired membership with the task. */
@@ -247,7 +310,7 @@ class TaskRepository(
         val removed = db.withTransaction {
             val task = db.tasks().get(id) ?: return@withTransaction false
             val pending = db.pendingChanges().forTask(id)
-            db.taskHistory().insert(TaskHistoryEntity(taskId = task.id, title = task.title, projectId = task.projectId, kind = TaskHistoryEntity.DELETED, happenedAt = clock.millis()))
+            db.taskHistory().insert(historySnapshot(task, TaskHistoryEntity.DELETED, db.taskLabels().forTask(id), pending?.fields))
             db.taskHistory().trim(TaskHistoryEntity.DELETED)
             db.tasks().delete(id)
             db.taskLabels().deleteForTask(id)
