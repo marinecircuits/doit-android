@@ -143,8 +143,6 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var captureDueDate by remember { mutableStateOf<LocalDate?>(null) }
     var pickingCaptureDate by remember { mutableStateOf(false) }
     var scrollToTaskId by remember { mutableStateOf<Long?>(null) }
-    var rescheduleTarget by remember { mutableStateOf<TaskEntity?>(null) }
-    var datePickTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var colorOpen by remember { mutableStateOf(false) }
     var shoppingOpen by remember { mutableStateOf(false) }
@@ -362,12 +360,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                     modifier = Modifier.fillMaxSize(),
                                 ) {
                                     items(state.rows, key = { it.task.id }) { row ->
-                                        SwipeRow(
-                                            onSwipedRight = { viewModel.complete(row.task) },
-                                            onSwipedLeft = { rescheduleTarget = row.task },
-                                            enabled = !row.completed,
-                                            modifier = Modifier.animateItem(),
-                                        ) {
+                                        Box(Modifier.animateItem()) {
                                             TaskRowItem(
                                                 row = row,
                                                 dueLabel = row.dueDate?.let {
@@ -481,33 +474,6 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 viewModel.setProjectColor(hex)
             },
             onDismiss = { colorOpen = false },
-        )
-    }
-
-    rescheduleTarget?.let { task ->
-        RescheduleSheet(
-            hasDate = task.dueAt != null,
-            today = state.today,
-            onPick = { date ->
-                rescheduleTarget = null
-                viewModel.reschedule(task, date)
-            },
-            onPickDate = {
-                rescheduleTarget = null
-                datePickTarget = task
-            },
-            onDismiss = { rescheduleTarget = null },
-        )
-    }
-
-    datePickTarget?.let { task ->
-        PickDateDialog(
-            initial = state.rows.firstOrNull { it.task.id == task.id }?.dueDate ?: state.today,
-            onPicked = { date ->
-                datePickTarget = null
-                viewModel.reschedule(task, date)
-            },
-            onDismiss = { datePickTarget = null },
         )
     }
 
