@@ -288,6 +288,22 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun movingDoingTaskIntoShoppingProjectExcludesItEvenFromTheCurrentDoingView() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(8, "Doing")))
+            db.taskLabels().set(10, listOf("Doing"))
+            settings.setShoppingProject(2, true)
+        }
+        waitUntil { viewModel.state.value.shoppingProjects == setOf(2L) && viewModel.state.value.doingCount == 1 }
+        viewModel.reviewDoing()
+        waitUntil { viewModel.state.value.openLabel?.id == 8L && row(10) != null }
+        viewModel.move(row(10)!!.task, 2)
+        waitUntil { row(10) == null && viewModel.state.value.doingCount == 0 }
+        assertTrue(viewModel.state.value.rows.isEmpty())
+    }
+
+    @Test
     fun shoppingProjectsAreExcludedFromDoingViewsAndCounts() {
         seedProjects()
         runBlocking {
