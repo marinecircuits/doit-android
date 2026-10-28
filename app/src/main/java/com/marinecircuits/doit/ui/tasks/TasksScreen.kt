@@ -758,7 +758,7 @@ private fun ProjectTiles(
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth().then(
-                        if (largeTiles) Modifier.heightIn(min = 120.dp) else Modifier
+                        if (largeTiles) Modifier.heightIn(min = 104.dp) else Modifier
                     ).padding(12.dp),
                     verticalArrangement = if (largeTiles) Arrangement.Center else Arrangement.Top,
                 ) {
