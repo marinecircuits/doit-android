@@ -153,6 +153,15 @@ interface TaskLabelDao {
 
 @Dao
 interface TaskHistoryDao {
+    @Query("SELECT * FROM task_history WHERE id = :id")
+    suspend fun get(id: Long): TaskHistoryEntity?
+
+    @Query("DELETE FROM task_history WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("SELECT MIN(taskId) FROM task_history")
+    suspend fun minTaskId(): Long?
+
     @Query("SELECT * FROM task_history ORDER BY happenedAt DESC, id DESC")
     fun observeAll(): Flow<List<TaskHistoryEntity>>
 

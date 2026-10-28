@@ -136,6 +136,26 @@ class TasksViewModel(
         }
     }
 
+    fun undoRecentTask(entry: TaskHistoryEntity, onFinished: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val changed = try {
+                when (entry.kind) {
+                    TaskHistoryEntity.COMPLETED -> repository.undoHistoryCompletion(entry)
+                    TaskHistoryEntity.DELETED -> repository.undoHistoryDeletion(entry.id)
+                    else -> false
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+            if (changed && entry.kind == TaskHistoryEntity.COMPLETED) {
+                remoteHistory.update { tasks -> tasks.filterNot { it.taskId == entry.taskId } }
+            }
+            onFinished(changed)
+        }
+    }
+
     private val today = MutableStateFlow(LocalDate.now(clock))
     private val refreshing = MutableStateFlow(false)
     private val signOutConfirmation = MutableStateFlow<Int?>(null)

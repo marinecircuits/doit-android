@@ -15,7 +15,7 @@ import androidx.room.RoomDatabase
         TaskLabelEntity::class,
         TaskHistoryEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
     // 2: projects.parentProjectId, 3: projects.hexColor, 4: labels and task_labels
     autoMigrations = [
@@ -23,6 +23,7 @@ import androidx.room.RoomDatabase
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
         AutoMigration(from = 4, to = 5),
+        AutoMigration(from = 5, to = 6),
     ],
 )
 abstract class DoitDatabase : RoomDatabase() {
