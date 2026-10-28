@@ -98,6 +98,10 @@ object SyncStatus {
         },
         StatusPart.Waiting(pendingCount).takeIf { pendingCount > 0 },
     )
+
+    /** Waiting changes alone are normal; an offline, rejected-token or failed sync needs attention. */
+    fun needsAttention(parts: List<StatusPart>, tokenRejected: Boolean): Boolean =
+        tokenRejected || parts.any { it == StatusPart.Offline || it == StatusPart.Failed || it == StatusPart.MissingPermission }
 }
 
 /** The fixed choices of the quick reschedule sheet. */

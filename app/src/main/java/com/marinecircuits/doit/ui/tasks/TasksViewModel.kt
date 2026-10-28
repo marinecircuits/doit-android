@@ -37,6 +37,8 @@ data class TasksUiState(
     val syncedOnce: Boolean = false,
     val refreshing: Boolean = false,
     val tokenRejected: Boolean = false,
+    /** Details of the latest server error, cleared when a later sync has a different outcome. */
+    val syncError: String? = null,
     val notices: List<String> = emptyList(),
     /** Number of unsent changes the user must confirm losing before signing out. */
     val signOutConfirmation: Int? = null,
@@ -174,6 +176,7 @@ class TasksViewModel(
                 status = SyncStatus.parts(lastResult, pending),
                 syncedOnce = lastResult != null,
                 tokenRejected = tokenRejected,
+                syncError = (lastResult as? SyncResult.ServerError)?.message?.takeIf { it.isNotBlank() },
                 notices = notices,
             )
         }
@@ -256,7 +259,7 @@ class TasksViewModel(
         viewModelScope.launch { sync() }
     }
 
-    /** Pull to refresh and "Sync now": the only syncs that show the refresh indicator. */
+    /** Pull to refresh shows the refresh indicator while its sync is running. */
     fun refresh() {
         if (refreshing.value) return
         refreshing.value = true

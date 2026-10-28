@@ -133,6 +133,16 @@ class TaskListModelTest {
     }
 
     @Test
+    fun aboutMenuMarksFailuresButNotOrdinaryWaitingChanges() {
+        assertFalse(SyncStatus.needsAttention(emptyList(), tokenRejected = false))
+        assertFalse(SyncStatus.needsAttention(listOf(StatusPart.Waiting(1)), tokenRejected = false))
+        assertTrue(SyncStatus.needsAttention(listOf(StatusPart.Offline), tokenRejected = false))
+        assertTrue(SyncStatus.needsAttention(listOf(StatusPart.Failed, StatusPart.Waiting(2)), tokenRejected = false))
+        assertTrue(SyncStatus.needsAttention(listOf(StatusPart.MissingPermission), tokenRejected = false))
+        assertTrue(SyncStatus.needsAttention(emptyList(), tokenRejected = true))
+    }
+
+    @Test
     fun quickDates() {
         assertEquals(today, QuickDates.dateFor(QuickDate.TODAY, today))
         assertEquals(LocalDate.of(2026, 10, 27), QuickDates.dateFor(QuickDate.TOMORROW, today))
