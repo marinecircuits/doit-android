@@ -73,3 +73,19 @@ data class TaskLabelEntity(
     /** Order of the labels on the task. */
     val position: Int,
 )
+
+/** A durable, device-local record of an action, stored in the same transaction as the task change. */
+@Entity(tableName = "task_history", indices = [Index("taskId")])
+data class TaskHistoryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val taskId: Long,
+    val title: String,
+    val projectId: Long,
+    val kind: String,
+    val happenedAt: Long,
+) {
+    companion object {
+        const val COMPLETED = "completed"
+        const val DELETED = "deleted"
+    }
+}

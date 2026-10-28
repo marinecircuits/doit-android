@@ -13,14 +13,16 @@ import androidx.room.RoomDatabase
         PendingChangeEntity::class,
         LabelEntity::class,
         TaskLabelEntity::class,
+        TaskHistoryEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
     // 2: projects.parentProjectId, 3: projects.hexColor, 4: labels and task_labels
     autoMigrations = [
         AutoMigration(from = 1, to = 2),
         AutoMigration(from = 2, to = 3),
         AutoMigration(from = 3, to = 4),
+        AutoMigration(from = 4, to = 5),
     ],
 )
 abstract class DoitDatabase : RoomDatabase() {
@@ -29,6 +31,7 @@ abstract class DoitDatabase : RoomDatabase() {
     abstract fun pendingChanges(): PendingChangeDao
     abstract fun labels(): LabelDao
     abstract fun taskLabels(): TaskLabelDao
+    abstract fun taskHistory(): TaskHistoryDao
 
     companion object {
         fun build(context: Context): DoitDatabase =

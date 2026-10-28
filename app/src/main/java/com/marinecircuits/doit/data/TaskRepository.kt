@@ -6,8 +6,10 @@ import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.PendingChangeEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
+import com.marinecircuits.doit.data.local.TaskHistoryEntity
 import com.marinecircuits.doit.data.local.TaskLabelEntity
 import com.marinecircuits.doit.data.remote.VikunjaDates
+import com.marinecircuits.doit.data.remote.VikunjaApi
 import com.marinecircuits.doit.data.sync.PendingChanges
 import java.time.Clock
 import java.time.Instant
@@ -53,11 +55,25 @@ class TaskRepository(
     val pendingCount: Flow<Int> = db.pendingChanges().observeCount()
     val labels: Flow<List<LabelEntity>> = db.labels().observeAll()
     val taskLabels: Flow<List<TaskLabelEntity>> = db.taskLabels().observeAll()
+    val taskHistory: Flow<List<TaskHistoryEntity>> = db.taskHistory().observeAll()
 
     suspend fun openTasks(): List<TaskEntity> = db.tasks().open()
 
     /** Resolve a task captured offline after the server assigned its permanent ID. */
     fun resolveTaskId(id: Long): Long = idRemap.resolve(id)
+
+    /** Recent server-completed tasks, including completions from other clients. */
+    suspend fun recentCompleted(): List<TaskHistoryEntity> {
+        val credentials = settings.credentials() ?: return emptyList()
+        val pendingDeletes = db.pendingChanges().all().filter { it.kind == PendingChangeEntity.DELETE }.map { it.taskId }.toSet()
+        return VikunjaApi(credentials.apiBase, credentials.token).recentCompletedTasks()
+            .filter { it.done && it.id > 0 && it.id !in pendingDeletes }
+            .map { task ->
+                TaskHistoryEntity(taskId = task.id, title = task.title, projectId = task.projectId,
+                    kind = TaskHistoryEntity.COMPLETED,
+                    happenedAt = VikunjaDates.parse(task.doneAt)?.toEpochMilli() ?: 0)
+            }
+    }
 
     /** The Vikunja default project if known and usable, otherwise the first non-archived project. */
     suspend fun defaultProjectId(): Long? {
@@ -109,6 +125,8 @@ class TaskRepository(
             if (task.done || db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE) return@withTransaction false
             val label = Doing.label(db.labels().all())
             if (label != null && Doing.contains(db.taskLabels().forTask(id), label)) recordDoing(id, label, false)
+            db.taskHistory().insert(TaskHistoryEntity(taskId = task.id, title = task.title, projectId = task.projectId, kind = TaskHistoryEntity.COMPLETED, happenedAt = clock.millis()))
+            db.taskHistory().trim(TaskHistoryEntity.COMPLETED)
             db.tasks().upsert(task.copy(done = true))
             record(id, fields(DONE to JsonPrimitive(true)))
             true
@@ -124,6 +142,7 @@ class TaskRepository(
             val existing = db.tasks().get(id)
             val current = existing ?: previous.copy(id = id)
             if (existing == null && labels != null) db.taskLabels().set(id, labels)
+            db.taskHistory().deleteForTask(id, TaskHistoryEntity.COMPLETED)
             db.tasks().upsert(current.copy(done = false, dueAt = previous.dueAt))
             record(id, fields(DONE to JsonPrimitive(false), DUE_DATE to dueJson(previous.dueAt)))
             val label = db.labels().all().firstOrNull { it.id == doingLabelId }
@@ -226,6 +245,8 @@ class TaskRepository(
         val removed = db.withTransaction {
             val task = db.tasks().get(id) ?: return@withTransaction false
             val pending = db.pendingChanges().forTask(id)
+            db.taskHistory().insert(TaskHistoryEntity(taskId = task.id, title = task.title, projectId = task.projectId, kind = TaskHistoryEntity.DELETED, happenedAt = clock.millis()))
+            db.taskHistory().trim(TaskHistoryEntity.DELETED)
             db.tasks().delete(id)
             db.taskLabels().deleteForTask(id)
             when {

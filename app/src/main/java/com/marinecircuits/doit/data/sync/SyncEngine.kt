@@ -334,6 +334,7 @@ class SyncEngine(
             db.taskLabels().deleteForTask(created.id)
             db.tasks().changeId(temporaryId, created.id)
             db.taskLabels().changeTaskId(temporaryId, created.id)
+            db.taskHistory().changeTaskId(temporaryId, created.id)
             db.pendingChanges().changeTaskId(temporaryId, created.id)
             val kept = db.tasks().get(created.id)
             when {

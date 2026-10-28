@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.marinecircuits.doit.data.remote.VikunjaJson
 import java.io.File
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -53,6 +54,18 @@ class DatabaseMigrationTest {
             runBlocking { check(upgraded) }
         } finally {
             upgraded.close()
+        }
+    }
+
+    @Test
+    fun version4UpgradePreservesTasksAndAddsHistory() {
+        createVersion(4) {
+            execSQL("INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration) VALUES (12, 'Existing', NULL, 1, 0, 5, 0)")
+        }
+        upgrade { upgraded ->
+            assertEquals("Existing", upgraded.tasks().get(12)?.title)
+            upgraded.taskHistory().insert(TaskHistoryEntity(taskId = 12, title = "Existing", projectId = 1, kind = "deleted", happenedAt = 6))
+            assertEquals("Existing", upgraded.taskHistory().observeAll().first().single().title)
         }
     }
 

@@ -118,4 +118,10 @@
     <string name="shopping_list">Shopping list</string>
     <string name="shopping_explanation">Saved on this device. Subprojects have their own setting. Shopping items cannot be marked doing; existing doing labels are removed when synced.</string>
     <string name="shopping_quantity_hint">Add a quantity at the end, for example Milk [one carton].</string>
+    <string name="recent_tasks">Recent tasks</string>
+    <string name="recent_completed">Recently completed</string>
+    <string name="recent_deleted">Recently deleted</string>
+    <string name="recent_deleted_scope">Deletions made on this device, since this feature was installed.</string>
+    <string name="recent_offline">Could not load completed tasks from the server. Showing what this device has recorded.</string>
+    <string name="recent_empty">No recent tasks</string>
 </resources>
