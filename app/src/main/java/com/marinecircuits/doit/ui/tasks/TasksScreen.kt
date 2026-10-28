@@ -337,7 +337,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                     viewModel::openProject,
                                     Modifier.fillMaxSize(),
                                     largeTiles = true,
-                                    homeLabels = state.labels,
+                                    homeLabels = state.labels.filterNot { it.title.equals("doing", ignoreCase = true) },
                                     shoppingProjects = state.shoppingProjects,
                                     onOpenLabel = viewModel::openLabel,
                                 )
