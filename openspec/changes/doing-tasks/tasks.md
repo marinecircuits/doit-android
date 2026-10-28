@@ -5,5 +5,5 @@
 - [x] 3. Queue label-ID membership, preserve newer in-flight changes, and handle permission failures and offline sync.
 - [x] 4. Stop working on completion and restore it on undo, including synced and repeating tasks.
 - [x] 5. Add API, repository, sync and view-model tests and document permissions.
-- [ ] 6. Validate OpenSpec and pass Android tests and debug build in GitHub Actions.
+- [x] 6. Validate OpenSpec and pass Android tests and debug build in GitHub Actions (run 40674455502).
 - [ ] 7. Check controls, warnings and real-server sync on an Android device.

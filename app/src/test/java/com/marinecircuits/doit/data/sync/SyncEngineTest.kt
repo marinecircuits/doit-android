@@ -290,6 +290,34 @@ class SyncEngineTest {
     }
 
     @Test
+    fun doingIntentUsesLabelIdAcrossServerRename() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Work")
+        engine.sync()
+        repository.setDoing(1, true)
+        fake.labels[0] = FakeVikunja.Label(8, "Focus")
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(8L), fake.tasks[1]!!.labelIds)
+        assertEquals(listOf("Focus"), db.taskLabels().forTask(1))
+        assertTrue(db.labels().all().none { it.title.equals("doing", ignoreCase = true) })
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun deletedDoingLabelIsNotRecreatedAndUserIsNotified() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Work")
+        engine.sync()
+        repository.setDoing(1, true)
+        fake.labels.clear()
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(fake.tasks[1]!!.labelIds.isEmpty())
+        assertTrue(db.labels().all().isEmpty())
+        assertTrue(settings.notices.first().single().contains("label no longer exists"))
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
     fun pullsOpenTasksProjectsAndDefaultProject() = runTest {
         fake.tasks[1] = FakeVikunja.Task(1, "Pay invoice", dueDate = "2026-10-20T11:00:00Z")
         fake.tasks[2] = FakeVikunja.Task(2, "Old", done = true)
