@@ -254,7 +254,7 @@ class TasksViewModel(
      * A capture that is only `#project` or `@label` opens that view.
      * Anything else is captured into a named `#project`, otherwise the open project or the default on the main view.
      */
-    fun capture(text: String, onCreated: (Long) -> Unit) {
+    fun capture(text: String, dueDate: LocalDate? = null, onCreated: (Long) -> Unit) {
         val current = state.value
         when (val destination = CaptureSyntax.destination(text, current.labels, current.projects)) {
             is CaptureSyntax.Destination.Project -> {
@@ -271,7 +271,7 @@ class TasksViewModel(
             }
             null -> {
                 val projectId = current.path.lastOrNull()?.id
-                viewModelScope.launch { repository.capture(text, projectId = projectId)?.let(onCreated) }
+                viewModelScope.launch { repository.capture(text, projectId = projectId, dueDate = dueDate)?.let(onCreated) }
             }
         }
     }

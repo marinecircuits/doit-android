@@ -156,7 +156,11 @@ fun EditSheet(
         ) {
             OutlinedTextField(
                 value = title,
-                onValueChange = { title = it },
+                onValueChange = { value ->
+                    val withoutTrigger = DateTrigger.consume(title, value)
+                    title = withoutTrigger ?: value
+                    if (withoutTrigger != null) pickingDate = true
+                },
                 label = { Text(stringResource(R.string.edit_title)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -166,7 +170,7 @@ fun EditSheet(
                 },
             )
             if (titleFocused) {
-                SyntaxKeyRow(onInsert = { token -> title = SyntaxKeys.insert(title, token) })
+                SyntaxKeyRow(onInsert = { token -> title = SyntaxKeys.insert(title, token) }, onPickDate = { pickingDate = true })
                 val suggestions = if (title.selection.collapsed) {
                     CaptureSyntax.suggestionsAt(title.text, title.selection.end, labels, projects)
                 } else {

@@ -68,19 +68,21 @@ class TaskRepository(
      * Existing `@labels` become labels (see [CaptureSyntax]); the [description] is kept as it is.
      * Returns the task's (temporary) id, or null when nothing is left of the title.
      */
-    suspend fun capture(text: String, description: String? = null, projectId: Long? = null): Long? {
+    suspend fun capture(text: String, description: String? = null, projectId: Long? = null, dueDate: LocalDate? = null): Long? {
         val (title, labelNames, namedProjectId) = CaptureSyntax.parse(text, db.labels().all(), db.projects().all())
         if (title.isEmpty()) return null
         val destination = namedProjectId ?: projectId ?: defaultProjectId() ?: 0
+        val dueAt = dueDate?.let { DueDates.withDate(null, it, clock.zone).toEpochMilli() }
         val id = db.withTransaction {
             val id = minOf(db.tasks().minId() ?: 0, 0) - 1
             db.tasks().upsert(
-                TaskEntity(id, title, dueAt = null, projectId = destination, done = false, createdAt = clock.millis()),
+                TaskEntity(id, title, dueAt = dueAt, projectId = destination, done = false, createdAt = clock.millis()),
             )
             val fields = buildJsonObject {
                 put("title", title)
                 if (!description.isNullOrBlank()) put("description", description.trim())
                 if (destination > 0) put("project_id", destination)
+                if (dueAt != null) put(DUE_DATE, dueJson(dueAt))
                 if (labelNames.isNotEmpty()) put(LABELS, JsonArray(labelNames.map { JsonPrimitive(it) }))
             }
             db.taskLabels().set(id, labelNames) // also clears what a dropped task with this id may have left

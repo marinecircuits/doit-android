@@ -69,6 +69,19 @@ class SyncEngineTest {
     }
 
     @Test
+    fun dateChosenOfflineIsCreatedOnTheServerWithProjectAndLabel() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        engine.sync()
+        val id = repository.capture("Order capacitors #work @errand", dueDate = LocalDate.of(2026, 10, 27))!!
+        assertEquals(2L, db.tasks().get(id)!!.projectId)
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("2026-10-27T11:00:00Z", fake.tasks[100]!!.dueDate)
+        assertEquals(2L, fake.tasks[100]!!.projectId)
+        assertEquals(listOf(7L), fake.tasks[100]!!.labelIds)
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
     fun storesParentProjects() = runTest {
         fake.intercept = { request ->
             if (request.method == "GET" && request.requestUrl!!.encodedPath.endsWith("/projects")) {

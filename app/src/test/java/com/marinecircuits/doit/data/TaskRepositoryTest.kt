@@ -83,6 +83,18 @@ class TaskRepositoryTest {
     }
 
     @Test
+    fun capturePersistsSelectedDueDateInLocalTaskAndPendingCreate() = runTest {
+        db.labels().insertAll(listOf(LabelEntity(7, "Errand")))
+        val id = repository.capture("Order capacitors #work @errand", dueDate = LocalDate.of(2026, 10, 27))!!
+        val task = db.tasks().get(id)!!
+        assertEquals("Order capacitors", task.title)
+        assertEquals(2L, task.projectId)
+        assertEquals(millis("2026-10-27T12:00"), task.dueAt)
+        assertEquals(JsonPrimitive("2026-10-27T11:00:00Z"), pendingFields(id)["due_date"])
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(id))
+    }
+
+    @Test
     fun namedProjectOverridesTheDefaultAndTheOpenProject() = runTest {
         settings.setDefaultProjectId(1)
         for (openProject in listOf(null, 1L)) {

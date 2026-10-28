@@ -127,6 +127,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
 
     var captureText by remember { mutableStateOf(TextFieldValue()) }
     var captureFocused by remember { mutableStateOf(false) }
+    var captureDueDate by remember { mutableStateOf<LocalDate?>(null) }
+    var pickingCaptureDate by remember { mutableStateOf(false) }
     var scrollToTaskId by remember { mutableStateOf<Long?>(null) }
     var rescheduleTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var datePickTarget by remember { mutableStateOf<TaskEntity?>(null) }
@@ -171,8 +173,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     fun capture() {
         val text = captureText.text
         if (text.isBlank()) return
+        val dueDate = captureDueDate
         captureText = TextFieldValue()
-        viewModel.capture(text) { id -> if (currentProject != null || openLabel != null) scrollToTaskId = id }
+        captureDueDate = null
+        viewModel.capture(text, dueDate) { id -> if (currentProject != null || openLabel != null) scrollToTaskId = id }
     }
 
     val typography = MaterialTheme.typography
@@ -236,7 +240,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     ?: stringResource(R.string.capture_hint),
                 belowStatusBar = headerTitle == null,
                 text = captureText,
-                onTextChange = { captureText = it },
+                onTextChange = { value ->
+                    val withoutTrigger = DateTrigger.consume(captureText, value)
+                    captureText = withoutTrigger ?: value
+                    if (withoutTrigger != null) pickingCaptureDate = true
+                },
                 onFocusChange = { captureFocused = it },
                 onSend = ::capture,
                 onSyncNow = viewModel::refresh,
@@ -246,6 +254,14 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onProjectColor = currentProject?.let { { colorOpen = true } },
                 focusRequester = captureFocus,
             )
+            captureDueDate?.let { selected ->
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { pickingCaptureDate = true }) {
+                        Text(stringResource(R.string.capture_due_date, selected.toString()))
+                    }
+                    TextButton(onClick = { captureDueDate = null }) { Text(stringResource(R.string.edit_clear_date)) }
+                }
+            }
             val suggestions = if (captureFocused && captureText.selection.collapsed) {
                 CaptureSyntax.suggestionsAt(captureText.text, captureText.selection.end, state.labels, state.projects)
             } else {
@@ -363,10 +379,19 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 SyntaxKeyRow(
                     onInsert = { token -> captureText = SyntaxKeys.insert(captureText, token) },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    onPickDate = { pickingCaptureDate = true },
                 )
             }
         }
     }
+    }
+
+    if (pickingCaptureDate) {
+        PickDateDialog(
+            initial = captureDueDate ?: state.today,
+            onPicked = { date -> captureDueDate = date; pickingCaptureDate = false },
+            onDismiss = { pickingCaptureDate = false },
+        )
     }
 
     if (colorOpen) {
