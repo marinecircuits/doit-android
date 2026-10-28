@@ -61,6 +61,14 @@ class VikunjaApi(
     suspend fun openTasks(): List<TaskDto> =
         getAllPages(url("tasks").newBuilder().addQueryParameter("filter", "done = false").build(), TaskDto.serializer())
 
+    /** Latest completed tasks across projects; one bounded page keeps this view quick. */
+    suspend fun recentCompletedTasks(): List<TaskDto> {
+        val request = url("tasks").newBuilder().addQueryParameter("filter", "done = true")
+            .addQueryParameter("sort_by", "done_at").addQueryParameter("order_by", "desc")
+            .addQueryParameter("per_page", "100").build()
+        return get(request, PageDto.serializer(TaskDto.serializer())).items
+    }
+
     /** [fields] uses Vikunja's JSON names, e.g. `title`, `due_date`. Descriptions are sent as Markdown. */
     suspend fun createTask(projectId: Long, fields: JsonObject): TaskDto {
         val url = url("projects/$projectId/tasks").newBuilder().addQueryParameter("format", "markdown").build()

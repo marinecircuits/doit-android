@@ -9,6 +9,7 @@ import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
+import com.marinecircuits.doit.data.local.TaskHistoryEntity
 import com.marinecircuits.doit.data.sync.SyncResult
 import java.time.Clock
 import java.time.LocalDate
@@ -59,6 +60,13 @@ data class TasksUiState(
     val doingTask: TaskRow? = null,
 )
 
+data class RecentTasksState(
+    val completed: List<TaskHistoryEntity> = emptyList(),
+    val deleted: List<TaskHistoryEntity> = emptyList(),
+    val loading: Boolean = false,
+    val error: Boolean = false,
+)
+
 private data class CompletedSnapshot(val task: TaskEntity, val labels: List<String>, val doingLabelId: Long?)
 
 private data class ListInputs(
@@ -96,6 +104,38 @@ class TasksViewModel(
     private val signOut: suspend () -> Unit,
     private val clock: Clock,
 ) : ViewModel() {
+    private val remoteHistory = MutableStateFlow<List<TaskHistoryEntity>>(emptyList())
+    private val historyLoading = MutableStateFlow(false)
+    private val historyError = MutableStateFlow(false)
+    val recentTasks: StateFlow<RecentTasksState> = combine(
+        repository.taskHistory, repository.openTasks, remoteHistory, historyLoading, historyError,
+    ) { local, open, remote, loading, error ->
+        val openIds = open.mapTo(HashSet()) { it.id }
+        val deleted = local.filter { it.kind == TaskHistoryEntity.DELETED }
+        val completed = (local.filter { it.kind == TaskHistoryEntity.COMPLETED && it.taskId !in openIds } + remote)
+            .distinctBy { it.taskId }.sortedByDescending { it.happenedAt }.take(100)
+        RecentTasksState(completed, deleted.take(100), loading, error)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, RecentTasksState())
+
+    fun openRecentTasks() {
+        viewChanged()
+        onLeave()
+        if (historyLoading.value) return
+        historyLoading.value = true
+        historyError.value = false
+        viewModelScope.launch {
+            try {
+                remoteHistory.value = repository.recentCompleted()
+            } catch (e: java.io.IOException) {
+                historyError.value = true
+            } catch (e: com.marinecircuits.doit.data.remote.ApiException) {
+                historyError.value = true
+            } finally {
+                historyLoading.value = false
+            }
+        }
+    }
+
     private val today = MutableStateFlow(LocalDate.now(clock))
     private val refreshing = MutableStateFlow(false)
     private val signOutConfirmation = MutableStateFlow<Int?>(null)

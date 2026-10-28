@@ -43,6 +43,8 @@ Configure up to three **Label screens** from the home menu. Swipe right from hom
 
 ## Home label shortcuts
 
+Open **Menu → Recent tasks** to see recently completed and deleted tasks. Completed tasks include recent server results when connected as well as completions recorded on this phone. Deleted tasks are recorded on this device from the time this feature is installed; the app keeps up to 100 local entries of each kind. Signing out clears the local history.
+
 The home screen lists all cached labels beneath the project tiles as colored `@name` shortcuts. Tap one to see its tasks across projects, even offline. Projects and labels scroll together; labels without tasks are included. If a task loses the current label, it stays in that label view until you navigate away.
 
 ## Installing

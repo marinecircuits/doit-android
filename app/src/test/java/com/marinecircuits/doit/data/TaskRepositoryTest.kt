@@ -57,6 +57,22 @@ class TaskRepositoryTest {
         TaskEntity(id, "Server task", dueAt = dueAt, projectId = 1, done = false, createdAt = 0).also { db.tasks().upsert(it) }
 
     @Test
+    fun historyRecordsLocalCompletionUndoAndDeletion() = runTest {
+        val task = serverTask(10)
+        repository.complete(10)
+        val completed = db.taskHistory().observeAll().first().single()
+        assertEquals("completed", completed.kind)
+        assertEquals(task.title, completed.title)
+        repository.undoComplete(task)
+        assertTrue(db.taskHistory().observeAll().first().isEmpty())
+        repository.delete(10)
+        val deleted = db.taskHistory().observeAll().first().single()
+        assertEquals("deleted", deleted.kind)
+        assertEquals(task.title, deleted.title)
+        assertNull(db.tasks().get(10))
+    }
+
+    @Test
     fun shoppingCaptureKeepsQuantityLiteralAndOmitsDoing() = runTest {
         db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Doing")))
         repository.setShoppingProject(2, true)

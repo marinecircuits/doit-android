@@ -97,6 +97,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.marinecircuits.doit.R
@@ -143,6 +145,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var colorOpen by remember { mutableStateOf(false) }
     var shoppingOpen by remember { mutableStateOf(false) }
+    var recentOpen by remember { mutableStateOf(false) }
+    val recent by viewModel.recentTasks.collectAsStateWithLifecycle()
 
     if (labelPickerOpen) {
         val slot = labelPickerSlot
@@ -285,6 +289,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onFocusChange = { captureFocused = it },
                 onSend = ::capture,
                 onSignOut = viewModel::requestSignOut,
+                onRecent = { viewModel.openRecentTasks(); recentOpen = true },
                 onConfigureContext = { labelPickerOpen = true },
                 showContextOption = currentProject == null && (openLabel == null || isContext),
                 onProjectColor = currentProject?.let { { colorOpen = true } },
@@ -439,6 +444,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             onPicked = { date -> captureDueDate = date; pickingCaptureDate = false },
             onDismiss = { pickingCaptureDate = false },
         )
+    }
+
+    if (recentOpen) {
+        RecentTasksDialog(recent, state.projects.associate { it.id to it.title }, onDismiss = { recentOpen = false })
     }
 
     if (shoppingOpen && currentProject != null) {
@@ -612,6 +621,7 @@ private fun CaptureBar(
     onFocusChange: (Boolean) -> Unit,
     onSend: () -> Unit,
     onSignOut: () -> Unit,
+    onRecent: () -> Unit,
     onConfigureContext: () -> Unit,
     showContextOption: Boolean,
     onProjectColor: (() -> Unit)?,
@@ -658,6 +668,10 @@ private fun CaptureBar(
                 Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.menu))
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.recent_tasks)) },
+                    onClick = { menuOpen = false; onRecent() },
+                )
                 if (showContextOption) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_context_label)) },
@@ -1018,3 +1032,47 @@ private fun TaskRowItem(
 @Composable
 internal fun dateLabel(date: LocalDate?, today: LocalDate, words: DueWords, locale: Locale): String =
     date?.let { DueLabels.label(it, today, words, locale) } ?: stringResource(R.string.edit_no_date)
+
+/** A read-only history. Server completions and this device's deletions have different sources. */
+@Composable
+private fun RecentTasksDialog(state: RecentTasksState, projects: Map<Long, String>, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(56.dp)) {
+                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = stringResource(R.string.back))
+                    }
+                    Text(stringResource(R.string.recent_tasks), style = MaterialTheme.typography.titleLarge)
+                }
+                LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
+                    item { Text(stringResource(R.string.recent_completed), style = MaterialTheme.typography.titleMedium) }
+                    if (state.loading) item { CircularProgressIndicator(Modifier.padding(16.dp)) }
+                    if (state.error) item { Text(stringResource(R.string.recent_offline), modifier = Modifier.padding(vertical = 8.dp)) }
+                    if (!state.loading && state.completed.isEmpty()) item { Text(stringResource(R.string.recent_empty), Modifier.padding(vertical = 12.dp)) }
+                    items(state.completed, key = { "completed-${it.taskId}" }) { task -> HistoryRow(task, projects) }
+                    item { HorizontalDivider(Modifier.padding(vertical = 16.dp)); Text(stringResource(R.string.recent_deleted), style = MaterialTheme.typography.titleMedium) }
+                    item { Text(stringResource(R.string.recent_deleted_scope), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 4.dp)) }
+                    if (state.deleted.isEmpty()) item { Text(stringResource(R.string.recent_empty), Modifier.padding(vertical = 12.dp)) }
+                    items(state.deleted, key = { "deleted-${it.id}" }) { task -> HistoryRow(task, projects) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoryRow(task: com.marinecircuits.doit.data.local.TaskHistoryEntity, projects: Map<Long, String>) {
+    val context = LocalContext.current
+    val date = remember(task.happenedAt, context) {
+        if (task.happenedAt <= 0) null else android.text.format.DateUtils.getRelativeTimeSpanString(
+            task.happenedAt, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS,
+        ).toString()
+    }
+    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+        Text(task.title, style = MaterialTheme.typography.bodyLarge)
+        val details = listOfNotNull(projects[task.projectId], date).joinToString(" · ")
+        if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    HorizontalDivider()
+}

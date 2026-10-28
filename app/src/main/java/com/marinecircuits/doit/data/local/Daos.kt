@@ -150,3 +150,21 @@ interface TaskLabelDao {
     @Query("DELETE FROM task_labels WHERE taskId NOT IN (SELECT id FROM tasks)")
     suspend fun deleteOrphans()
 }
+
+@Dao
+interface TaskHistoryDao {
+    @Query("SELECT * FROM task_history ORDER BY happenedAt DESC, id DESC")
+    fun observeAll(): Flow<List<TaskHistoryEntity>>
+
+    @Insert
+    suspend fun insert(entry: TaskHistoryEntity)
+
+    @Query("DELETE FROM task_history WHERE taskId = :taskId AND kind = :kind")
+    suspend fun deleteForTask(taskId: Long, kind: String)
+
+    @Query("UPDATE task_history SET taskId = :newId WHERE taskId = :oldId")
+    suspend fun changeTaskId(oldId: Long, newId: Long)
+
+    @Query("DELETE FROM task_history WHERE id NOT IN (SELECT id FROM task_history WHERE kind = :kind ORDER BY happenedAt DESC, id DESC LIMIT 100) AND kind = :kind")
+    suspend fun trim(kind: String)
+}
