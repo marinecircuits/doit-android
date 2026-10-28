@@ -69,6 +69,19 @@ class SyncEngine(
         result
     }
 
+    /** Online-only creation; share the sync lock so an older pull cannot erase the new cached tile. */
+    suspend fun createSubproject(parentId: Long, title: String) = mutex.withLock {
+        val name = title.trim()
+        require(name.isNotEmpty()) { "A project needs a name" }
+        require(db.projects().all().any { it.id == parentId && !it.archived && it.id > 0 }) {
+            "The parent project is no longer available"
+        }
+        val credentials = checkNotNull(settings.credentials()) { "Not connected" }
+        val created = apiFor(credentials).createSubproject(parentId, name)
+        check(created.id > 0 && created.parentProjectId == parentId) { "Unexpected project response" }
+        db.projects().insertAll(listOf(created.toEntity()))
+    }
+
     private suspend fun runSync(): SyncResult {
         val credentials = settings.credentials() ?: return SyncResult.NotConnected
         if (settings.tokenRejected.first()) return SyncResult.TokenRejected

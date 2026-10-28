@@ -148,6 +148,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var shoppingOpen by remember { mutableStateOf(false) }
     var recentOpen by remember { mutableStateOf(false) }
     val recent by viewModel.recentTasks.collectAsStateWithLifecycle()
+    val subproject by viewModel.subproject.collectAsStateWithLifecycle()
+    subproject?.let { draft ->
+        CreateSubprojectDialog(draft, viewModel::setSubprojectTitle, viewModel::submitSubproject, viewModel::dismissCreateSubproject)
+    }
 
     if (labelPickerOpen) {
         val slot = labelPickerSlot
@@ -295,6 +299,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 showContextOption = currentProject == null && (openLabel == null || isContext),
                 onProjectColor = currentProject?.let { { colorOpen = true } },
                 onProjectSettings = currentProject?.let { { shoppingOpen = true } },
+                onCreateSubproject = currentProject?.let { viewModel::showCreateSubproject },
                 serverAddress = state.serverAddress,
                 status = state.status,
                 syncedOnce = state.syncedOnce,
@@ -596,6 +601,7 @@ private fun CaptureBar(
     showContextOption: Boolean,
     onProjectColor: (() -> Unit)?,
     onProjectSettings: (() -> Unit)?,
+    onCreateSubproject: (() -> Unit)?,
     serverAddress: String?,
     status: List<StatusPart>,
     syncedOnce: Boolean,
@@ -649,6 +655,10 @@ private fun CaptureBar(
                         onClick = { menuOpen = false; onConfigureContext() },
                     )
                 }
+                if (onCreateSubproject != null) DropdownMenuItem(
+                    text = { Text(stringResource(R.string.create_subproject)) },
+                    onClick = { menuOpen = false; onCreateSubproject() },
+                )
                 if (onProjectColor != null) {
                     if (onProjectSettings != null) DropdownMenuItem(
                         text = { Text(stringResource(R.string.project_settings)) },

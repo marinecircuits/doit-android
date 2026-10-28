@@ -84,3 +84,25 @@ If the open project or one of its ancestors is deleted or archived on the server
 #### Scenario: Project deleted elsewhere
 - **WHEN** the user is on the Firmware screen and Firmware is deleted in the web UI
 - **THEN** after the next sync the app shows the Work screen
+
+### Requirement: Create a subproject
+A project screen's overflow menu SHALL offer "Create subproject". A dialog SHALL show the current parent and request a non-blank project name. The app SHALL trim surrounding whitespace and create the project through API v2 with that parent's ID. This operation requires a connection; it SHALL NOT enqueue an offline project or a task.
+
+#### Scenario: Create within a nested project
+- **WHEN** the user chooses Create subproject in Work → Firmware and submits "Drivers"
+- **THEN** Drivers is created with Firmware as its parent and appears as a tile on Firmware's screen without leaving that screen
+
+#### Scenario: Submitting and dismissing
+- **WHEN** creation is in progress
+- **THEN** repeat submissions, editing and dismissal are disabled until the request finishes
+- **WHEN** the name is blank or the user cancels before submitting
+- **THEN** no project is created
+
+#### Scenario: Creation fails
+- **WHEN** the connection or server request fails
+- **THEN** the dialog retains the name and parent, shows an error, and does not create a local placeholder or retry automatically
+- **AND** an uncertain result advises syncing before a retry to avoid duplicates
+
+#### Scenario: Concurrent sync
+- **WHEN** a sync is already fetching projects as the user submits a subproject
+- **THEN** creation waits for that sync before posting and caching the new project, preventing a stale pull from erasing the new tile

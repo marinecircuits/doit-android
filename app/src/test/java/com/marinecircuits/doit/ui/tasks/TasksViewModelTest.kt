@@ -34,6 +34,8 @@ class TasksViewModelTest {
     private lateinit var settings: SettingsStore
     private lateinit var repository: TaskRepository
     private val syncResults = MutableStateFlow<SyncResult?>(null)
+    private val createdProjects = mutableListOf<Pair<Long, String>>()
+    private var createProjectAction: suspend (Long, String) -> Unit = { parent, title -> createdProjects += parent to title }
     private var syncs = 0
     private var signedOut = false
     private lateinit var viewModel: TasksViewModel
@@ -48,6 +50,7 @@ class TasksViewModelTest {
             settings = settings,
             syncResults = syncResults,
             sync = { syncs++; SyncResult.Synced },
+            createSubproject = { parent, title -> createProjectAction(parent, title) },
             signOut = { signedOut = true },
             clock = testClock,
         )
@@ -67,6 +70,51 @@ class TasksViewModelTest {
     }
 
     private fun row(id: Long) = viewModel.state.value.rows.firstOrNull { it.task.id == id }
+
+    @Test
+    fun subprojectUsesTheChosenParentAndRejectsBlankOrDuplicateSubmissions() {
+        seedProjects()
+        waitUntil { viewModel.state.value.projects.isNotEmpty() }
+        viewModel.showCreateSubproject()
+        assertEquals(null, viewModel.subproject.value)
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 2L }
+        viewModel.showCreateSubproject()
+        viewModel.setSubprojectTitle("   ")
+        viewModel.submitSubproject()
+        assertFalse(viewModel.subproject.value!!.saving)
+        val finish = kotlinx.coroutines.CompletableDeferred<Unit>()
+        createProjectAction = { parent, title -> finish.await(); createdProjects += parent to title }
+        viewModel.setSubprojectTitle("  Firmware  ")
+        viewModel.submitSubproject()
+        viewModel.submitSubproject()
+        viewModel.dismissCreateSubproject()
+        assertTrue(viewModel.subproject.value!!.saving)
+        finish.complete(Unit)
+        waitUntil { viewModel.subproject.value == null }
+        assertEquals(listOf(2L to "Firmware"), createdProjects)
+        assertEquals(2L, viewModel.state.value.path.last().id)
+    }
+
+    @Test
+    fun failedSubprojectKeepsNameAndParentForAnExplicitRetry() {
+        seedProjects()
+        waitUntil { viewModel.state.value.projects.isNotEmpty() }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 2L }
+        viewModel.showCreateSubproject()
+        viewModel.setSubprojectTitle("Hardware")
+        createProjectAction = { _, _ -> throw com.marinecircuits.doit.data.remote.ApiException(403, "Forbidden") }
+        viewModel.submitSubproject()
+        waitUntil { viewModel.subproject.value?.error == SubprojectError.PERMISSION }
+        assertEquals("Hardware", viewModel.subproject.value!!.title)
+        assertFalse(viewModel.subproject.value!!.saving)
+        createProjectAction = { _, _ -> throw java.io.IOException("offline") }
+        viewModel.submitSubproject()
+        waitUntil { viewModel.subproject.value?.error == SubprojectError.CONNECTION }
+        viewModel.dismissCreateSubproject()
+        assertEquals(null, viewModel.subproject.value)
+    }
 
     @Test
     fun serverAddressFollowsCredentialsWithoutExposingSecrets() {
