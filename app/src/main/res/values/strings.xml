@@ -42,6 +42,8 @@
     <string name="server_info_not_synced">Sync has not run yet</string>
     <string name="server_info_error_detail">Details: %1$s</string>
     <string name="no_projects">No projects yet</string>
+    <string name="home_labels">Labels</string>
+    <string name="no_labels">No labels yet</string>
     <string name="menu_sign_out">Sign out</string>
     <string name="menu_color">Color</string>
     <string name="project_color_title">Project color</string>

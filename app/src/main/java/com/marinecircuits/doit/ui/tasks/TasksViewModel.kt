@@ -254,7 +254,7 @@ class TasksViewModel(
     /** Swipe right from home through configured label screens; missing and disabled slots are skipped. */
     fun nextContext() {
         val current = state.value
-        if (current.path.isNotEmpty() || (!current.contextScreen && openLabelId.value != null)) return
+        if (current.path.isNotEmpty() || (!current.contextScreen && current.openLabel != null)) return
         val active = current.contextLabelIds.indices.filter { slot ->
             current.labels.any { it.id == current.contextLabelIds[slot] }
         }
@@ -277,6 +277,15 @@ class TasksViewModel(
     fun setContextLabel(slot: Int, id: Long?) {
         if (state.value.contextIndex == slot && id == null) contextIndex.value = null
         viewModelScope.launch { settings.setContextLabelId(slot, id) }
+    }
+
+    /** Open a cached label's cross-project task list without creating a task. */
+    fun openLabel(labelId: Long) {
+        if (state.value.labels.none { it.id == labelId }) return
+        contextIndex.value = null
+        onLeave()
+        projectPath.value = emptyList()
+        openLabelId.value = labelId
     }
 
     /** The app came to the foreground: the date may have changed, and the list should catch up with the server. */
@@ -312,10 +321,7 @@ class TasksViewModel(
                 projectPath.value = ProjectTree.pathTo(destination.id, current.projects)
             }
             is CaptureSyntax.Destination.Label -> {
-                contextIndex.value = null
-                onLeave()
-                projectPath.value = emptyList()
-                openLabelId.value = destination.id
+                openLabel(destination.id)
             }
             null -> {
                 val projectId = current.path.lastOrNull()?.id

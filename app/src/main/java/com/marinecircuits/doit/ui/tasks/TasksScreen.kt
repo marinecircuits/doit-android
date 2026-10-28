@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
@@ -98,6 +99,7 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.marinecircuits.doit.R
 import com.marinecircuits.doit.data.CaptureSyntax
+import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import java.time.LocalDate
 import java.util.Locale
@@ -315,17 +317,16 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                             modifier = Modifier.fillMaxWidth().weight(1f),
                         ) {
                             when {
-                                state.tiles.isNotEmpty() -> ProjectTiles(
+                                state.tiles.isNotEmpty() || state.labels.isNotEmpty() || (state.loaded && state.syncedOnce) -> ProjectTiles(
                                     state.tiles,
                                     viewModel::openProject,
                                     Modifier.fillMaxSize(),
                                     largeTiles = true,
+                                    homeLabels = state.labels,
+                                    onOpenLabel = viewModel::openLabel,
                                 )
-                                !state.loaded || !state.syncedOnce -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                                    CircularProgressIndicator()
-                                }
                                 else -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                                    Text(stringResource(R.string.no_projects))
+                                    CircularProgressIndicator()
                                 }
                             }
                         }
@@ -770,6 +771,8 @@ private fun ProjectTiles(
     onOpen: (Long) -> Unit,
     modifier: Modifier = Modifier,
     largeTiles: Boolean = false,
+    homeLabels: List<LabelEntity>? = null,
+    onOpenLabel: (Long) -> Unit = {},
 ) {
     val navigationBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     LazyVerticalGrid(
@@ -779,6 +782,13 @@ private fun ProjectTiles(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = modifier,
     ) {
+        if (homeLabels != null && tiles.isEmpty()) {
+            item(key = "no-projects", span = { GridItemSpan(maxLineSpan) }) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), Alignment.Center) {
+                    Text(stringResource(R.string.no_projects), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
         items(tiles, key = { it.project.id }) { tile ->
             val colors = ProjectColors.tile(tile.project.hexColor)
             OutlinedCard(
@@ -810,6 +820,43 @@ private fun ProjectTiles(
                         color = colors?.let { Color(it.content).copy(alpha = 0.8f) }
                             ?: MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                }
+            }
+        }
+        if (homeLabels != null) {
+            item(key = "labels-heading", span = { GridItemSpan(maxLineSpan) }) {
+                Column {
+                    HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 16.dp))
+                    Text(stringResource(R.string.home_labels), style = MaterialTheme.typography.titleSmall)
+                }
+            }
+            item(key = "labels", span = { GridItemSpan(maxLineSpan) }) {
+                if (homeLabels.isEmpty()) {
+                    Text(stringResource(R.string.no_labels), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    HomeLabelShortcuts(homeLabels, onOpenLabel)
+                }
+            }
+        }
+    }
+}
+
+/** Compact coloured label links share the home grid's scroll area with projects. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HomeLabelShortcuts(labels: List<LabelEntity>, onOpen: (Long) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        labels.sortedWith(compareBy<LabelEntity> { it.title.lowercase() }.thenBy { it.id }).forEach { label ->
+            val colors = ProjectColors.tile(label.hexColor)
+            Surface(
+                onClick = { onOpen(label.id) },
+                shape = CircleShape,
+                color = colors?.let { Color(it.container) } ?: MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = colors?.let { Color(it.content) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.heightIn(min = 48.dp),
+            ) {
+                Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                    Text("@${label.title}", style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
         }

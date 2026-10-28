@@ -245,6 +245,49 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun homeLabelShortcutOpensTasksAcrossProjectsWithoutCreatingATask() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(9, "Unused"), LabelEntity(7, "Errand"), LabelEntity(8, "home")))
+            db.taskLabels().set(10, listOf("errand"))
+            db.taskLabels().set(11, listOf("Errand"))
+        }
+        waitUntil { viewModel.state.value.labels.size == 3 }
+        assertEquals(listOf("Errand", "home", "Unused"), viewModel.state.value.labels.map { it.title })
+        viewModel.openLabel(7)
+        waitUntil { viewModel.state.value.openLabel?.id == 7L }
+        assertEquals(setOf("Buy milk", "Review PR"), titles().toSet())
+        assertEquals(0, runBlocking { db.pendingChanges().count() })
+        viewModel.navigateUp()
+        waitUntil { viewModel.state.value.openLabel == null && viewModel.state.value.path.isEmpty() }
+
+        viewModel.openLabel(9)
+        waitUntil { viewModel.state.value.openLabel?.id == 9L }
+        assertTrue(viewModel.state.value.rows.isEmpty())
+        viewModel.openLabel(999)
+        assertEquals(9L, viewModel.state.value.openLabel!!.id)
+    }
+
+    @Test
+    fun removedShortcutReturnsToHomeAndAllowsContextNavigation() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Home")))
+            settings.setContextLabelId(0, 8)
+        }
+        waitUntil { viewModel.state.value.labels.size == 2 && viewModel.state.value.contextLabelIds[0] == 8L }
+        viewModel.openLabel(7)
+        waitUntil { viewModel.state.value.openLabel?.id == 7L }
+        runBlocking {
+            db.labels().clear()
+            db.labels().insertAll(listOf(LabelEntity(8, "Home")))
+        }
+        waitUntil { viewModel.state.value.openLabel == null && viewModel.state.value.labels.size == 1 }
+        viewModel.nextContext()
+        waitUntil { viewModel.state.value.contextIndex == 0 && viewModel.state.value.openLabel?.id == 8L }
+    }
+
+    @Test
     fun doingCountReviewAndCompletionUndoPreserveWorkingState() {
         seedProjects()
         runBlocking {
