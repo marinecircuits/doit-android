@@ -112,8 +112,7 @@ class TasksViewModel(
     ) { local, open, remote, loading, error ->
         val openIds = open.mapTo(HashSet()) { it.id }
         val deleted = local.filter { it.kind == TaskHistoryEntity.DELETED }
-        val completed = (local.filter { it.kind == TaskHistoryEntity.COMPLETED } + remote)
-            .filter { it.taskId !in openIds }
+        val completed = (local.filter { it.kind == TaskHistoryEntity.COMPLETED && it.taskId !in openIds } + remote)
             .distinctBy { it.taskId }.sortedByDescending { it.happenedAt }.take(100)
         RecentTasksState(completed, deleted.take(100), loading, error)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, RecentTasksState())

@@ -65,9 +65,11 @@ class TaskRepository(
     /** Recent server-completed tasks, including completions from other clients. */
     suspend fun recentCompleted(): List<TaskHistoryEntity> {
         val credentials = settings.credentials() ?: return emptyList()
-        val pendingDeletes = db.pendingChanges().all().filter { it.kind == PendingChangeEntity.DELETE }.map { it.taskId }.toSet()
+        val excluded = db.pendingChanges().all().filter { change ->
+            change.kind == PendingChangeEntity.DELETE || PendingChanges.decode(change.fields)[DONE] == JsonPrimitive(false)
+        }.map { it.taskId }.toSet()
         return VikunjaApi(credentials.apiBase, credentials.token).recentCompletedTasks()
-            .filter { it.done && it.id > 0 && it.id !in pendingDeletes }
+            .filter { it.done && it.id > 0 && it.id !in excluded }
             .map { task ->
                 TaskHistoryEntity(taskId = task.id, title = task.title, projectId = task.projectId,
                     kind = TaskHistoryEntity.COMPLETED,
