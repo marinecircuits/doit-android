@@ -33,11 +33,14 @@ import com.marinecircuits.doit.R
 import com.marinecircuits.doit.container
 import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.ui.tasks.CaptureSuggestions
+import com.marinecircuits.doit.ui.tasks.DateTrigger
+import com.marinecircuits.doit.ui.tasks.PickDateDialog
 import com.marinecircuits.doit.ui.tasks.SyntaxKeyRow
 import com.marinecircuits.doit.ui.tasks.SyntaxKeys
 import com.marinecircuits.doit.ui.theme.DoitTheme
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /** The share-sheet target: a small dialog over the app the text came from. */
 class ShareActivity : ComponentActivity() {
@@ -51,8 +54,8 @@ class ShareActivity : ComponentActivity() {
             DoitTheme {
                 ShareDialog(
                     shared = shared,
-                    onAdd = { title, description ->
-                        container.repository.capture(title, description)
+                    onAdd = { title, description, dueDate ->
+                        container.repository.capture(title, description, dueDate = dueDate)
                         finish()
                     },
                     onOpenApp = {
@@ -69,7 +72,7 @@ class ShareActivity : ComponentActivity() {
 @Composable
 private fun ShareDialog(
     shared: SharedTask,
-    onAdd: suspend (title: String, description: String?) -> Unit,
+    onAdd: suspend (title: String, description: String?, dueDate: LocalDate?) -> Unit,
     onOpenApp: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -81,6 +84,8 @@ private fun ShareDialog(
     val labels by container.repository.labels.collectAsState(initial = emptyList())
     val projects by container.repository.projects.collectAsState(initial = emptyList())
     var adding by remember { mutableStateOf(false) }
+    var dueDate by remember { mutableStateOf<LocalDate?>(null) }
+    var pickingDate by remember { mutableStateOf(false) }
 
     when (connected) {
         null -> Unit
@@ -98,7 +103,11 @@ private fun ShareDialog(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = title,
-                        onValueChange = { title = it },
+                        onValueChange = { value ->
+                            val withoutTrigger = DateTrigger.consume(title, value)
+                            title = withoutTrigger ?: value
+                            if (withoutTrigger != null) pickingDate = true
+                        },
                         label = { Text(stringResource(R.string.edit_title)) },
                         modifier = Modifier.fillMaxWidth().onFocusChanged { titleFocused = it.isFocused },
                     )
@@ -106,7 +115,16 @@ private fun ShareDialog(
                         SyntaxKeyRow(
                             onInsert = { token -> title = SyntaxKeys.insert(title, token) },
                             modifier = Modifier.fillMaxWidth(),
+                            onPickDate = { pickingDate = true },
                         )
+                    }
+                    dueDate?.let { selected ->
+                        androidx.compose.foundation.layout.Row {
+                            TextButton(onClick = { pickingDate = true }) {
+                                Text(stringResource(R.string.capture_due_date, selected.toString()))
+                            }
+                            TextButton(onClick = { dueDate = null }) { Text(stringResource(R.string.edit_clear_date)) }
+                        }
                     }
                     val suggestions = if (titleFocused && title.selection.collapsed) {
                         CaptureSyntax.suggestionsAt(title.text, title.selection.end, labels, projects)
@@ -140,11 +158,18 @@ private fun ShareDialog(
                     enabled = title.text.isNotBlank() && !adding,
                     onClick = {
                         adding = true
-                        scope.launch { onAdd(title.text, shared.description) }
+                        scope.launch { onAdd(title.text, shared.description, dueDate) }
                     },
                 ) { Text(stringResource(R.string.share_add)) }
             },
             dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+    if (connected == true && pickingDate) {
+        PickDateDialog(
+            initial = dueDate ?: LocalDate.now(),
+            onPicked = { dueDate = it; pickingDate = false },
+            onDismiss = { pickingDate = false },
         )
     }
 }

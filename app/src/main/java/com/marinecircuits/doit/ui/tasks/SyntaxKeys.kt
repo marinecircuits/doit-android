@@ -64,11 +64,25 @@ object SyntaxKeys {
     }
 }
 
+/** A typed `!` at a word boundary opens the date picker; pasted text and punctuation stay literal. */
+object DateTrigger {
+    fun consume(previous: TextFieldValue, next: TextFieldValue): TextFieldValue? {
+        if (!previous.selection.collapsed || !next.selection.collapsed) return null
+        val cursor = previous.selection.start
+        if (cursor !in 0..previous.text.length || next.selection.start != cursor + 1) return null
+        if (cursor > 0 && !previous.text[cursor - 1].isWhitespace()) return null
+        if (previous.text.take(cursor).count { it == '"' } % 2 != 0) return null
+        if (next.text != previous.text.replaceRange(cursor, cursor, "!")) return null
+        return TextFieldValue(previous.text, TextRange(cursor))
+    }
+}
+
 @Composable
-fun SyntaxKeyRow(onInsert: (String) -> Unit, modifier: Modifier = Modifier) {
+fun SyntaxKeyRow(onInsert: (String) -> Unit, modifier: Modifier = Modifier, onPickDate: () -> Unit) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         SyntaxKey("@", stringResource(R.string.insert_label), onInsert)
         SyntaxKey("#", stringResource(R.string.insert_project), onInsert)
+        SyntaxKey("!", stringResource(R.string.insert_date)) { onPickDate() }
     }
 }
 
