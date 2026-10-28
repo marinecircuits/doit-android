@@ -110,14 +110,3 @@ object SyncStatus {
     fun needsAttention(parts: List<StatusPart>, tokenRejected: Boolean): Boolean =
         tokenRejected || parts.any { it == StatusPart.Offline || it == StatusPart.Failed || it == StatusPart.MissingPermission }
 }
-
-/** The fixed choices of the quick reschedule sheet. */
-enum class QuickDate { TODAY, TOMORROW, NEXT_WEEK }
-
-object QuickDates {
-    fun dateFor(choice: QuickDate, today: LocalDate): LocalDate = when (choice) {
-        QuickDate.TODAY -> today
-        QuickDate.TOMORROW -> today.plusDays(1)
-        QuickDate.NEXT_WEEK -> DueDates.nextMonday(today)
-    }
-}
