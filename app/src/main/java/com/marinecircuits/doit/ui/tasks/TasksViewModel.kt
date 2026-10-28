@@ -42,6 +42,8 @@ data class TasksUiState(
     val signOutConfirmation: Int? = null,
     /** Set when the capture box opened a label. Mutually exclusive with [path]. */
     val openLabel: LabelEntity? = null,
+    val contextLabelId: Long? = null,
+    val contextScreen: Boolean = false,
 )
 
 private data class ListInputs(
@@ -77,6 +79,7 @@ class TasksViewModel(
 
     /** The label opened from the capture box, or null when a project or the main view is showing. */
     private val openLabelId = MutableStateFlow<Long?>(null)
+    private val contextScreen = MutableStateFlow(false)
 
     private val inputs = combine(
         repository.openTasks,
@@ -90,8 +93,17 @@ class TasksViewModel(
         LabelInputs(labels, taskLabels.groupBy({ it.taskId }, { it.title }))
     }
 
-    private val list = combine(inputs, projectPath, labelInputs, openLabelId) { latest, path, labels, labelId ->
-        view(latest, path, labels, labelId)
+    private val list = combine(inputs, projectPath, labelInputs, openLabelId, settings.contextLabelId, contextScreen) { values ->
+        val latest = values[0] as ListInputs
+        val path = values[1] as List<Long>
+        val labels = values[2] as LabelInputs
+        val labelId = values[3] as Long?
+        val contextId = values[4] as Long?
+        val inContext = values[5] as Boolean
+        view(latest, path, labels, if (inContext) contextId else labelId).copy(
+            contextLabelId = contextId,
+            contextScreen = inContext,
+        )
     }
 
     private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs, labelId: Long?): TasksUiState {
@@ -172,6 +184,7 @@ class TasksViewModel(
 
     /** Opens a project shown as a tile in the current view. */
     fun openProject(projectId: Long) {
+        contextScreen.value = false
         onLeave()
         openLabelId.value = null
         projectPath.value = openPath + projectId
@@ -179,6 +192,11 @@ class TasksViewModel(
 
     /** Back from a label or project screen: closes the label, or returns to the parent project or the main view. */
     fun navigateUp() {
+        if (contextScreen.value) {
+            onLeave()
+            contextScreen.value = false
+            return
+        }
         if (openLabelId.value != null) {
             onLeave()
             openLabelId.value = null
@@ -190,10 +208,27 @@ class TasksViewModel(
     }
 
     fun navigateHome() {
-        if (openPath.isEmpty() && openLabelId.value == null) return
+        if (openPath.isEmpty() && openLabelId.value == null && !contextScreen.value) return
+        contextScreen.value = false
         onLeave()
         openLabelId.value = null
         projectPath.value = emptyList()
+    }
+
+    fun openContext() {
+        if (state.value.contextLabelId == null || state.value.path.isNotEmpty() || openLabelId.value != null) return
+        onLeave()
+        contextScreen.value = true
+    }
+
+    fun closeContext() {
+        if (!contextScreen.value) return
+        onLeave()
+        contextScreen.value = false
+    }
+
+    fun setContextLabel(id: Long?) {
+        viewModelScope.launch { settings.setContextLabelId(id) }
     }
 
     /** The app came to the foreground: the date may have changed, and the list should catch up with the server. */
@@ -223,11 +258,13 @@ class TasksViewModel(
         val current = state.value
         when (val destination = CaptureSyntax.destination(text, current.labels, current.projects)) {
             is CaptureSyntax.Destination.Project -> {
+                contextScreen.value = false
                 onLeave()
                 openLabelId.value = null
                 projectPath.value = ProjectTree.pathTo(destination.id, current.projects)
             }
             is CaptureSyntax.Destination.Label -> {
+                contextScreen.value = false
                 onLeave()
                 projectPath.value = emptyList()
                 openLabelId.value = destination.id
