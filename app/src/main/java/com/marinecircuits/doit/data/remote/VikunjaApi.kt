@@ -48,6 +48,15 @@ class VikunjaApi(
 
     suspend fun projects(): List<ProjectDto> = getAllPages(url("projects"), ProjectDto.serializer())
 
+    suspend fun createSubproject(parentId: Long, title: String): ProjectDto {
+        val fields = buildJsonObject {
+            put("title", title)
+            put("parent_project_id", parentId)
+        }
+        val request = authorized(url("projects")).post(fields.toString().toRequestBody(JSON)).build()
+        return execute(request, ProjectDto.serializer())
+    }
+
     /** JSON merge patch. [fields] uses Vikunja's names, e.g. `hex_color`. */
     suspend fun updateProject(projectId: Long, fields: JsonObject): ProjectDto {
         val request = authorized(url("projects/$projectId")).patch(fields.toString().toRequestBody(MERGE_PATCH)).build()

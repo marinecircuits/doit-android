@@ -67,6 +67,15 @@ data class RecentTasksState(
     val error: Boolean = false,
 )
 
+enum class SubprojectError { CONNECTION, PERMISSION, OTHER }
+
+data class CreateSubprojectState(
+    val parent: ProjectEntity,
+    val title: String = "",
+    val saving: Boolean = false,
+    val error: SubprojectError? = null,
+)
+
 private data class CompletedSnapshot(val task: TaskEntity, val labels: List<String>, val doingLabelId: Long?)
 
 private data class ListInputs(
@@ -101,9 +110,48 @@ class TasksViewModel(
     private val settings: SettingsStore,
     syncResults: StateFlow<SyncResult?>,
     private val sync: suspend () -> SyncResult,
+    private val createSubproject: suspend (Long, String) -> Unit,
     private val signOut: suspend () -> Unit,
     private val clock: Clock,
 ) : ViewModel() {
+    private val _subproject = MutableStateFlow<CreateSubprojectState?>(null)
+    val subproject: StateFlow<CreateSubprojectState?> = _subproject
+
+    fun showCreateSubproject() {
+        if (_subproject.value != null) return
+        val parent = state.value.path.lastOrNull() ?: return
+        _subproject.value = CreateSubprojectState(parent)
+    }
+
+    fun setSubprojectTitle(title: String) {
+        _subproject.update { if (it?.saving == false) it.copy(title = title, error = null) else it }
+    }
+
+    fun dismissCreateSubproject() {
+        if (_subproject.value?.saving != true) _subproject.value = null
+    }
+
+    fun submitSubproject() {
+        val draft = _subproject.value ?: return
+        if (draft.saving || draft.title.isBlank()) return
+        _subproject.value = draft.copy(saving = true, error = null)
+        viewModelScope.launch {
+            try {
+                createSubproject(draft.parent.id, draft.title.trim())
+                _subproject.value = null
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _subproject.value = draft
+                throw e
+            } catch (_: java.io.IOException) {
+                _subproject.value = draft.copy(error = SubprojectError.CONNECTION)
+            } catch (e: com.marinecircuits.doit.data.remote.ApiException) {
+                _subproject.value = draft.copy(error = if (e.isForbidden || e.isUnauthorized) SubprojectError.PERMISSION else SubprojectError.OTHER)
+            } catch (_: Exception) {
+                _subproject.value = draft.copy(error = SubprojectError.OTHER)
+            }
+        }
+    }
+
     private val remoteHistory = MutableStateFlow<List<TaskHistoryEntity>>(emptyList())
     private val historyLoading = MutableStateFlow(false)
     private val historyError = MutableStateFlow(false)
