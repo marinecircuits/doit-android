@@ -1,6 +1,7 @@
 package com.marinecircuits.doit.ui.tasks
 
 import com.marinecircuits.doit.data.DueDates
+import com.marinecircuits.doit.data.Shopping
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
@@ -24,6 +25,8 @@ data class TaskRow(
     val completed: Boolean = false,
     /** Shown as chips under the title. */
     val labels: List<LabelChip> = emptyList(),
+    val displayTitle: String = task.title,
+    val quantity: String? = null,
 )
 
 /** A label on a row; [hexColor] is empty for a label without a colour or one the app doesn't know. */
@@ -43,6 +46,7 @@ object TaskListModel {
         zone: ZoneId,
         taskLabels: Map<Long, List<String>> = emptyMap(),
         labels: List<LabelEntity> = emptyList(),
+        shoppingProjects: Set<Long> = emptySet(),
     ): List<TaskRow> {
         val titles = projects.associate { it.id to it.title }
         val colors = labels.reversed().associate { it.title.lowercase() to it.hexColor } // the first of equal names wins
@@ -51,8 +55,11 @@ object TaskListModel {
             undated.sortedWith(compareByDescending<TaskEntity> { it.createdAt }.thenBy { it.id })
         return ordered.map { task ->
             val dueDate = task.dueAt?.let { DueDates.localDate(it, zone) }
+            val (title, quantity) = if (task.projectId in shoppingProjects) Shopping.item(task.title) else task.title to null
             TaskRow(
                 task = task,
+                displayTitle = title,
+                quantity = quantity,
                 dueDate = dueDate,
                 overdue = !task.done && dueDate != null && dueDate < today,
                 projectTitle = titles[task.projectId]?.takeIf { task.projectId != defaultProjectId },
