@@ -1,3 +1,11 @@
+## 0.23.0 (2026-10-29)
+
+### Feat
+
+- show task descriptions with a link icon for each address
+- sync shopping settings through project descriptions
+- recognize shared shopping-list markers and quantities
+
 ## 0.22.0 (2026-10-28)
 
 ### Feat
