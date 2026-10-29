@@ -1,3 +1,58 @@
+## 0.22.0 (2026-10-28)
+
+### Feat
+
+- group and indent subprojects in the project picker (#70)
+
+### Fix
+
+- hide doing from home label shortcuts
+
+## 0.21.0 (2026-10-28)
+
+### Feat
+
+- create subprojects from project menu
+- show complete release history
+
+### Fix
+
+- disable task swipe actions
+
+## 0.20.0 (2026-10-28)
+
+### Feat
+
+- undo recent task actions
+- show release notes in about
+
+### Fix
+
+- correct completed history action
+- register generated release notes directory
+
+## 0.19.0 (2026-10-28)
+
+### Feat
+
+- show recent completed and deleted tasks
+
+### Fix
+
+- show server completions ahead of cached open tasks
+
+## 0.18.1 (2026-10-28)
+
+### Fix
+
+- retain tasks in label view until navigation
+
+## 0.18.0 (2026-10-28)
+
+### Feat
+
+- support local shopping list projects
+
 ## 0.17.0 (2026-10-28)
 
 ### Feat

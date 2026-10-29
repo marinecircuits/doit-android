@@ -67,6 +67,16 @@ class VikunjaApi(
         return execute(request, ProjectDto.serializer())
     }
 
+    suspend fun createSubproject(parentId: Long, title: String): ProjectDto {
+        val fields = buildJsonObject {
+            put("title", title)
+            put("parent_project_id", parentId)
+        }
+        val request = authorized(url("projects")).post(fields.toString().toRequestBody(JSON)).build()
+
+        return execute(request, ProjectDto.serializer())
+    }
+
     /** JSON merge patch. [fields] uses Vikunja's names, e.g. `hex_color`. */
     suspend fun updateProject(projectId: Long, fields: JsonObject): ProjectDto {
         val request = authorized(url("projects/$projectId")).patch(fields.toString().toRequestBody(MERGE_PATCH)).build()
@@ -79,6 +89,14 @@ class VikunjaApi(
 
     suspend fun openTasks(): List<TaskDto> =
         getAllPages(url("tasks").newBuilder().addQueryParameter("filter", "done = false").build(), TaskDto.serializer())
+
+    /** Latest completed tasks across projects; one bounded page keeps this view quick. */
+    suspend fun recentCompletedTasks(): List<TaskDto> {
+        val request = url("tasks").newBuilder().addQueryParameter("filter", "done = true")
+            .addQueryParameter("sort_by", "done_at").addQueryParameter("order_by", "desc")
+            .addQueryParameter("per_page", "100").build()
+        return get(request, PageDto.serializer(TaskDto.serializer())).items
+    }
 
     /** [fields] uses Vikunja's JSON names, e.g. `title`, `due_date`. Descriptions are sent as Markdown. */
     suspend fun createTask(projectId: Long, fields: JsonObject): TaskDto {

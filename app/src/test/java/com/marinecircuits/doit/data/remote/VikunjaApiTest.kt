@@ -46,6 +46,18 @@ class VikunjaApiTest {
     }
 
     @Test
+    fun recentCompletedUsesACompactSortedServerQuery() = runTest {
+        server.enqueue(json("""{"items":[{"id":5,"title":"Finished","done":true,"done_at":"2026-10-28T10:00:00Z"}],"total":1,"page":1,"per_page":100,"total_pages":1}"""))
+        val task = api.recentCompletedTasks().single()
+        assertEquals("2026-10-28T10:00:00Z", task.doneAt)
+        val query = server.takeRequest().requestUrl!!
+        assertEquals("done = true", query.queryParameter("filter"))
+        assertEquals("done_at", query.queryParameter("sort_by"))
+        assertEquals("desc", query.queryParameter("order_by"))
+        assertEquals("100", query.queryParameter("per_page"))
+    }
+
+    @Test
     fun emptyListIsOneRequest() = runTest {
         server.enqueue(json("""{"items":[],"total":0,"page":1,"per_page":50,"total_pages":0}"""))
         assertTrue(api.projects().isEmpty())

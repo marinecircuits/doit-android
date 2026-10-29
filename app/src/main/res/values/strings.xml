@@ -12,7 +12,7 @@
     <string name="setup_token_hint">tk_…</string>
     <string name="setup_connect">Connect</string>
     <string name="setup_permissions_title">Create the token in Vikunja under Settings → API Tokens with these permissions:</string>
-    <string name="setup_permissions">• tasks: read_all, create, update, delete\n• projects: read_all\n• for shopping settings: projects: read_one, update\n• other: user\n• for @labels (optional): labels: read_all, tasks_labels: create\n• for @doing: tasks_labels: delete</string>
+    <string name="setup_permissions">• tasks: read_all, create, update, delete\n• projects: read_all\n• for subprojects (optional): projects: create\n• for shopping settings: projects: read_one, update\n• other: user\n• for @labels (optional): labels: read_all, tasks_labels: create\n• for @doing: tasks_labels: delete</string>
     <string name="setup_error_blank_url">Enter your server address.</string>
     <string name="setup_error_http">HTTPS is required. Use an https:// address.</string>
     <string name="setup_error_invalid_url">That doesn\'t look like a web address.</string>
@@ -118,4 +118,26 @@
     <string name="shopping_list">Shopping list</string>
     <string name="shopping_explanation">Synced using doit:type=shopping in the project description. Subprojects have their own setting. Shopping items cannot be marked doing; existing doing labels are removed when synced.</string>
     <string name="shopping_quantity_hint">Add a quantity at the end, for example Milk [one carton].</string>
+    <string name="recent_tasks">Recent tasks</string>
+    <string name="recent_completed">Recently completed</string>
+    <string name="recent_deleted">Recently deleted</string>
+    <string name="recent_deleted_scope">Deletions made on this device, since this feature was installed.</string>
+    <string name="recent_offline">Could not load completed tasks from the server. Showing what this device has recorded.</string>
+    <string name="recent_empty">No recent tasks</string>
+    <string name="release_notes">Release notes</string>
+    <string name="release_history">Release history</string>
+    <string name="release_notes_unavailable">No release notes are available.</string>
+    <string name="recent_load_more">••• Show five more</string>
+    <string name="recent_restore">Restore task</string>
+    <string name="recent_restore_details">This recreates the task from the details saved on this device. Server-only details such as attachments may not be restored.</string>
+    <string name="recent_reopen">Mark as not done</string>
+    <string name="recent_reopen_details">Move this task back to your open tasks?</string>
+    <string name="recent_undo_failed">Could not restore this task. Please try again.</string>
+    <string name="create_subproject">Create subproject</string>
+    <string name="project_name">Project name</string>
+    <string name="subproject_parent">In %1$s</string>
+    <string name="subproject_creating">Creating…</string>
+    <string name="subproject_connection_error">Could not confirm creation. Check your connection and sync before retrying to avoid a duplicate.</string>
+    <string name="subproject_permission_error">Check your token and its permission to create projects, and your access to this parent project.</string>
+    <string name="subproject_create_error">Could not confirm creation. Sync to check whether the project was created before trying again.</string>
 </resources>

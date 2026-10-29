@@ -5,6 +5,7 @@ import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.PendingChangeEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
+import com.marinecircuits.doit.data.local.TaskHistoryEntity
 import com.marinecircuits.doit.data.sync.PendingChanges
 import com.marinecircuits.doit.inMemoryDatabase
 import com.marinecircuits.doit.testClock
@@ -101,6 +102,63 @@ class TaskRepositoryTest {
 
     private suspend fun serverTask(id: Long, dueAt: Long? = null) =
         TaskEntity(id, "Server task", dueAt = dueAt, projectId = 1, done = false, createdAt = 0).also { db.tasks().upsert(it) }
+
+    @Test
+    fun undoDeletedTaskRecreatesCachedDetailsWithoutCancellingOriginalDelete() = runTest {
+        val due = millis("2026-11-03T12:00")
+        db.labels().insertAll(listOf(LabelEntity(7, "Errand")))
+        val task = serverTask(10, due)
+        db.taskLabels().set(10, listOf("Errand"))
+        repository.delete(10)
+        val entry = db.taskHistory().observeAll().first().single()
+        assertTrue(repository.undoHistoryDeletion(entry.id))
+        val restored = db.tasks().open().single()
+        assertTrue(restored.id < 0)
+        assertEquals(task.title, restored.title)
+        assertEquals(due, restored.dueAt)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(restored.id))
+        assertEquals(PendingChangeEntity.DELETE, db.pendingChanges().forTask(10)!!.kind)
+        assertEquals(PendingChangeEntity.CREATE, db.pendingChanges().forTask(restored.id)!!.kind)
+        assertTrue(db.taskHistory().observeAll().first().isEmpty())
+        assertTrue(!repository.undoHistoryDeletion(entry.id))
+    }
+
+    @Test
+    fun undoServerCompletionNeverQueuesUnknownFieldsOrClearsDueDate() = runTest {
+        val due = millis("2026-11-03T12:00")
+        val entry = TaskHistoryEntity(taskId = 10, title = "Milk", projectId = 1,
+            kind = TaskHistoryEntity.COMPLETED, happenedAt = 1, dueAt = due)
+        assertTrue(repository.undoHistoryCompletion(entry))
+        assertEquals(due, db.tasks().get(10)!!.dueAt)
+        assertEquals(JsonObject(mapOf("done" to JsonPrimitive(false))), pendingFields(10))
+    }
+
+    @Test
+    fun undoUnsentCaptureRetainsDescriptionAndAvoidsReusingItsId() = runTest {
+        val id = repository.capture("Milk", description = "Oat milk", projectId = 1)!!
+        repository.delete(id)
+        val entry = db.taskHistory().observeAll().first().single()
+        assertTrue(repository.undoHistoryDeletion(entry.id))
+        val restored = db.tasks().open().single()
+        assertTrue(restored.id < id)
+        assertEquals(JsonPrimitive("Oat milk"), pendingFields(restored.id)["description"])
+    }
+
+    @Test
+    fun historyRecordsLocalCompletionUndoAndDeletion() = runTest {
+        val task = serverTask(10)
+        repository.complete(10)
+        val completed = db.taskHistory().observeAll().first().single()
+        assertEquals("completed", completed.kind)
+        assertEquals(task.title, completed.title)
+        repository.undoComplete(task)
+        assertTrue(db.taskHistory().observeAll().first().isEmpty())
+        repository.delete(10)
+        val deleted = db.taskHistory().observeAll().first().single()
+        assertEquals("deleted", deleted.kind)
+        assertEquals(task.title, deleted.title)
+        assertNull(db.tasks().get(10))
+    }
 
     @Test
     fun shoppingCaptureKeepsQuantityLiteralAndOmitsDoing() = runTest {

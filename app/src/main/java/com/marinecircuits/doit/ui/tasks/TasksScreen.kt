@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,6 +71,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -97,6 +100,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.marinecircuits.doit.R
@@ -138,11 +143,15 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var captureDueDate by remember { mutableStateOf<LocalDate?>(null) }
     var pickingCaptureDate by remember { mutableStateOf(false) }
     var scrollToTaskId by remember { mutableStateOf<Long?>(null) }
-    var rescheduleTarget by remember { mutableStateOf<TaskEntity?>(null) }
-    var datePickTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var colorOpen by remember { mutableStateOf(false) }
     var shoppingOpen by remember { mutableStateOf(false) }
+    var recentOpen by remember { mutableStateOf(false) }
+    val recent by viewModel.recentTasks.collectAsStateWithLifecycle()
+    val subproject by viewModel.subproject.collectAsStateWithLifecycle()
+    subproject?.let { draft ->
+        CreateSubprojectDialog(draft, viewModel::setSubprojectTitle, viewModel::submitSubproject, viewModel::dismissCreateSubproject)
+    }
 
     if (labelPickerOpen) {
         val slot = labelPickerSlot
@@ -285,10 +294,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onFocusChange = { captureFocused = it },
                 onSend = ::capture,
                 onSignOut = viewModel::requestSignOut,
+                onRecent = { viewModel.openRecentTasks(); recentOpen = true },
                 onConfigureContext = { labelPickerOpen = true },
                 showContextOption = currentProject == null && (openLabel == null || isContext),
                 onProjectColor = currentProject?.let { { colorOpen = true } },
                 onProjectSettings = currentProject?.let { { shoppingOpen = true } },
+                onCreateSubproject = currentProject?.let { viewModel::showCreateSubproject },
                 serverAddress = state.serverAddress,
                 status = state.status,
                 syncedOnce = state.syncedOnce,
@@ -326,7 +337,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                     viewModel::openProject,
                                     Modifier.fillMaxSize(),
                                     largeTiles = true,
-                                    homeLabels = state.labels,
+                                    homeLabels = state.labels.filterNot { it.title.equals("doing", ignoreCase = true) },
                                     shoppingProjects = state.shoppingProjects,
                                     onOpenLabel = viewModel::openLabel,
                                 )
@@ -354,12 +365,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                     modifier = Modifier.fillMaxSize(),
                                 ) {
                                     items(state.rows, key = { it.task.id }) { row ->
-                                        SwipeRow(
-                                            onSwipedRight = { viewModel.complete(row.task) },
-                                            onSwipedLeft = { rescheduleTarget = row.task },
-                                            enabled = !row.completed,
-                                            modifier = Modifier.animateItem(),
-                                        ) {
+                                        Box(Modifier.animateItem()) {
                                             TaskRowItem(
                                                 row = row,
                                                 dueLabel = row.dueDate?.let {
@@ -441,6 +447,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         )
     }
 
+    if (recentOpen) {
+        RecentTasksDialog(recent, state.projects.associate { it.id to it.title },
+            onUndo = viewModel::undoRecentTask, onDismiss = { recentOpen = false })
+    }
+
     if (shoppingOpen && currentProject != null) {
         AlertDialog(
             onDismissRequest = { shoppingOpen = false },
@@ -468,33 +479,6 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 viewModel.setProjectColor(hex)
             },
             onDismiss = { colorOpen = false },
-        )
-    }
-
-    rescheduleTarget?.let { task ->
-        RescheduleSheet(
-            hasDate = task.dueAt != null,
-            today = state.today,
-            onPick = { date ->
-                rescheduleTarget = null
-                viewModel.reschedule(task, date)
-            },
-            onPickDate = {
-                rescheduleTarget = null
-                datePickTarget = task
-            },
-            onDismiss = { rescheduleTarget = null },
-        )
-    }
-
-    datePickTarget?.let { task ->
-        PickDateDialog(
-            initial = state.rows.firstOrNull { it.task.id == task.id }?.dueDate ?: state.today,
-            onPicked = { date ->
-                datePickTarget = null
-                viewModel.reschedule(task, date)
-            },
-            onDismiss = { datePickTarget = null },
         )
     }
 
@@ -612,10 +596,12 @@ private fun CaptureBar(
     onFocusChange: (Boolean) -> Unit,
     onSend: () -> Unit,
     onSignOut: () -> Unit,
+    onRecent: () -> Unit,
     onConfigureContext: () -> Unit,
     showContextOption: Boolean,
     onProjectColor: (() -> Unit)?,
     onProjectSettings: (() -> Unit)?,
+    onCreateSubproject: (() -> Unit)?,
     serverAddress: String?,
     status: List<StatusPart>,
     syncedOnce: Boolean,
@@ -625,6 +611,7 @@ private fun CaptureBar(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     var infoOpen by remember { mutableStateOf(false) }
+    var releaseNotesOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val appVersion = remember(context) {
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
@@ -658,12 +645,20 @@ private fun CaptureBar(
                 Icon(painterResource(R.drawable.ic_more_vert), contentDescription = stringResource(R.string.menu))
             }
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.recent_tasks)) },
+                    onClick = { menuOpen = false; onRecent() },
+                )
                 if (showContextOption) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_context_label)) },
                         onClick = { menuOpen = false; onConfigureContext() },
                     )
                 }
+                if (onCreateSubproject != null) DropdownMenuItem(
+                    text = { Text(stringResource(R.string.create_subproject)) },
+                    onClick = { menuOpen = false; onCreateSubproject() },
+                )
                 if (onProjectColor != null) {
                     if (onProjectSettings != null) DropdownMenuItem(
                         text = { Text(stringResource(R.string.project_settings)) },
@@ -704,6 +699,9 @@ private fun CaptureBar(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(stringResource(R.string.app_version, appVersion))
+                    TextButton(onClick = { infoOpen = false; releaseNotesOpen = true }) {
+                        Text(stringResource(R.string.release_notes))
+                    }
                     Text(stringResource(R.string.server_info_address, serverAddress ?: stringResource(R.string.server_info_unavailable)))
                     when {
                         tokenRejected -> Text(stringResource(R.string.token_rejected_banner))
@@ -717,6 +715,20 @@ private fun CaptureBar(
                 }
             },
             confirmButton = { TextButton(onClick = { infoOpen = false }) { Text(stringResource(R.string.ok)) } },
+        )
+    }
+    if (releaseNotesOpen) {
+        val notes = remember(context) {
+            runCatching { context.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() } }.getOrDefault("")
+        }
+        AlertDialog(
+            onDismissRequest = { releaseNotesOpen = false },
+            title = { Text(stringResource(R.string.release_history)) },
+            text = {
+                Text(notes.ifEmpty { stringResource(R.string.release_notes_unavailable) },
+                    modifier = Modifier.verticalScroll(rememberScrollState()))
+            },
+            confirmButton = { TextButton(onClick = { releaseNotesOpen = false }) { Text(stringResource(R.string.ok)) } },
         )
     }
 }
@@ -1018,3 +1030,85 @@ private fun TaskRowItem(
 @Composable
 internal fun dateLabel(date: LocalDate?, today: LocalDate, words: DueWords, locale: Locale): String =
     date?.let { DueLabels.label(it, today, words, locale) } ?: stringResource(R.string.edit_no_date)
+
+/** Server completions and this device's deletions have different sources. */
+@Composable
+private fun RecentTasksDialog(
+    state: RecentTasksState, projects: Map<Long, String>,
+    onUndo: (com.marinecircuits.doit.data.local.TaskHistoryEntity, (Boolean) -> Unit) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var completedLimit by remember { mutableIntStateOf(5) }
+    var deletedLimit by remember { mutableIntStateOf(5) }
+    var selected by remember { mutableStateOf<com.marinecircuits.doit.data.local.TaskHistoryEntity?>(null) }
+    var undoing by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(56.dp)) {
+                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = stringResource(R.string.back))
+                    }
+                    Text(stringResource(R.string.recent_tasks), style = MaterialTheme.typography.titleLarge)
+                }
+                LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp)) {
+                    item { Text(stringResource(R.string.recent_completed), style = MaterialTheme.typography.titleMedium) }
+                    if (state.loading) item { CircularProgressIndicator(Modifier.padding(16.dp)) }
+                    if (state.error) item { Text(stringResource(R.string.recent_offline), modifier = Modifier.padding(vertical = 8.dp)) }
+                    if (!state.loading && state.completed.isEmpty()) item { Text(stringResource(R.string.recent_empty), Modifier.padding(vertical = 12.dp)) }
+                    items(state.completed.take(completedLimit), key = { "completed-${it.taskId}" }) { task ->
+                        HistoryRow(task, projects) { if (!state.loading && !undoing) selected = task }
+                    }
+                    if (state.completed.size > completedLimit) item {
+                        TextButton(onClick = { completedLimit += 5 }) { Text(stringResource(R.string.recent_load_more)) }
+                    }
+                    item { HorizontalDivider(Modifier.padding(vertical = 16.dp)); Text(stringResource(R.string.recent_deleted), style = MaterialTheme.typography.titleMedium) }
+                    item { Text(stringResource(R.string.recent_deleted_scope), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 4.dp)) }
+                    if (state.deleted.isEmpty()) item { Text(stringResource(R.string.recent_empty), Modifier.padding(vertical = 12.dp)) }
+                    items(state.deleted.take(deletedLimit), key = { "deleted-${it.id}" }) { task ->
+                        HistoryRow(task, projects) { if (!undoing) selected = task }
+                    }
+                    if (state.deleted.size > deletedLimit) item {
+                        TextButton(onClick = { deletedLimit += 5 }) { Text(stringResource(R.string.recent_load_more)) }
+                    }
+                }
+            }
+        }
+    }
+    selected?.let { task ->
+        val deleted = task.kind == com.marinecircuits.doit.data.local.TaskHistoryEntity.DELETED
+        AlertDialog(
+            onDismissRequest = { if (!undoing) selected = null },
+            title = { Text(task.title) },
+            text = { Text(stringResource(if (deleted) R.string.recent_restore_details else R.string.recent_reopen_details)) },
+            confirmButton = {
+                TextButton(enabled = !undoing, onClick = {
+                    undoing = true
+                    onUndo(task) { success -> undoing = false; selected = null; failed = !success }
+                }) { Text(stringResource(if (deleted) R.string.recent_restore else R.string.recent_reopen)) }
+            },
+            dismissButton = { TextButton(enabled = !undoing, onClick = { selected = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+    if (failed) AlertDialog(
+        onDismissRequest = { failed = false }, title = { Text(stringResource(R.string.recent_undo_failed)) },
+        confirmButton = { TextButton(onClick = { failed = false }) { Text(stringResource(R.string.ok)) } },
+    )
+}
+
+@Composable
+private fun HistoryRow(task: com.marinecircuits.doit.data.local.TaskHistoryEntity, projects: Map<Long, String>, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val date = remember(task.happenedAt, context) {
+        if (task.happenedAt <= 0) null else android.text.format.DateUtils.getRelativeTimeSpanString(
+            task.happenedAt, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS,
+        ).toString()
+    }
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp)) {
+        Text(task.title, style = MaterialTheme.typography.bodyLarge)
+        val details = listOfNotNull(projects[task.projectId], date).joinToString(" · ")
+        if (details.isNotEmpty()) Text(details, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    HorizontalDivider()
+}

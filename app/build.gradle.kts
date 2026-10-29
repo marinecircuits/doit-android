@@ -63,6 +63,14 @@ android {
     }
 }
 
+// Bundle the changelog at build time, after the release workflow has updated it.
+val bundleReleaseNotes = tasks.register<Sync>("bundleReleaseNotes") {
+    from(rootProject.file("CHANGELOG.md"))
+    into(layout.buildDirectory.dir("generated/releaseNotes"))
+}
+android.sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/releaseNotes").get().asFile)
+tasks.named("preBuild").configure { dependsOn(bundleReleaseNotes) }
+
 // Never produce an unsigned or debug-signed release APK.
 val requireReleaseSigning = tasks.register("requireReleaseSigning") {
     val signingConfigured = releaseKeystore.isPresent

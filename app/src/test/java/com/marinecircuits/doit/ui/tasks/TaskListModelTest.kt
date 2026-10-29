@@ -155,11 +155,5 @@ class TaskListModelTest {
         assertTrue(SyncStatus.needsAttention(emptyList(), tokenRejected = true))
     }
 
-    @Test
-    fun quickDates() {
-        assertEquals(today, QuickDates.dateFor(QuickDate.TODAY, today))
-        assertEquals(LocalDate.of(2026, 10, 27), QuickDates.dateFor(QuickDate.TOMORROW, today))
-        assertEquals(LocalDate.of(2026, 11, 2), QuickDates.dateFor(QuickDate.NEXT_WEEK, today))
-        assertEquals(LocalDate.of(2026, 11, 2), QuickDates.dateFor(QuickDate.NEXT_WEEK, LocalDate.of(2026, 11, 1)))
-    }
+
 }

@@ -2,7 +2,6 @@
 
 package com.marinecircuits.doit.ui.tasks
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +15,6 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -49,39 +47,6 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.util.Locale
-
-/** Opened by a left swipe: the fixed choices apply at once. */
-@Composable
-fun RescheduleSheet(
-    hasDate: Boolean,
-    today: LocalDate,
-    onPick: (LocalDate?) -> Unit,
-    onPickDate: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Text(
-            stringResource(R.string.when_title),
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-        )
-        QuickDate.entries.forEach { choice ->
-            val label = when (choice) {
-                QuickDate.TODAY -> R.string.when_today
-                QuickDate.TOMORROW -> R.string.when_tomorrow
-                QuickDate.NEXT_WEEK -> R.string.when_next_week
-            }
-            ListItem(
-                headlineContent = { Text(stringResource(label)) },
-                modifier = Modifier.clickable { onPick(QuickDates.dateFor(choice, today)) },
-            )
-        }
-        ListItem(headlineContent = { Text(stringResource(R.string.when_pick)) }, modifier = Modifier.clickable(onClick = onPickDate))
-        if (hasDate) {
-            ListItem(headlineContent = { Text(stringResource(R.string.when_none)) }, modifier = Modifier.clickable { onPick(null) })
-        }
-    }
-}
 
 /** Material's date picker works in UTC midnights; this converts to and from local dates. */
 @Composable
@@ -131,6 +96,7 @@ fun EditSheet(
     var projectId by remember(task.id) { mutableStateOf(task.projectId) }
     var pickingDate by remember { mutableStateOf(false) }
     var projectMenuOpen by remember { mutableStateOf(false) }
+    val projectPickerItems = remember(projects) { ProjectTree.pickerItems(projects) }
     var confirmingDelete by remember(task.id) { mutableStateOf(false) }
 
     fun commitTitle() {
@@ -207,9 +173,10 @@ fun EditSheet(
                         Text(projects.firstOrNull { it.id == projectId }?.title ?: "—")
                     }
                     DropdownMenu(expanded = projectMenuOpen, onDismissRequest = { projectMenuOpen = false }) {
-                        projects.forEach { project ->
+                        projectPickerItems.forEach { item ->
+                            val project = item.project
                             DropdownMenuItem(
-                                text = { Text(project.title) },
+                                text = { Text(project.title, Modifier.padding(start = (item.depth * 16).dp)) },
                                 onClick = {
                                     if (projectId != project.id) {
                                         projectId = project.id

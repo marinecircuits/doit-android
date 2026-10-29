@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.marinecircuits.doit.data.remote.VikunjaJson
 import java.io.File
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -57,6 +58,18 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun version6UpgradeKeepsTaskHistoryAndAddsProjectDescription() {
+        createVersion(6) {
+            execSQL("INSERT INTO projects (id, title, archived, position, parentProjectId, hexColor) VALUES (7, 'Groceries', 0, 1, 0, '')")
+            execSQL("INSERT INTO task_history (taskId, title, projectId, kind, happenedAt, createdAt, dueAt, labelsJson, pendingJson) VALUES (12, 'Milk', 7, 'deleted', 6, 1, 5, '[]', '{}')")
+        }
+        upgrade { upgraded ->
+            assertEquals("", upgraded.projects().all().single().description)
+            assertEquals("Milk", upgraded.taskHistory().observeAll().first().single().title)
+        }
+    }
+
+    @Test
     fun version4DataSurvivesTheUpgrade() {
         createVersion(4) {
             execSQL("INSERT INTO projects (id, title, archived, position, parentProjectId, hexColor) VALUES (7, 'Groceries', 0, 1, 0, '1973ff')")
@@ -71,6 +84,32 @@ class DatabaseMigrationTest {
             assertEquals("Milk [one carton]", upgraded.tasks().get(-1)?.title)
             assertEquals(PendingChangeEntity.CREATE, upgraded.pendingChanges().forTask(-1)?.kind)
             assertEquals(listOf("Doing"), upgraded.taskLabels().forTask(-1))
+        }
+    }
+
+    @Test
+    fun version5HistoryGetsSafeDefaultsOnUpgrade() {
+        createVersion(5) {
+            execSQL("INSERT INTO task_history (taskId, title, projectId, kind, happenedAt) VALUES (12, 'Old deletion', 1, 'deleted', 6)")
+        }
+        upgrade { upgraded ->
+            val entry = upgraded.taskHistory().observeAll().first().single()
+            assertEquals("Old deletion", entry.title)
+            assertEquals("[]", entry.labelsJson)
+            assertEquals("{}", entry.pendingJson)
+            assertEquals(null, entry.dueAt)
+        }
+    }
+
+    @Test
+    fun version4UpgradePreservesTasksAndAddsHistory() {
+        createVersion(4) {
+            execSQL("INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration) VALUES (12, 'Existing', NULL, 1, 0, 5, 0)")
+        }
+        upgrade { upgraded ->
+            assertEquals("Existing", upgraded.tasks().get(12)?.title)
+            upgraded.taskHistory().insert(TaskHistoryEntity(taskId = 12, title = "Existing", projectId = 1, kind = "deleted", happenedAt = 6))
+            assertEquals("Existing", upgraded.taskHistory().observeAll().first().single().title)
         }
     }
 

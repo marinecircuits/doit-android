@@ -88,6 +88,7 @@ private fun DoitRoot(container: AppContainer, focusCaptureRequests: Int) {
                     settings = container.settings,
                     syncResults = container.syncEngine.lastResult,
                     sync = container.syncEngine::sync,
+                    createSubproject = container.syncEngine::createSubproject,
                     signOut = container::signOut,
                     clock = DeviceClock,
                 )

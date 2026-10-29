@@ -16,6 +16,7 @@ data class TaskDto(
     val id: Long = 0,
     val title: String = "",
     val done: Boolean = false,
+    @SerialName("done_at") val doneAt: String? = null,
     @SerialName("due_date") val dueDate: String? = null,
     @SerialName("project_id") val projectId: Long = 0,
     @SerialName("repeat_after") val repeatAfter: Long = 0,

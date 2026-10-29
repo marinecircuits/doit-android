@@ -111,6 +111,113 @@ class SyncEngineTest {
     }
 
     @Test
+    fun createSubprojectPostsTrimmedNameAndCachesTheChildUnderItsParent() = runTest {
+        engine.sync()
+        // Creating a child of an existing subproject must keep that exact parent, not its root.
+        db.projects().insertAll(listOf(com.marinecircuits.doit.data.local.ProjectEntity(7, "Firmware", false, 0.0, 2)))
+        fake.intercept = { request ->
+            if (request.method == "POST" && request.requestUrl!!.encodedPath == "/api/v2/projects") {
+                okhttp3.mockwebserver.MockResponse().setResponseCode(201).setBody(
+                    """{"id":8,"title":"Drivers","parent_project_id":7}"""
+                )
+            } else null
+        }
+        engine.createSubproject(7, "  Drivers  ")
+        // The fake records and consumes the body before calling its interceptor.
+        val requestBody = fake.requests.single { it.startsWith("POST projects ") }.removePrefix("POST projects ")
+        val body = com.marinecircuits.doit.data.remote.VikunjaJson.decodeFromString<kotlinx.serialization.json.JsonObject>(requestBody)
+        assertEquals(kotlinx.serialization.json.JsonPrimitive(7), body["parent_project_id"])
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("Drivers"), body["title"])
+        val child = db.projects().all().single { it.id == 8L }
+        assertEquals(7L, child.parentProjectId)
+        assertEquals("Drivers", child.title)
+        assertEquals(4, db.projects().all().size)
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun rejectedSubprojectDoesNotAddAPhantomTileAndInvalidInputDoesNotReachServer() = runTest {
+        engine.sync()
+        val before = db.projects().all()
+        val requestsBefore = server.requestCount
+        for ((parent, title) in listOf(1L to "  ", 99L to "Missing parent")) {
+            try {
+                engine.createSubproject(parent, title)
+                org.junit.Assert.fail("Expected validation failure")
+            } catch (_: IllegalArgumentException) { }
+        }
+        assertEquals(requestsBefore, server.requestCount)
+        fake.intercept = { request ->
+            if (request.method == "POST") okhttp3.mockwebserver.MockResponse().setResponseCode(403).setBody("{}") else null
+        }
+        try {
+            engine.createSubproject(1, "Restricted")
+            org.junit.Assert.fail("Expected permission failure")
+        } catch (e: com.marinecircuits.doit.data.remote.ApiException) {
+            assertEquals(403, e.status)
+        }
+        assertEquals(before, db.projects().all())
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun restoreDuringDeleteRequestLeavesOneRecreatedTask() = runTest {
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk")
+        engine.sync()
+        repository.delete(1)
+        var restored = false
+        fake.intercept = { request ->
+            if (!restored && request.method == "DELETE" && request.requestUrl!!.encodedPath.endsWith("/tasks/1")) {
+                restored = true
+                runBlocking { repository.undoHistoryDeletion(db.taskHistory().observeAll().first().single().id) }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(restored)
+        assertEquals(listOf("Milk"), fake.tasks.values.map { it.title })
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun restoreWhileOriginalCaptureIsBeingCreatedDoesNotResurrectTheWrongId() = runTest {
+        engine.sync()
+        val id = repository.capture("Milk")!!
+        var restored = false
+        fake.intercept = { request ->
+            if (!restored && request.method == "POST" && request.requestUrl!!.encodedPath.endsWith("/projects/1/tasks")) {
+                restored = true
+                runBlocking {
+                    repository.delete(id)
+                    repository.undoHistoryDeletion(db.taskHistory().observeAll().first().single().id)
+                }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(restored)
+        assertEquals(listOf("Milk"), fake.tasks.values.map { it.title })
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun undoDeletedTaskEventuallyRemovesOriginalAndCreatesItsReplacement() = runTest {
+        fake.labels += FakeVikunja.Label(7, "Errand")
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk", dueDate = "2026-11-03T11:00:00Z", labelIds = mutableListOf(7))
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.delete(1)
+        val entry = db.taskHistory().observeAll().first().single()
+        assertTrue(repository.undoHistoryDeletion(entry.id))
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertFalse(fake.tasks.containsKey(1))
+        val restored = fake.tasks.values.single()
+        assertEquals("Milk", restored.title)
+        assertEquals("2026-11-03T11:00:00Z", restored.dueDate)
+        assertEquals(listOf(7L), restored.labelIds)
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
     fun shoppingCleanupUploadsDownloadedDoingAndKeepsOtherLabels() = runTest {
         fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
         fake.tasks[1] = FakeVikunja.Task(1, "Milk [two]", projectId = 2, labelIds = mutableListOf(7, 8))

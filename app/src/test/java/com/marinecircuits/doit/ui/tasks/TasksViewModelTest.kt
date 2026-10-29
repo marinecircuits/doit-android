@@ -34,6 +34,8 @@ class TasksViewModelTest {
     private lateinit var settings: SettingsStore
     private lateinit var repository: TaskRepository
     private val syncResults = MutableStateFlow<SyncResult?>(null)
+    private val createdProjects = mutableListOf<Pair<Long, String>>()
+    private var createProjectAction: suspend (Long, String) -> Unit = { parent, title -> createdProjects += parent to title }
     private var syncs = 0
     private var signedOut = false
     private lateinit var viewModel: TasksViewModel
@@ -48,6 +50,7 @@ class TasksViewModelTest {
             settings = settings,
             syncResults = syncResults,
             sync = { syncs++; SyncResult.Synced },
+            createSubproject = { parent, title -> createProjectAction(parent, title) },
             signOut = { signedOut = true },
             clock = testClock,
         )
@@ -69,11 +72,69 @@ class TasksViewModelTest {
     private fun row(id: Long) = viewModel.state.value.rows.firstOrNull { it.task.id == id }
 
     @Test
+    fun subprojectUsesTheChosenParentAndRejectsBlankOrDuplicateSubmissions() {
+        seedProjects()
+        waitUntil { viewModel.state.value.projects.isNotEmpty() }
+        viewModel.showCreateSubproject()
+        assertEquals(null, viewModel.subproject.value)
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 2L }
+        viewModel.showCreateSubproject()
+        viewModel.setSubprojectTitle("   ")
+        viewModel.submitSubproject()
+        assertFalse(viewModel.subproject.value!!.saving)
+        val finish = kotlinx.coroutines.CompletableDeferred<Unit>()
+        createProjectAction = { parent, title -> finish.await(); createdProjects += parent to title }
+        viewModel.setSubprojectTitle("  Firmware  ")
+        viewModel.submitSubproject()
+        viewModel.submitSubproject()
+        viewModel.dismissCreateSubproject()
+        assertTrue(viewModel.subproject.value!!.saving)
+        finish.complete(Unit)
+        waitUntil { viewModel.subproject.value == null }
+        assertEquals(listOf(2L to "Firmware"), createdProjects)
+        assertEquals(2L, viewModel.state.value.path.last().id)
+    }
+
+    @Test
+    fun failedSubprojectKeepsNameAndParentForAnExplicitRetry() {
+        seedProjects()
+        waitUntil { viewModel.state.value.projects.isNotEmpty() }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 2L }
+        viewModel.showCreateSubproject()
+        viewModel.setSubprojectTitle("Hardware")
+        createProjectAction = { _, _ -> throw com.marinecircuits.doit.data.remote.ApiException(403, "Forbidden") }
+        viewModel.submitSubproject()
+        waitUntil { viewModel.subproject.value?.error == SubprojectError.PERMISSION }
+        assertEquals("Hardware", viewModel.subproject.value!!.title)
+        assertFalse(viewModel.subproject.value!!.saving)
+        createProjectAction = { _, _ -> throw java.io.IOException("offline") }
+        viewModel.submitSubproject()
+        waitUntil { viewModel.subproject.value?.error == SubprojectError.CONNECTION }
+        viewModel.dismissCreateSubproject()
+        assertEquals(null, viewModel.subproject.value)
+    }
+
+    @Test
     fun serverAddressFollowsCredentialsWithoutExposingSecrets() {
         runBlocking { settings.saveCredentials(Credentials("https://user:password@example.com/vikunja/api/v2/".toHttpUrl(), "tk_secret")) }
         waitUntil { viewModel.state.value.serverAddress == "https://example.com/vikunja/" }
         runBlocking { settings.clear() }
         waitUntil { viewModel.state.value.serverAddress == null }
+    }
+
+    @Test
+    fun recentTasksTracksCompletionUndoAndDeletion() {
+        seedProjects()
+        waitUntil { row(10) != null && row(11) != null }
+        viewModel.complete(row(10)!!.task)
+        waitUntil { viewModel.recentTasks.value.completed.any { it.taskId == 10L } }
+        viewModel.uncomplete(row(10)!!.task)
+        waitUntil { viewModel.recentTasks.value.completed.none { it.taskId == 10L } }
+        viewModel.delete(row(11)!!.task)
+        waitUntil { viewModel.recentTasks.value.deleted.any { it.taskId == 11L } }
+        assertEquals("Review PR", viewModel.recentTasks.value.deleted.single().title)
     }
 
     @Test
@@ -288,6 +349,22 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun movingDoingTaskIntoShoppingProjectExcludesItEvenFromTheCurrentDoingView() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(8, "Doing")))
+            db.taskLabels().set(10, listOf("Doing"))
+            settings.setShoppingProject(2, true)
+        }
+        waitUntil { viewModel.state.value.shoppingProjects == setOf(2L) && viewModel.state.value.doingCount == 1 }
+        viewModel.reviewDoing()
+        waitUntil { viewModel.state.value.openLabel?.id == 8L && row(10) != null }
+        viewModel.move(row(10)!!.task, 2)
+        waitUntil { row(10) == null && viewModel.state.value.doingCount == 0 }
+        assertTrue(viewModel.state.value.rows.isEmpty())
+    }
+
+    @Test
     fun shoppingProjectsAreExcludedFromDoingViewsAndCounts() {
         seedProjects()
         runBlocking {
@@ -324,6 +401,62 @@ class TasksViewModelTest {
         viewModel.uncomplete(task)
         waitUntil { row(11)?.completed == false && viewModel.state.value.doingCount == 2 }
         assertTrue(row(11)!!.labels.any { it.title == "Doing" })
+    }
+
+    @Test
+    fun removingDoingKeepsTheTaskUntilLeavingItsLabelView() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(8, "Doing")))
+            db.taskLabels().set(10, listOf("Doing"))
+            db.taskLabels().set(11, listOf("Doing"))
+        }
+        waitUntil { viewModel.state.value.doingCount == 2 }
+        viewModel.reviewDoing()
+        waitUntil { viewModel.state.value.openLabel?.id == 8L && row(10) != null && row(11) != null }
+
+        viewModel.setDoing(row(10)!!.task, false)
+        waitUntil { viewModel.state.value.doingCount == 1 && row(10)?.labels?.isEmpty() == true }
+        assertEquals(setOf(10L, 11L), viewModel.state.value.rows.map { it.task.id }.toSet())
+        viewModel.onLeave() // Backgrounding does not change the view.
+        viewModel.reviewDoing() // Opening the same view does not change it either.
+        waitUntil { row(10) != null && viewModel.state.value.doingCount == 1 }
+
+        viewModel.navigateHome()
+        waitUntil { viewModel.state.value.openLabel == null }
+        viewModel.openLabel(8)
+        waitUntil { viewModel.state.value.openLabel?.id == 8L }
+        assertEquals(listOf(11L), viewModel.state.value.rows.map { it.task.id })
+    }
+
+    @Test
+    fun syncLabelChangesRemainVisibleUntilSwitchingContextScreens() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Home")))
+            db.taskLabels().set(10, listOf("Errand"))
+            settings.setContextLabelId(0, 7)
+            settings.setContextLabelId(1, 8)
+        }
+        waitUntil { viewModel.state.value.contextLabelIds == listOf(7L, 8L, null) && viewModel.state.value.labels.size == 2 }
+        viewModel.nextContext()
+        waitUntil { viewModel.state.value.contextIndex == 0 && row(10) != null }
+        runBlocking { db.taskLabels().set(11, listOf("Errand")) }
+        waitUntil { row(11) != null }
+        runBlocking {
+            db.taskLabels().set(10, emptyList())
+            db.taskLabels().set(11, emptyList())
+        }
+        waitUntil { row(10)?.labels?.isEmpty() == true && row(11)?.labels?.isEmpty() == true }
+        viewModel.delete(row(10)!!.task)
+        waitUntil { row(10) == null }
+        assertTrue(row(11) != null)
+
+        viewModel.nextContext()
+        waitUntil { viewModel.state.value.contextIndex == 1 }
+        viewModel.previousContext()
+        waitUntil { viewModel.state.value.contextIndex == 0 }
+        assertTrue(viewModel.state.value.rows.isEmpty())
     }
 
     @Test
