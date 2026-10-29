@@ -21,7 +21,12 @@ class ContextLabelSettingsTest {
         settings.setContextLabelId(1, 8)
         settings.setContextLabelId(2, 9)
         assertEquals(listOf(7L, 8L, 9L), settings.contextLabelIds.first())
+        settings.setSwipeDownLabelId(11)
+        assertEquals(11L, settings.swipeDownLabelId.first())
         settings.setContextLabelId(1, null)
         assertEquals(listOf(7L, null, 9L), settings.contextLabelIds.first())
+        assertEquals(11L, settings.swipeDownLabelId.first())
+        settings.clear()
+        assertEquals(null, settings.swipeDownLabelId.first())
     }
 }

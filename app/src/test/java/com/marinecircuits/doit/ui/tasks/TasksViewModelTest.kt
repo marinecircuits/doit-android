@@ -483,6 +483,32 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun swipeDownOpensConfiguredLabelWithoutChangingOtherScreens() {
+        seedProjects()
+        runBlocking {
+            db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Home")))
+            db.taskLabels().set(10, listOf("Errand"))
+            settings.setContextLabelId(0, 8)
+            settings.setSwipeDownLabelId(7)
+        }
+        waitUntil { viewModel.state.value.swipeDownLabelId == 7L && viewModel.state.value.labels.size == 2 }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 2L }
+        viewModel.openSwipeDownLabel()
+        waitUntil { viewModel.state.value.openLabel?.id == 7L }
+        assertEquals(listOf(10L), viewModel.state.value.rows.map { it.task.id })
+        viewModel.navigateHome()
+        waitUntil { viewModel.state.value.openLabel == null }
+        viewModel.nextContext()
+        waitUntil { viewModel.state.value.contextIndex == 0 }
+        assertEquals(8L, viewModel.state.value.openLabel?.id)
+        viewModel.setSwipeDownLabel(null)
+        waitUntil { viewModel.state.value.swipeDownLabelId == null }
+        viewModel.openSwipeDownLabel()
+        assertEquals(8L, viewModel.state.value.openLabel?.id)
+    }
+
+    @Test
     fun configuredLabelScreensNavigateInOrderAndHomeReturnsDirectly() {
         seedProjects()
         runBlocking {

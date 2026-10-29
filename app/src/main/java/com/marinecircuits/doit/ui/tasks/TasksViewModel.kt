@@ -49,6 +49,7 @@ data class TasksUiState(
     /** Set when the capture box opened a label. Mutually exclusive with [path]. */
     val openLabel: LabelEntity? = null,
     val contextLabelIds: List<Long?> = listOf(null, null, null),
+    val swipeDownLabelId: Long? = null,
     val contextIndex: Int? = null,
     val contextScreen: Boolean = false,
     val serverAddress: String? = null,
@@ -371,6 +372,7 @@ class TasksViewModel(
             .combine(refreshing) { state, refreshing -> state.copy(refreshing = refreshing) }
             .combine(signOutConfirmation) { state, pending -> state.copy(signOutConfirmation = pending) }
             .combine(settings.serverAddress) { state, address -> state.copy(serverAddress = address) }
+            .combine(settings.swipeDownLabelId) { state, id -> state.copy(swipeDownLabelId = id) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, TasksUiState(today = today.value))
 
     /** The user left the view: tasks completed here leave the list. */
@@ -452,6 +454,15 @@ class TasksViewModel(
         if (state.value.contextIndex == slot && state.value.contextLabelIds.getOrNull(slot) != id) viewChanged()
         if (state.value.contextIndex == slot && id == null) contextIndex.value = null
         viewModelScope.launch { settings.setContextLabelId(slot, id) }
+    }
+
+    fun setSwipeDownLabel(id: Long?) {
+        viewModelScope.launch { settings.setSwipeDownLabelId(id) }
+    }
+
+    /** Open the configured label from any view, ignoring missing or unconfigured labels. */
+    fun openSwipeDownLabel() {
+        state.value.swipeDownLabelId?.let(::openLabel)
     }
 
     /** Open a cached label's cross-project task list without creating a task. */

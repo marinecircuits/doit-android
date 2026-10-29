@@ -141,4 +141,5 @@
     <string name="subproject_connection_error">Could not confirm creation. Check your connection and sync before retrying to avoid a duplicate.</string>
     <string name="subproject_permission_error">Check your token and its permission to create projects, and your access to this parent project.</string>
     <string name="subproject_create_error">Could not confirm creation. Sync to check whether the project was created before trying again.</string>
+    <string name="context_swipe_down">Swipe down: %1$s</string>
 </resources>
