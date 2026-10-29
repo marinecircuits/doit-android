@@ -26,7 +26,7 @@ New tasks go to the default project set in Vikunja under **Settings → General*
 
 ## Label screens
 
-Configure up to three **Label screens** from the home menu. Swipe right from home to move through them, and left to move back; unconfigured or deleted labels are skipped. Each screen shows matching tasks across projects. The previous context label is kept as screen 1, and the **Home** button returns directly to the main view from a label or project screen.
+Configure up to three **Label screens** from the home menu, plus a separate label to open by swiping down at the top of a list. Pulling down no longer triggers a refresh; syncing remains automatic. Swipe right from home to move through them, and left to move back; unconfigured or deleted labels are skipped. Each screen shows matching tasks across projects. The previous context label is kept as screen 1, and the **Home** button returns directly to the main view from a label or project screen.
 
 ## Using it
 
