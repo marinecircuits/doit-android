@@ -105,6 +105,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.marinecircuits.doit.R
+import com.marinecircuits.doit.container
 import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.TaskEntity
@@ -119,6 +120,7 @@ import java.util.Locale
 @Composable
 fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNewToken: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val appContext = LocalContext.current
     val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
     val words = DueWords(
         today = stringResource(R.string.due_today),
@@ -131,6 +133,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     val openLabel = state.openLabel
     val isContext = state.contextScreen
     var labelPickerOpen by remember { mutableStateOf(false) }
+    var nextActionsPickerOpen by remember { mutableStateOf(false) }
     var labelPickerSlot by remember { mutableStateOf<Int?>(null) }
     val currentProject = state.path.lastOrNull()
     // Each view starts at the top of its own list.
@@ -160,11 +163,21 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 labelPickerOpen = false
             }
         } else {
-            ContextLabelPicker(state.labels, state.contextLabelIds.getOrNull(slot), onSelect = { id ->
+            ContextLabelPicker(state.labels, state.contextLabelIds.getOrNull(slot),
+                title = stringResource(R.string.menu_context_label), noneText = stringResource(R.string.context_disabled), onSelect = { id ->
                 viewModel.setContextLabel(slot, id)
                 labelPickerSlot = null
             }) { labelPickerSlot = null }
         }
+    }
+
+    if (nextActionsPickerOpen) {
+        ContextLabelPicker(state.labels, state.nextActionsLabelId,
+            title = stringResource(R.string.next_actions_label), noneText = stringResource(R.string.next_actions_none),
+            onSelect = { id ->
+                nextActionsPickerOpen = false
+                viewModel.setNextActionsLabel(id) { appContext.container.refreshWidgets() }
+            }) { nextActionsPickerOpen = false }
     }
 
     // Leaving the screen (or the app) is a view change: rows completed here are gone when the user returns.
@@ -296,6 +309,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onSignOut = viewModel::requestSignOut,
                 onRecent = { viewModel.openRecentTasks(); recentOpen = true },
                 onConfigureContext = { labelPickerOpen = true },
+                onConfigureNextActions = { nextActionsPickerOpen = true },
                 showContextOption = currentProject == null && (openLabel == null || isContext),
                 onProjectColor = currentProject?.let { { colorOpen = true } },
                 onProjectSettings = currentProject?.let { { shoppingOpen = true } },
@@ -569,13 +583,14 @@ private fun ContextLabelSettings(
 }
 
 @Composable
-private fun ContextLabelPicker(labels: List<com.marinecircuits.doit.data.local.LabelEntity>, selected: Long?, onSelect: (Long?) -> Unit, onDismiss: () -> Unit) {
+private fun ContextLabelPicker(labels: List<com.marinecircuits.doit.data.local.LabelEntity>, selected: Long?,
+                               title: String, noneText: String, onSelect: (Long?) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.menu_context_label)) },
+        title = { Text(title) },
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                item { TextButton(onClick = { onSelect(null) }) { Text(stringResource(R.string.context_disabled)) } }
+                item { TextButton(onClick = { onSelect(null) }) { Text(noneText) } }
                 items(labels, key = { it.id }) { label ->
                     TextButton(onClick = { onSelect(label.id) }, modifier = Modifier.fillMaxWidth()) {
                         Text((if (selected == label.id) "✓ " else "") + label.title)
@@ -598,6 +613,7 @@ private fun CaptureBar(
     onSignOut: () -> Unit,
     onRecent: () -> Unit,
     onConfigureContext: () -> Unit,
+    onConfigureNextActions: () -> Unit,
     showContextOption: Boolean,
     onProjectColor: (() -> Unit)?,
     onProjectSettings: (() -> Unit)?,
@@ -648,6 +664,10 @@ private fun CaptureBar(
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.recent_tasks)) },
                     onClick = { menuOpen = false; onRecent() },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.next_actions_label)) },
+                    onClick = { menuOpen = false; onConfigureNextActions() },
                 )
                 if (showContextOption) {
                     DropdownMenuItem(

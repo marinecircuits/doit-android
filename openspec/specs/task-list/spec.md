@@ -18,7 +18,7 @@ Each project screen SHALL show its own open tasks, excluding tasks in subproject
 - **THEN** it no longer appears in the list (after the next sync for server-side changes)
 
 ### Requirement: List ordering
-The list SHALL be ordered in three groups: overdue tasks (due date before today), then tasks due today or later, then tasks without a due date. Dated tasks SHALL be sorted by due date and time ascending; undated tasks SHALL be sorted newest first.
+Tasks with the locally selected next-actions label SHALL appear first in lists and the widget. The default is a label named `next`, if present; the user may choose another label or none. This setting SHALL remain on the device. Within each group the order SHALL be overdue tasks, tasks due today or later, then undated tasks. Dated tasks SHALL be sorted by due date and time ascending; undated tasks SHALL be sorted newest first.
 
 #### Scenario: Mixed tasks
 - **WHEN** the list contains a task due yesterday, one due Friday, one due today and one without a date

@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.data.Doing
+import com.marinecircuits.doit.data.NextActions
+import com.marinecircuits.doit.data.NextActionsChoice
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.LabelEntity
@@ -51,6 +53,7 @@ data class TasksUiState(
     val contextLabelIds: List<Long?> = listOf(null, null, null),
     val contextIndex: Int? = null,
     val contextScreen: Boolean = false,
+    val nextActionsLabelId: Long? = null,
     val serverAddress: String? = null,
     val shoppingProjects: Set<Long> = emptySet(),
     val doingLabel: LabelEntity? = null,
@@ -97,6 +100,7 @@ private data class ListInputsForView(
     val index: Int?,
     val generation: Long,
     val shopping: Set<Long>,
+    val nextActions: NextActionsChoice,
 )
 private data class LabelViewFrame(
     val key: LabelViewKey? = null,
@@ -234,7 +238,7 @@ class TasksViewModel(
         LabelInputs(labels, taskLabels.groupBy({ it.taskId }, { it.title }))
     }
 
-    private val viewInputs = combine(inputs, projectPath, labelInputs, openLabelId, settings.contextLabelIds, contextIndex, viewGeneration, settings.shoppingProjects) { values ->
+    private val viewInputs = combine(inputs, projectPath, labelInputs, openLabelId, settings.contextLabelIds, contextIndex, viewGeneration, settings.shoppingProjects, settings.nextActionsChoice) { values ->
         val latest = values[0] as ListInputs
         val path = values[1] as List<Long>
         val labels = values[2] as LabelInputs
@@ -246,7 +250,7 @@ class TasksViewModel(
         }
         @Suppress("UNCHECKED_CAST")
         val shopping = values[7] as Set<Long>
-        ListInputsForView(latest, path, labels, if (index != null) contextIds[index] else labelId, contextIds, index, values[6] as Long, shopping)
+        ListInputsForView(latest, path, labels, if (index != null) contextIds[index] else labelId, contextIds, index, values[6] as Long, shopping, values[8] as NextActionsChoice)
     }
 
     // Keep tasks already seen in this label view even if their membership changes, until navigation changes the view.
@@ -280,7 +284,9 @@ class TasksViewModel(
             latest.open.filter { it.id in doingIds }, latest.projects, null, latest.today, clock.zone,
             taskLabels = labels.byTask, labels = labels.labels,
         ).firstOrNull()
-        val state = view(latest, current.path, labels, current.labelId, retained, shopping).copy(
+        val nextId = NextActions.labelId(current.nextActions, labels.labels)
+        val nextName = labels.labels.firstOrNull { it.id == nextId }?.title
+        val state = view(latest, current.path, labels, current.labelId, retained, shopping, nextName).copy(
             shoppingProjects = shopping,
             contextLabelIds = current.contextIds,
             contextIndex = current.index,
@@ -289,11 +295,12 @@ class TasksViewModel(
             doingCount = doingIds.size,
             doingTaskIds = doingIds,
             doingTask = doingTask,
+            nextActionsLabelId = nextId,
         )
         LabelViewFrame(key, seen, state)
     }.mapNotNull { it.state }
 
-    private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs, labelId: Long?, retainedIds: Set<Long>, shopping: Set<Long>): TasksUiState {
+    private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs, labelId: Long?, retainedIds: Set<Long>, shopping: Set<Long>, nextName: String?): TasksUiState {
         val (open, projects, defaultProjectId, day, completed) = inputs
         val visible = projects.filterNot { it.archived }
         val byId = visible.associateBy { it.id }
@@ -327,6 +334,7 @@ class TasksViewModel(
                     taskLabels = taskLabels,
                     labels = labels.labels,
                     shoppingProjects = shopping,
+                    nextActionsLabel = nextName,
                 ),
                 loaded = true,
                 projects = visible,
@@ -348,6 +356,7 @@ class TasksViewModel(
                 taskLabels = taskLabels,
                 labels = labels.labels,
                 shoppingProjects = shopping,
+                nextActionsLabel = nextName,
             ),
             loaded = true,
             projects = visible,
@@ -452,6 +461,10 @@ class TasksViewModel(
         if (state.value.contextIndex == slot && state.value.contextLabelIds.getOrNull(slot) != id) viewChanged()
         if (state.value.contextIndex == slot && id == null) contextIndex.value = null
         viewModelScope.launch { settings.setContextLabelId(slot, id) }
+    }
+
+    fun setNextActionsLabel(id: Long?, onSaved: () -> Unit = {}) {
+        viewModelScope.launch { settings.setNextActionsLabel(id); onSaved() }
     }
 
     /** Open a cached label's cross-project task list without creating a task. */
