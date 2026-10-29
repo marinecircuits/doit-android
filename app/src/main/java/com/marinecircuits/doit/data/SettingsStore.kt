@@ -46,6 +46,13 @@ class SettingsStore(
         dataStore.edit { prefs -> if (id == null) prefs.remove(key) else prefs[key] = id }
     }
 
+    /** Label opened by pulling down at the top of a list. */
+    val swipeDownLabelId: Flow<Long?> = dataStore.data.map { it[SWIPE_DOWN_LABEL] }
+
+    suspend fun setSwipeDownLabelId(id: Long?) {
+        dataStore.edit { prefs -> if (id == null) prefs.remove(SWIPE_DOWN_LABEL) else prefs[SWIPE_DOWN_LABEL] = id }
+    }
+
     /** Server markers with offline changes overlaid; the legacy local choice is kept until migrated. */
     val shoppingProjects: Flow<Set<Long>> = dataStore.data.map { prefs ->
         val ids = (prefs[SYNCED_SHOPPING_PROJECTS].orEmpty() + prefs[SHOPPING_PROJECTS].orEmpty())
@@ -178,6 +185,7 @@ class SettingsStore(
         val TOKEN = stringPreferencesKey("token")
         val TOKEN_REJECTED = booleanPreferencesKey("token_rejected")
         val DEFAULT_PROJECT = longPreferencesKey("default_project_id")
+        val SWIPE_DOWN_LABEL = longPreferencesKey("swipe_down_label_id")
         val CONTEXT_LABELS = listOf(
             longPreferencesKey("context_label_id"),
             longPreferencesKey("context_label_id_2"),

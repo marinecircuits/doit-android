@@ -64,7 +64,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -82,6 +81,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -156,12 +161,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     if (labelPickerOpen) {
         val slot = labelPickerSlot
         if (slot == null) {
-            ContextLabelSettings(state.labels, state.contextLabelIds, onChoose = { labelPickerSlot = it }) {
+            ContextLabelSettings(state.labels, state.contextLabelIds, state.swipeDownLabelId, onChoose = { labelPickerSlot = it }) {
                 labelPickerOpen = false
             }
         } else {
-            ContextLabelPicker(state.labels, state.contextLabelIds.getOrNull(slot), onSelect = { id ->
-                viewModel.setContextLabel(slot, id)
+            ContextLabelPicker(state.labels, if (slot == 3) state.swipeDownLabelId else state.contextLabelIds.getOrNull(slot), onSelect = { id ->
+                if (slot == 3) viewModel.setSwipeDownLabel(id) else viewModel.setContextLabel(slot, id)
                 labelPickerSlot = null
             }) { labelPickerSlot = null }
         }
@@ -320,17 +325,37 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             } else {
                 emptyList()
             }
-            Box(Modifier.fillMaxWidth().weight(1f)) {
+            val threshold = with(LocalDensity.current) { 80.dp.toPx() }
+            val downConnection = remember(state.swipeDownLabelId, state.labels, threshold) {
+                object : NestedScrollConnection {
+                    var pulled = 0f
+                    var opened = false
+                    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                        if (source == NestedScrollSource.UserInput && available.y > 0 && !opened &&
+                            state.labels.any { it.id == state.swipeDownLabelId }) {
+                            pulled += available.y
+                            if (pulled >= threshold) { opened = true; viewModel.openSwipeDownLabel() }
+                        }
+                        return Offset.Zero
+                    }
+                    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                        if (available.y < 0) pulled = 0f
+                        return Offset.Zero
+                    }
+                    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                        pulled = 0f
+                        opened = false
+                        return Velocity.Zero
+                    }
+                }
+            }
+            Box(Modifier.fillMaxWidth().weight(1f).nestedScroll(downConnection)) {
                 Column(Modifier.fillMaxSize()) {
                     if (state.tokenRejected) TokenRejectedBanner(onEnterNewToken)
                     StatusLine(state.status)
 
                     if (openLabel == null && currentProject == null) {
-                        PullToRefreshBox(
-                            isRefreshing = state.refreshing,
-                            onRefresh = viewModel::refresh,
-                            modifier = Modifier.fillMaxWidth().weight(1f),
-                        ) {
+                        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                             when {
                                 state.tiles.isNotEmpty() || state.labels.isNotEmpty() || (state.loaded && state.syncedOnce) -> ProjectTiles(
                                     state.tiles,
@@ -349,11 +374,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     } else {
                         // In a project, tasks take two thirds and subproject tiles the lower third.
                         val hasTiles = openLabel == null && state.tiles.isNotEmpty()
-                        PullToRefreshBox(
-                            isRefreshing = state.refreshing,
-                            onRefresh = viewModel::refresh,
-                            modifier = Modifier.fillMaxWidth().weight(if (hasTiles) 2f else 1f),
-                        ) {
+                        Box(modifier = Modifier.fillMaxWidth().weight(if (hasTiles) 2f else 1f)) {
                             when {
                                 state.rows.isNotEmpty() -> LazyColumn(
                                     state = listState,
@@ -547,6 +568,7 @@ private fun DoingTop(row: TaskRow, count: Int, onOpen: () -> Unit, modifier: Mod
 private fun ContextLabelSettings(
     labels: List<com.marinecircuits.doit.data.local.LabelEntity>,
     selected: List<Long?>,
+    swipeDown: Long?,
     onChoose: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -561,6 +583,11 @@ private fun ContextLabelSettings(
                     TextButton(onClick = { onChoose(slot) }, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.context_slot, slot + 1, name))
                     }
+                }
+                val downName = labels.firstOrNull { it.id == swipeDown }?.title
+                    ?: stringResource(R.string.context_not_configured)
+                TextButton(onClick = { onChoose(3) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.context_swipe_down, downName))
                 }
             }
         },
