@@ -88,10 +88,14 @@ class SyncEngine(
         val api = apiFor(credentials)
         labelsRefetched = false
         return try {
+            settings.migrateShoppingProjects()
+            pushProjectMarkers(api)
+            refreshProjects(api)
             Shopping.enforce(db, settings)
             push(api)
             pull(api)
             if (Shopping.enforce(db, settings)) push(api)
+            pushProjectMarkers(api)
             SyncResult.Synced
         } catch (e: ShoppingCleanupException) {
             SyncResult.ServerError(e.message.orEmpty())
@@ -99,6 +103,49 @@ class SyncEngine(
             if (e.isUnauthorized) unauthorized(api) else SyncResult.ServerError(e.message.orEmpty())
         } catch (e: IOException) {
             SyncResult.Offline
+        }
+    }
+
+    private suspend fun refreshProjects(api: VikunjaApi) {
+        val projects = api.projects()
+        val colors = settings.pendingProjectColors()
+        db.withTransaction {
+            db.projects().clear()
+            db.projects().insertAll(projects.filter { it.id > 0 }.map { dto ->
+                val entity = dto.toEntity()
+                colors[dto.id]?.let { entity.copy(hexColor = it) } ?: entity
+            })
+        }
+        settings.setSyncedShoppingProjects(projects.filter { Shopping.isProject(it.description) }.mapTo(HashSet()) { it.id })
+    }
+
+    private suspend fun pushProjectMarkers(api: VikunjaApi) {
+        for ((id, change) in settings.pendingProjectMarkers.first()) {
+            try {
+                var saved = ""
+                for (attempt in 0..2) {
+                    val (project, etag) = api.project(id)
+                    val description = Shopping.withMarker(project.description, change.active)
+                    try {
+                        saved = if (description == project.description) description
+                            else api.updateProjectDescription(id, project.description, description, etag).description
+                        break
+                    } catch (e: ApiException) {
+                        if (e.status !in setOf(409, 412, 422) || attempt == 2) throw e
+                    }
+                }
+                db.projects().setDescription(id, saved)
+                settings.setSyncedShoppingProjects(Shopping.projectIds(db.projects().all()))
+                settings.acknowledgeProjectMarker(id, change)
+            } catch (e: ApiException) {
+                if (e.isNotFound) {
+                    settings.acknowledgeProjectMarker(id, change)
+                    settings.addNotice("Couldn't change the shopping-list setting: the project is no longer available")
+                } else if (e.isUnauthorized || e.isForbidden) {
+                    api.tokenTest()
+                    throw ShoppingCleanupException("Couldn't sync the shopping-list setting. The token needs projects: read_one and update permissions, and write access to the project. The change is still queued.")
+                } else throw e
+            }
         }
     }
 
@@ -443,6 +490,7 @@ class SyncEngine(
             db.taskLabels().deleteOrphans()
         }
         if (defaultProjectId != null && defaultProjectId > 0) settings.setDefaultProjectId(defaultProjectId)
+        settings.setSyncedShoppingProjects(projects.filter { Shopping.isProject(it.description) }.mapTo(HashSet()) { it.id })
     }
 
     private companion object {
@@ -459,7 +507,7 @@ class SyncEngine(
             syncGeneration = generation,
         )
 
-        fun ProjectDto.toEntity() = ProjectEntity(id, title, isArchived, position, parentProjectId, hexColor)
+        fun ProjectDto.toEntity() = ProjectEntity(id, title, isArchived, position, parentProjectId, hexColor, description)
     }
 }
 

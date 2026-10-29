@@ -12,7 +12,7 @@
     <string name="setup_token_hint">tk_…</string>
     <string name="setup_connect">Connect</string>
     <string name="setup_permissions_title">Create the token in Vikunja under Settings → API Tokens with these permissions:</string>
-    <string name="setup_permissions">• tasks: read_all, create, update, delete\n• projects: read_all\n• for subprojects (optional): projects: create\n• other: user\n• for @labels (optional): labels: read_all, tasks_labels: create\n• for @doing: tasks_labels: delete</string>
+    <string name="setup_permissions">• tasks: read_all, create, update, delete\n• projects: read_all\n• for subprojects (optional): projects: create\n• for shopping settings: projects: read_one, update\n• other: user\n• for @labels (optional): labels: read_all, tasks_labels: create\n• for @doing: tasks_labels: delete</string>
     <string name="setup_error_blank_url">Enter your server address.</string>
     <string name="setup_error_http">HTTPS is required. Use an https:// address.</string>
     <string name="setup_error_invalid_url">That doesn\'t look like a web address.</string>
@@ -116,7 +116,7 @@
     <string name="context_slot">Screen %1$d: %2$s</string>
     <string name="project_settings">Project settings</string>
     <string name="shopping_list">Shopping list</string>
-    <string name="shopping_explanation">Saved on this device. Subprojects have their own setting. Shopping items cannot be marked doing; existing doing labels are removed when synced.</string>
+    <string name="shopping_explanation">Synced using doit:type=shopping in the project description. Subprojects have their own setting. Shopping items cannot be marked doing; existing doing labels are removed when synced.</string>
     <string name="shopping_quantity_hint">Add a quantity at the end, for example Milk [one carton].</string>
     <string name="recent_tasks">Recent tasks</string>
     <string name="recent_completed">Recently completed</string>

@@ -58,6 +58,36 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun version6UpgradeKeepsTaskHistoryAndAddsProjectDescription() {
+        createVersion(6) {
+            execSQL("INSERT INTO projects (id, title, archived, position, parentProjectId, hexColor) VALUES (7, 'Groceries', 0, 1, 0, '')")
+            execSQL("INSERT INTO task_history (taskId, title, projectId, kind, happenedAt, createdAt, dueAt, labelsJson, pendingJson) VALUES (12, 'Milk', 7, 'deleted', 6, 1, 5, '[]', '{}')")
+        }
+        upgrade { upgraded ->
+            assertEquals("", upgraded.projects().all().single().description)
+            assertEquals("Milk", upgraded.taskHistory().observeAll().first().single().title)
+        }
+    }
+
+    @Test
+    fun version4DataSurvivesTheUpgrade() {
+        createVersion(4) {
+            execSQL("INSERT INTO projects (id, title, archived, position, parentProjectId, hexColor) VALUES (7, 'Groceries', 0, 1, 0, '1973ff')")
+            execSQL("INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration) VALUES (-1, 'Milk [one carton]', NULL, 7, 0, 5, 0)")
+            execSQL("INSERT INTO pending_changes (taskId, kind, fields, revision) VALUES (-1, 'create', '{\"title\":\"Milk [one carton]\"}', 0)")
+            execSQL("INSERT INTO labels (id, title, hexColor) VALUES (8, 'Doing', '')")
+            execSQL("INSERT INTO task_labels (taskId, title, position) VALUES (-1, 'Doing', 0)")
+        }
+        upgrade { upgraded ->
+            assertEquals("", upgraded.projects().all().single().description)
+            assertEquals("1973ff", upgraded.projects().all().single().hexColor)
+            assertEquals("Milk [one carton]", upgraded.tasks().get(-1)?.title)
+            assertEquals(PendingChangeEntity.CREATE, upgraded.pendingChanges().forTask(-1)?.kind)
+            assertEquals(listOf("Doing"), upgraded.taskLabels().forTask(-1))
+        }
+    }
+
+    @Test
     fun version5HistoryGetsSafeDefaultsOnUpgrade() {
         createVersion(5) {
             execSQL("INSERT INTO task_history (taskId, title, projectId, kind, happenedAt) VALUES (12, 'Old deletion', 1, 'deleted', 6)")

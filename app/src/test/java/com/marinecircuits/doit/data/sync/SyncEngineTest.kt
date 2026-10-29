@@ -55,6 +55,62 @@ class SyncEngineTest {
     private suspend fun openTitles() = db.tasks().open().map { it.title }.toSet()
 
     @Test
+    fun shoppingSwitchSharesTheMarkerAndPreservesFormattedNotes() = runTest {
+        val notes = "<p>Keep <strong>notes</strong> &amp; links.</p>"
+        fake.projectDescriptions[1] = notes
+        engine.sync()
+        repository.setShoppingProject(1, true)
+        assertEquals(1, repository.pendingCount.first())
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(notes + "<p>doit:type=shopping</p>", fake.projectDescriptions[1])
+        assertEquals(0, repository.pendingCount.first())
+        assertEquals(setOf(1L), settings.shoppingProjects.first())
+        repository.setShoppingProject(1, false)
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(notes, fake.projectDescriptions[1])
+        assertTrue(settings.shoppingProjects.first().isEmpty())
+    }
+
+    @Test
+    fun concurrentDescriptionEditIsRetriedWithoutLosingNotesOrNewToggle() = runTest {
+        fake.projectDescriptions[1] = "<p>Original</p>"
+        engine.sync()
+        repository.setShoppingProject(1, true)
+        var patches = 0
+        fake.intercept = { request ->
+            if (request.method == "PATCH" && request.requestUrl!!.encodedPath == "/api/v2/projects/1") {
+                assertEquals("html", request.getHeader("X-Vikunja-Format"))
+                assertTrue(request.getHeader("If-Match") != null)
+                patches++
+                if (patches == 1) fake.projectDescriptions[1] = "<p>Edited on web</p>"
+                if (patches == 2) runBlocking { repository.setShoppingProject(1, false) }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(3, patches)
+        assertEquals("<p>Edited on web</p>", fake.projectDescriptions[1])
+        assertTrue(settings.pendingProjectMarkers.first().isEmpty())
+        assertTrue(settings.shoppingProjects.first().isEmpty())
+    }
+
+    @Test
+    fun markerPermissionFailureKeepsTheChoiceQueuedUntilRetry() = runTest {
+        engine.sync()
+        repository.setShoppingProject(1, true)
+        fake.projectsUpdatable = false
+        val result = engine.sync()
+        assertTrue(result is SyncResult.ServerError && result.message.contains("read_one and update"))
+        assertEquals(setOf(1L), settings.shoppingProjects.first())
+        assertEquals(1, repository.pendingCount.first())
+        assertFalse(settings.tokenRejected.first())
+        fake.projectsUpdatable = true
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("<p>doit:type=shopping</p>", fake.projectDescriptions[1])
+        assertEquals(0, repository.pendingCount.first())
+    }
+
+    @Test
     fun createSubprojectPostsTrimmedNameAndCachesTheChildUnderItsParent() = runTest {
         engine.sync()
         // Creating a child of an existing subproject must keep that exact parent, not its root.
@@ -181,6 +237,52 @@ class SyncEngineTest {
         val result = engine.sync()
         assertTrue(result is SyncResult.ServerError && result.message.contains("Milk"))
         assertEquals(1, db.pendingChanges().count())
+        fake.labelsRemovable = true
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(fake.tasks[1]!!.labelIds.isEmpty())
+        assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun sharedMarkerIsCachedAndRemoteDoingIsRemovedInSameSync() = runTest {
+        fake.projectDescriptions[1] = "<p>Notes</p><p><strong>doit:type=shopping</strong></p>"
+        fake.labels += listOf(FakeVikunja.Label(7, "Errand"), FakeVikunja.Label(8, "Doing"))
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk [one carton]", labelIds = mutableListOf(7, 8))
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(fake.projectDescriptions[1], db.projects().all().first { it.id == 1L }.description)
+        assertEquals(listOf(7L), fake.tasks[1]!!.labelIds)
+        assertEquals("Milk [one carton]", fake.tasks[1]!!.title)
+        assertEquals(0, db.pendingChanges().count())
+        repository.setDoing(1, true)
+        assertEquals(listOf("Errand"), db.taskLabels().forTask(1))
+        fake.projectDescriptions[1] = "<p>Notes</p>"
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.setDoing(1, true)
+        assertEquals(listOf("Errand", "Doing"), db.taskLabels().forTask(1))
+    }
+
+    @Test
+    fun remoteMarkerBlocksQueuedStartBeforeUpload() = runTest {
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk")
+        engine.sync()
+        repository.setDoing(1, true)
+        fake.projectDescriptions[1] = "<p>doit:type=shopping</p>"
+        fake.requests.clear()
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertFalse(fake.requests.any { it.startsWith("POST tasks/1/labels") })
+        assertTrue(fake.tasks[1]!!.labelIds.isEmpty())
+    }
+
+    @Test
+    fun requiredCleanupRetainsIntentWhenPermissionIsMissing() = runTest {
+        fake.projectDescriptions[1] = "<p>doit:type=shopping</p>"
+        fake.labels += FakeVikunja.Label(8, "Doing")
+        fake.tasks[1] = FakeVikunja.Task(1, "Milk", labelIds = mutableListOf(8))
+        fake.labelsRemovable = false
+        assertTrue(engine.sync() is SyncResult.ServerError)
+        assertTrue(db.pendingChanges().forTask(1)!!.fields.contains("\"required\":true"))
+        assertTrue(db.taskLabels().forTask(1).isEmpty())
         fake.labelsRemovable = true
         assertEquals(SyncResult.Synced, engine.sync())
         assertTrue(fake.tasks[1]!!.labelIds.isEmpty())

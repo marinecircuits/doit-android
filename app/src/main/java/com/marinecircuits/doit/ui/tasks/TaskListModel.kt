@@ -46,7 +46,7 @@ object TaskListModel {
         zone: ZoneId,
         taskLabels: Map<Long, List<String>> = emptyMap(),
         labels: List<LabelEntity> = emptyList(),
-        shoppingProjects: Set<Long> = emptySet(),
+        shoppingProjects: Set<Long> = Shopping.projectIds(projects),
     ): List<TaskRow> {
         val titles = projects.associate { it.id to it.title }
         val colors = labels.reversed().associate { it.title.lowercase() to it.hexColor } // the first of equal names wins
@@ -64,7 +64,8 @@ object TaskListModel {
                 overdue = !task.done && dueDate != null && dueDate < today,
                 projectTitle = titles[task.projectId]?.takeIf { task.projectId != defaultProjectId },
                 completed = task.done,
-                labels = taskLabels[task.id].orEmpty().map { LabelChip(it, colors[it.lowercase()].orEmpty()) },
+                labels = taskLabels[task.id].orEmpty().filterNot { task.projectId in shoppingProjects && it.equals("doing", ignoreCase = true) }
+                    .map { LabelChip(it, colors[it.lowercase()].orEmpty()) },
             )
         }
     }

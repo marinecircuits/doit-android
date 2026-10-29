@@ -1,0 +1,58 @@
+[
+  {
+    "description": "",
+    "shopping": false
+  },
+  {
+    "description": "doit:type=shopping",
+    "shopping": true
+  },
+  {
+    "description": "Notes\ndoit:type=shopping\nMore notes",
+    "shopping": true
+  },
+  {
+    "description": "<p>Weekly shopping</p><p>doit:type=shopping</p>",
+    "shopping": true
+  },
+  {
+    "description": "<div>Notes<br>doit:type=shopping<br>More notes</div>",
+    "shopping": true
+  },
+  {
+    "description": "<p><strong>doit:type</strong>=shopping</p>",
+    "shopping": true
+  },
+  {
+    "description": "<p>&nbsp;doit:type&#61;shopping&nbsp;</p>",
+    "shopping": true
+  },
+  {
+    "description": "<p>Example: doit:type=shopping</p>",
+    "shopping": false
+  },
+  {
+    "description": "<p>doit:type=shopping-other</p>",
+    "shopping": false
+  },
+  {
+    "description": "<!-- doit:type=shopping -->",
+    "shopping": false
+  },
+  {
+    "description": "<p title=\"doit:type=shopping\">Ordinary project</p>",
+    "shopping": false
+  },
+  {
+    "description": "<script>doit:type=shopping</script><p>Notes</p>",
+    "shopping": false
+  },
+  {
+    "description": "<style>doit:type=shopping</style>",
+    "shopping": false
+  },
+  {
+    "description": "<p>doit:type=shopping</p><p>doit:type=shopping</p>",
+    "shopping": true
+  }
+]

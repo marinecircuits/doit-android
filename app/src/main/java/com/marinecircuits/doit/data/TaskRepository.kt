@@ -16,6 +16,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -53,7 +54,9 @@ class TaskRepository(
 ) {
     val openTasks: Flow<List<TaskEntity>> = db.tasks().observeOpen()
     val projects: Flow<List<ProjectEntity>> = db.projects().observeAll()
-    val pendingCount: Flow<Int> = db.pendingChanges().observeCount()
+    val pendingCount: Flow<Int> = combine(db.pendingChanges().observeCount(), settings.pendingProjectMarkers) { tasks, projects ->
+        tasks + projects.size
+    }
     val labels: Flow<List<LabelEntity>> = db.labels().observeAll()
     val taskLabels: Flow<List<TaskLabelEntity>> = db.taskLabels().observeAll()
     val taskHistory: Flow<List<TaskHistoryEntity>> = db.taskHistory().observeAll()

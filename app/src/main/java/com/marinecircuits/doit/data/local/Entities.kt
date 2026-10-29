@@ -31,6 +31,7 @@ data class ProjectEntity(
     @ColumnInfo(defaultValue = "0") val parentProjectId: Long = 0,
     /** As Vikunja sends it; empty for no colour. See [com.marinecircuits.doit.ui.tasks.ProjectColors]. */
     @ColumnInfo(defaultValue = "") val hexColor: String = "",
+    @ColumnInfo(defaultValue = "") val description: String = "",
 )
 
 /**
