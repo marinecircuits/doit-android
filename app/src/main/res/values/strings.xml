@@ -25,6 +25,7 @@
     <!-- Task list -->
     <string name="capture_hint">Add a task…</string>
     <string name="capture_send">Add task</string>
+    <string name="open_link">Open link</string>
     <string name="capture_hint_project">Add to %1$s…</string>
     <string name="back">Back</string>
     <string name="home">Home</string>

@@ -21,6 +21,7 @@ data class TaskDto(
     @SerialName("project_id") val projectId: Long = 0,
     @SerialName("repeat_after") val repeatAfter: Long = 0,
     val created: String? = null,
+    val description: String = "",
     /** Vikunja sends null for a task without labels; [VikunjaJson] turns that into the empty default. */
     val labels: List<LabelDto> = emptyList(),
 )

@@ -139,6 +139,12 @@ fun EditSheet(
                     titleFocused = focus.isFocused
                 },
             )
+            val description = TaskDescriptions.plain(task.description)
+            val links = TaskDescriptions.links(task.description)
+            if (description.isNotEmpty() || links.isNotEmpty()) {
+                TaskDescriptionText(description, maxLines = 8)
+                TaskLinkIcons(links)
+            }
             if (titleFocused) {
                 SyntaxKeyRow(onInsert = { token -> title = SyntaxKeys.insert(title, token) }, onPickDate = { pickingDate = true })
                 val suggestions = if (title.selection.collapsed) {

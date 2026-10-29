@@ -992,6 +992,9 @@ private fun TaskRowItem(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (row.description.isNotEmpty()) {
+                    TaskDescriptionText(row.description, Modifier.padding(top = 2.dp))
+                }
                 row.projectTitle?.let {
                     Text(it, style = MaterialTheme.typography.labelMedium, color = muted)
                 }
@@ -999,6 +1002,7 @@ private fun TaskRowItem(
                     LabelChips(row.labels, dimmed = row.completed, modifier = Modifier.padding(top = 4.dp))
                 }
             }
+            if (row.links.isNotEmpty()) TaskLinkIcons(row.links, Modifier.padding(start = 4.dp), stacked = true)
             row.quantity?.let { quantity ->
                 Text(quantity, modifier = Modifier.padding(start = 8.dp).width(90.dp)
                     .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp)).padding(6.dp), maxLines = 2,

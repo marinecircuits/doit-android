@@ -27,6 +27,10 @@ data class TaskRow(
     val labels: List<LabelChip> = emptyList(),
     val displayTitle: String = task.title,
     val quantity: String? = null,
+    /** Description with markup removed. Empty when there is nothing to show. */
+    val description: String = "",
+    /** One address per icon. The description text is not a link. */
+    val links: List<String> = emptyList(),
 )
 
 /** A label on a row; [hexColor] is empty for a label without a colour or one the app doesn't know. */
@@ -60,6 +64,8 @@ object TaskListModel {
                 task = task,
                 displayTitle = title,
                 quantity = quantity,
+                description = TaskDescriptions.plain(task.description),
+                links = TaskDescriptions.links(task.description),
                 dueDate = dueDate,
                 overdue = !task.done && dueDate != null && dueDate < today,
                 projectTitle = titles[task.projectId]?.takeIf { task.projectId != defaultProjectId },
