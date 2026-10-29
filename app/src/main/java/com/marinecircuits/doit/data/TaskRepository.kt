@@ -108,7 +108,10 @@ class TaskRepository(
         val id = db.withTransaction {
             val id = minOf(db.tasks().minId() ?: 0, 0) - 1
             db.tasks().upsert(
-                TaskEntity(id, title, dueAt = dueAt, projectId = destination, done = false, createdAt = clock.millis()),
+                TaskEntity(
+                    id, title, dueAt = dueAt, projectId = destination, done = false, createdAt = clock.millis(),
+                    description = description?.trim().orEmpty(),
+                ),
             )
             val fields = buildJsonObject {
                 put("title", title)

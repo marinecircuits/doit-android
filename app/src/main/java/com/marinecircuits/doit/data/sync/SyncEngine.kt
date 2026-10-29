@@ -505,6 +505,7 @@ class SyncEngine(
             done = done,
             createdAt = VikunjaDates.parse(created)?.toEpochMilli() ?: fallbackCreatedAt ?: 0,
             syncGeneration = generation,
+            description = description,
         )
 
         fun ProjectDto.toEntity() = ProjectEntity(id, title, isArchived, position, parentProjectId, hexColor, description)

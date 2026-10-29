@@ -38,6 +38,19 @@ class TaskListModelTest {
     }
 
     @Test
+    fun showsTheDescriptionAndOneIconTargetPerAddress() {
+        val rows = TaskListModel.rows(
+            listOf(task(1, "Read").copy(description = "See https://example.com/a and https://example.com/a")),
+            emptyList(),
+            1,
+            today,
+            zone,
+        )
+        assertEquals("See https://example.com/a and https://example.com/a", rows.single().description)
+        assertEquals(listOf("https://example.com/a"), rows.single().links)
+    }
+
+    @Test
     fun ordersOverdueThenDatedThenUndatedNewestFirst() {
         val rows = TaskListModel.rows(
             listOf(

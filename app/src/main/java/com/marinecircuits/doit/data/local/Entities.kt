@@ -19,6 +19,8 @@ data class TaskEntity(
     val createdAt: Long,
     /** The sync that last saw this task on the server; used to sweep tasks the server no longer lists. */
     val syncGeneration: Long = 0,
+    /** Vikunja description, including any markup. Empty when the task has none. */
+    @ColumnInfo(defaultValue = "") val description: String = "",
 )
 
 @Entity(tableName = "projects")
