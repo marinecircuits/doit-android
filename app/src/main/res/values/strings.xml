@@ -111,6 +111,8 @@
     <string name="widget_not_connected">Open doit to connect</string>
     <string name="widget_add">Add a task</string>
     <string name="menu_context_label">Label screens</string>
+    <string name="next_actions_label">Next actions label</string>
+    <string name="next_actions_none">None</string>
     <string name="context_title">Context</string>
     <string name="context_disabled">Disable this screen</string>
     <string name="context_not_configured">Not configured</string>

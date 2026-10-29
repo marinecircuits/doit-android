@@ -15,6 +15,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 data class Credentials(val apiBase: HttpUrl, val token: String)
 data class ProjectMarkerChange(val active: Boolean, val revision: Long)
+data class NextActionsChoice(val configured: Boolean, val labelId: Long?)
 
 /** Everything the app remembers outside the task database. The token is stored encrypted. */
 class SettingsStore(
@@ -36,6 +37,16 @@ class SettingsStore(
     val tokenRejected: Flow<Boolean> = dataStore.data.map { it[TOKEN_REJECTED] ?: false }
 
     val defaultProjectId: Flow<Long?> = dataStore.data.map { it[DEFAULT_PROJECT] }
+
+    /** Null preference means use @next if present; zero means the user explicitly chose None. */
+    val nextActionsChoice: Flow<NextActionsChoice> = dataStore.data.map { prefs ->
+        val value = prefs[NEXT_ACTIONS_LABEL]
+        NextActionsChoice(value != null, value?.takeIf { it > 0 })
+    }
+
+    suspend fun setNextActionsLabel(id: Long?) {
+        dataStore.edit { it[NEXT_ACTIONS_LABEL] = id ?: 0L }
+    }
 
     /** Three ordered label screens. Slot one keeps the original context-label preference on upgrade. */
     val contextLabelIds: Flow<List<Long?>> = dataStore.data.map { prefs -> CONTEXT_LABELS.map { prefs[it] } }
@@ -185,6 +196,7 @@ class SettingsStore(
         val TOKEN = stringPreferencesKey("token")
         val TOKEN_REJECTED = booleanPreferencesKey("token_rejected")
         val DEFAULT_PROJECT = longPreferencesKey("default_project_id")
+        val NEXT_ACTIONS_LABEL = longPreferencesKey("next_actions_label_id")
         val SWIPE_DOWN_LABEL = longPreferencesKey("swipe_down_label_id")
         val CONTEXT_LABELS = listOf(
             longPreferencesKey("context_label_id"),

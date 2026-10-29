@@ -95,6 +95,21 @@ class TaskListModelTest {
     }
 
     @Test
+    fun nextActionsComeFirstAndKeepTheirExistingDateOrder() {
+        val tasks = listOf(
+            task(1, "overdue", "2026-10-20T12:00"),
+            task(2, "next later", "2026-10-30T12:00"),
+            task(3, "next sooner", "2026-10-27T12:00"),
+            task(4, "undated", createdAt = 10),
+        )
+        val rows = TaskListModel.rows(tasks, emptyList(), 1, today, zone,
+            taskLabels = mapOf(2L to listOf("NEXT"), 3L to listOf("next")), nextActionsLabel = "next")
+        assertEquals(listOf("next sooner", "next later", "overdue", "undated"), rows.map { it.task.title })
+        assertEquals(listOf("overdue", "next sooner", "next later", "undated"),
+            TaskListModel.rows(tasks, emptyList(), 1, today, zone).map { it.task.title })
+    }
+
+    @Test
     fun dueTodayIsNotOverdueAfterItsTime() {
         val row = TaskListModel.rows(listOf(task(1, "a", "2026-10-26T00:30")), emptyList(), 1, today, zone).single()
         assertFalse(row.overdue)

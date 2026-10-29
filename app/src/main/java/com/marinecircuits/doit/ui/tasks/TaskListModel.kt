@@ -51,13 +51,20 @@ object TaskListModel {
         taskLabels: Map<Long, List<String>> = emptyMap(),
         labels: List<LabelEntity> = emptyList(),
         shoppingProjects: Set<Long> = Shopping.projectIds(projects),
+        nextActionsLabel: String? = null,
     ): List<TaskRow> {
         val titles = projects.associate { it.id to it.title }
         val colors = labels.reversed().associate { it.title.lowercase() to it.hexColor } // the first of equal names wins
         val (dated, undated) = tasks.partition { it.dueAt != null }
         val ordered = dated.sortedWith(compareBy<TaskEntity> { it.dueAt }.thenBy { it.id }) +
             undated.sortedWith(compareByDescending<TaskEntity> { it.createdAt }.thenBy { it.id })
-        return ordered.map { task ->
+        val sorted = if (nextActionsLabel == null) ordered else {
+            val (next, rest) = ordered.partition { task ->
+                taskLabels[task.id].orEmpty().any { it.equals(nextActionsLabel, ignoreCase = true) }
+            }
+            next + rest
+        }
+        return sorted.map { task ->
             val dueDate = task.dueAt?.let { DueDates.localDate(it, zone) }
             val (title, quantity) = if (task.projectId in shoppingProjects) Shopping.item(task.title) else task.title to null
             TaskRow(

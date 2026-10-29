@@ -39,6 +39,7 @@ import androidx.glance.text.TextStyle
 import com.marinecircuits.doit.MainActivity
 import com.marinecircuits.doit.R
 import com.marinecircuits.doit.container
+import com.marinecircuits.doit.data.NextActions
 import com.marinecircuits.doit.ui.tasks.DueLabels
 import com.marinecircuits.doit.ui.tasks.DueWords
 import com.marinecircuits.doit.ui.tasks.TaskListModel
@@ -71,12 +72,19 @@ class DoitWidget : GlanceAppWidget() {
             context.getString(R.string.due_yesterday),
         )
         val locale = context.resources.configuration.locales[0]
+        val labels = container.database.labels().all()
+        val nextId = NextActions.labelId(container.settings.nextActionsChoice.first(), labels)
+        val nextName = labels.firstOrNull { it.id == nextId }?.title
+        val taskLabels = container.repository.taskLabels.first().groupBy({ it.taskId }, { it.title })
         val rows = TaskListModel.rows(
             container.repository.openTasks(),
             container.database.projects().all(),
             container.settings.defaultProjectId.first(),
             today,
             zone,
+            taskLabels = taskLabels,
+            labels = labels,
+            nextActionsLabel = nextName,
         )
         return rows.map { row ->
             WidgetTask(row.task.id, row.task.title, row.dueDate?.let { DueLabels.label(it, today, words, locale) }, row.overdue)
