@@ -1,3 +1,9 @@
+## 0.27.0 (2026-11-01)
+
+### Feat
+
+- archive the open project from its menu
+
 ## 0.26.0 (2026-11-01)
 
 ### Feat
