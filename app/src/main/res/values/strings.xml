@@ -145,6 +145,10 @@
     <string name="recent_reopen_details">Move this task back to your open tasks?</string>
     <string name="recent_undo_failed">Could not restore this task. Please try again.</string>
     <string name="create_subproject">Create subproject</string>
+    <string name="archive_project">Archive project</string>
+    <string name="archive_title">Archive this project?</string>
+    <string name="archive_body">%1$s disappears from doit and is archived in Vikunja. Its tasks stay on the server. Subprojects stay. Restore it in Vikunja if you change your mind.</string>
+    <string name="archive_confirm">Archive</string>
     <string name="project_name">Project name</string>
     <string name="subproject_parent">In %1$s</string>
     <string name="subproject_creating">Creating…</string>

@@ -160,6 +160,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var colorOpen by remember { mutableStateOf(false) }
     var shoppingOpen by remember { mutableStateOf(false) }
+    var archiveOpen by remember { mutableStateOf(false) }
     var recentOpen by remember { mutableStateOf(false) }
     var selectedSearchIndex by remember { mutableIntStateOf(0) }
     val searchQuery = TaskSearch.query(captureText.text)
@@ -354,6 +355,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onProjectColor = currentProject?.let { { colorOpen = true } },
                 onProjectSettings = currentProject?.let { { shoppingOpen = true } },
                 onCreateSubproject = currentProject?.let { viewModel::showCreateSubproject },
+                onArchiveProject = currentProject?.let { { archiveOpen = true } },
                 serverAddress = state.serverAddress,
                 status = state.status,
                 syncedOnce = state.syncedOnce,
@@ -581,6 +583,22 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         )
     }
 
+    if (archiveOpen && currentProject != null) {
+        val title = currentProject.title
+        AlertDialog(
+            onDismissRequest = { archiveOpen = false },
+            title = { Text(stringResource(R.string.archive_title)) },
+            text = { Text(stringResource(R.string.archive_body, title)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    archiveOpen = false
+                    viewModel.archiveOpenProject()
+                }) { Text(stringResource(R.string.archive_confirm)) }
+            },
+            dismissButton = { TextButton(onClick = { archiveOpen = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
     state.signOutConfirmation?.let { pending ->
         AlertDialog(
             onDismissRequest = viewModel::dismissSignOut,
@@ -688,6 +706,7 @@ private fun CaptureBar(
     onProjectColor: (() -> Unit)?,
     onProjectSettings: (() -> Unit)?,
     onCreateSubproject: (() -> Unit)?,
+    onArchiveProject: (() -> Unit)? = null,
     serverAddress: String?,
     status: List<StatusPart>,
     syncedOnce: Boolean,
@@ -761,6 +780,10 @@ private fun CaptureBar(
                             menuOpen = false
                             onProjectColor()
                         },
+                    )
+                    if (onArchiveProject != null) DropdownMenuItem(
+                        text = { Text(stringResource(R.string.archive_project)) },
+                        onClick = { menuOpen = false; onArchiveProject() },
                     )
                 } else {
                     DropdownMenuItem(

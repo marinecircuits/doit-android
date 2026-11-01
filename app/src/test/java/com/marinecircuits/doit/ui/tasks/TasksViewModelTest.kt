@@ -575,6 +575,23 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun archivingTheOpenProjectReturnsToItsParentAndHidesIt() {
+        seedProjects()
+        waitUntil { tiles().size == 2 }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 2L }
+        viewModel.openProject(3)
+        waitUntil { viewModel.state.value.path.map { it.id } == listOf(2L, 3L) }
+
+        viewModel.archiveOpenProject()
+        waitUntil {
+            viewModel.state.value.path.map { it.id } == listOf(2L) &&
+                viewModel.state.value.tiles.none { it.project.title == "Firmware" }
+        }
+        assertEquals(listOf("Review PR"), titles())
+    }
+
+    @Test
     fun settingAProjectColourUpdatesTheOpenProject() {
         seedProjects()
         waitUntil { tiles().size == 2 }

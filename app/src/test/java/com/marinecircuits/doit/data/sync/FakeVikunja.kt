@@ -32,6 +32,7 @@ class FakeVikunja : Dispatcher() {
     val projects = mutableListOf(1L to "Inbox", 2L to "Work")
     val projectColors = mutableMapOf<Long, String>()
     val projectDescriptions = mutableMapOf<Long, String>()
+    val archivedProjects = mutableSetOf<Long>()
 
     /** False: the token may not update projects (403 on that route). */
     var projectsUpdatable = true
@@ -67,7 +68,7 @@ class FakeVikunja : Dispatcher() {
                 else json(401, """{"message":"Unauthorized"}""")
             request.method == "GET" && path == "projects" -> page(
                 projects.map { (id, title) ->
-                    """{"id":$id,"title":"$title","hex_color":"${projectColors[id].orEmpty()}","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}"""
+                    """{"id":$id,"title":"$title","is_archived":${id in archivedProjects},"hex_color":"${projectColors[id].orEmpty()}","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}"""
                 },
             )
             request.method == "GET" && path.matches(Regex("projects/\\d+")) -> {
@@ -86,10 +87,12 @@ class FakeVikunja : Dispatcher() {
                     if (previous != projectDescriptions[id].orEmpty()) return json(412, """{"title":"Precondition Failed"}""")
                     projectDescriptions[id] = patch[1].jsonObject.getValue("value").jsonPrimitive.content
                 } else {
-                    projectColors[id] = parse(body)["hex_color"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    val fields = parse(body)
+                    fields["hex_color"]?.jsonPrimitive?.contentOrNull?.let { projectColors[id] = it }
+                    if (fields["is_archived"]?.jsonPrimitive?.booleanOrNull == true) archivedProjects += id
                 }
                 val hex = projectColors[id].orEmpty()
-                json(200, """{"id":$id,"title":"$title","hex_color":"$hex","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}""")
+                json(200, """{"id":$id,"title":"$title","is_archived":${id in archivedProjects},"hex_color":"$hex","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}""")
             }
             request.method == "GET" && path == "tasks" -> page(tasks.values.filterNot { it.done }.map(::encode))
             request.method == "GET" && path == "labels" ->

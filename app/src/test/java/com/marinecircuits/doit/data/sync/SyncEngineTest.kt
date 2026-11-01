@@ -628,6 +628,30 @@ class SyncEngineTest {
     }
 
     @Test
+    fun archiveIsSentAndSurvivesTheNextPull() = runTest {
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.archiveProject(2)
+        assertTrue(db.projects().all().single { it.id == 2L }.archived)
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(db.projects().all().single { it.id == 2L }.archived)
+        assertTrue(settings.pendingProjectArchives().isEmpty())
+        assertTrue(fake.requests.any { it.startsWith("PATCH projects/2") && "\"is_archived\":true" in it.replace(" ", "") })
+    }
+
+    @Test
+    fun refusedArchiveComesBackFromTheServer() = runTest {
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.archiveProject(2)
+        fake.projectsUpdatable = false
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertFalse(db.projects().all().single { it.id == 2L }.archived)
+        assertTrue(settings.pendingProjectArchives().isEmpty())
+        assertTrue(settings.notices.first().single().contains("Work"))
+    }
+
+    @Test
     fun refusedProjectColourComesBackFromTheServer() = runTest {
         assertEquals(SyncResult.Synced, engine.sync())
         repository.setProjectColor(2, "c62828")
