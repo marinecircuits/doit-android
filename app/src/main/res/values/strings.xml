@@ -27,6 +27,12 @@
     <!-- Task list -->
     <string name="capture_hint">Add a task…</string>
     <string name="capture_send">Add task</string>
+    <string name="search_hint">Type after / to search tasks, projects and labels</string>
+    <string name="search_empty">No matches</string>
+    <string name="search_project">Project</string>
+    <string name="search_task">Task</string>
+    <string name="search_label">Label</string>
+    <string name="search_open">Open selected result</string>
     <string name="open_link">Open link</string>
     <string name="capture_hint_project">Add to %1$s…</string>
     <string name="back">Back</string>
