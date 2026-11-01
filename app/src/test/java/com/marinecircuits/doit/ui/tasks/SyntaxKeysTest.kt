@@ -23,12 +23,23 @@ class SyntaxKeysTest {
         assertEquals("@" to 1, SyntaxKeys.insert("#", 1, 1, "@"))
         assertEquals("Buy #" to 5, SyntaxKeys.insert("Buy @", 5, 5, "#"))
         assertEquals("@ shop" to 1, SyntaxKeys.insert("# shop", 1, 1, "@"))
+        assertEquals("/" to 1, SyntaxKeys.insert("@", 1, 1, "/"))
+        assertEquals("@" to 1, SyntaxKeys.insert("/", 1, 1, "@"))
+        assertEquals("#" to 1, SyntaxKeys.insert("/", 1, 1, "#"))
+    }
+
+    @Test
+    fun slashInsertsLikeTheOtherMarkers() {
+        assertEquals("/" to 1, SyntaxKeys.insert("", 0, 0, "/"))
+        assertEquals("Buy milk /" to 10, SyntaxKeys.insert("Buy milk", 8, 8, "/"))
+        assertEquals("/ Buy milk" to 1, SyntaxKeys.insert("Buy milk", 0, 0, "/"))
     }
 
     @Test
     fun tappingTheSameEmptyMarkerDoesNotStackIt() {
         assertEquals("@" to 1, SyntaxKeys.insert("@", 1, 1, "@"))
         assertEquals("Buy #" to 5, SyntaxKeys.insert("Buy #", 5, 5, "#"))
+        assertEquals("/" to 1, SyntaxKeys.insert("/", 1, 1, "/"))
     }
 
     @Test

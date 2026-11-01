@@ -88,6 +88,7 @@
     <string name="insert_label">Insert @ for a label</string>
     <string name="insert_project">Insert # for a project</string>
     <string name="insert_date">Choose a due date</string>
+    <string name="insert_search">Search with /</string>
     <string name="capture_due_date">Due: %1$s</string>
     <string name="edit_due">Due</string>
     <string name="edit_no_date">No date</string>
