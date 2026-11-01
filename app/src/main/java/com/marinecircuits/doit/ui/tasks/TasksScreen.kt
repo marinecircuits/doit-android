@@ -593,6 +593,9 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 viewModel.delete(task)
                 editTarget = null
             },
+            onPromote = { title, description, projectId, onDone ->
+                viewModel.promoteToProject(task, title, description, projectId, onDone)
+            },
             working = task.id in state.doingTaskIds,
             onWork = if (state.doingLabel != null && !task.done) {
                 { viewModel.setDoing(task, task.id !in state.doingTaskIds) }

@@ -83,6 +83,27 @@ class SyncEngine(
         db.projects().insertAll(listOf(created.toEntity()))
     }
 
+    /**
+     * Turns a task into a project, online only. The task itself is left in place; the caller removes it
+     * after this returns. A task in Inbox becomes a top-level project. Any other project becomes the parent.
+     */
+    suspend fun promoteTask(taskId: Long, title: String, description: String, projectId: Long): ProjectEntity = mutex.withLock {
+        val name = title.trim()
+        require(name.isNotEmpty()) { "A project needs a name" }
+        val id = idRemap.resolve(taskId)
+        val task = db.tasks().get(id) ?: throw IllegalArgumentException("The task is no longer available")
+        require(!task.done) { "A completed task cannot become a project" }
+        val parent = db.projects().all().find { it.id == projectId && !it.archived && it.id > 0 }
+        val parentId = parent?.takeUnless { it.isInbox(settings.defaultProjectId.first()) }?.id
+        val credentials = checkNotNull(settings.credentials()) { "Not connected" }
+        val created = apiFor(credentials).createProject(name, parentId, description.trim())
+        check(created.id > 0) { "Unexpected project response" }
+        if (parentId != null) check(created.parentProjectId == parentId) { "Unexpected project response" }
+        val entity = created.toEntity()
+        db.projects().insertAll(listOf(entity))
+        entity
+    }
+
     private suspend fun runSync(): SyncResult {
         val credentials = settings.credentials() ?: return SyncResult.NotConnected
         if (settings.tokenRejected.first()) return SyncResult.TokenRejected

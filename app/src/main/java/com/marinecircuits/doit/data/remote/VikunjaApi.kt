@@ -67,13 +67,16 @@ class VikunjaApi(
         return execute(request, ProjectDto.serializer())
     }
 
-    suspend fun createSubproject(parentId: Long, title: String): ProjectDto {
+    suspend fun createSubproject(parentId: Long, title: String): ProjectDto = createProject(title, parentId, "")
+
+    /** Creates a project. A null or non-positive [parentId] makes a top-level project. */
+    suspend fun createProject(title: String, parentId: Long?, description: String): ProjectDto {
         val fields = buildJsonObject {
             put("title", title)
-            put("parent_project_id", parentId)
+            if (parentId != null && parentId > 0) put("parent_project_id", parentId)
+            if (description.isNotBlank()) put("description", description)
         }
         val request = authorized(url("projects")).post(fields.toString().toRequestBody(JSON)).build()
-
         return execute(request, ProjectDto.serializer())
     }
 
