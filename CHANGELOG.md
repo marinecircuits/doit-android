@@ -1,3 +1,15 @@
+## 0.25.0 (2026-11-01)
+
+### Feat
+
+- add leading slash search in task capture
+
+### Fix
+
+- import Compose key event accessors
+- use a new shortcut id to bypass stale pinned entries
+- build task shortcut for installed app package
+
 ## 0.24.0 (2026-11-01)
 
 ### Feat
