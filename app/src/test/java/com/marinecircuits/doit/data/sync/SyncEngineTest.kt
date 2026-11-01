@@ -190,9 +190,10 @@ class SyncEngineTest {
         fake.tasks[10] = FakeVikunja.Task(10, "Order boards", projectId = 2)
         assertEquals(SyncResult.Synced, engine.sync())
         val created = engine.promoteTask(10, "  Order boards  ", " bring the schematic ", 2)
-        assertEquals("Order boards", created.title)
-        assertEquals(2L, created.parentProjectId)
-        assertEquals("bring the schematic", created.description)
+        assertTrue(created.removeTask)
+        assertEquals("Order boards", created.project.title)
+        assertEquals(2L, created.project.parentProjectId)
+        assertEquals("bring the schematic", created.project.description)
         assertEquals("Order boards", db.tasks().get(10)!!.title)
 
         val request = fake.requests.last { it.startsWith("POST projects ") }.removePrefix("POST projects ")
@@ -208,18 +209,20 @@ class SyncEngineTest {
     }
 
     @Test
-    fun promotingAnInboxTaskCreatesATopLevelProject() = runTest {
+    fun promotingAnInboxTaskStaysASubprojectOfInbox() = runTest {
         fake.tasks[10] = FakeVikunja.Task(10, "Someday", projectId = 1)
         assertEquals(SyncResult.Synced, engine.sync())
         settings.setDefaultProjectId(2)
         val before = fake.requests.size
         val created = engine.promoteTask(10, "Someday", "   ", 1)
-        assertEquals(0L, created.parentProjectId)
+        assertTrue(created.removeTask)
+        assertEquals(1L, created.project.parentProjectId)
         val request = fake.requests.drop(before).single { it.startsWith("POST projects ") }.removePrefix("POST projects ")
         val body = com.marinecircuits.doit.data.remote.VikunjaJson.decodeFromString<kotlinx.serialization.json.JsonObject>(request)
         assertEquals(kotlinx.serialization.json.JsonPrimitive("Someday"), body["title"])
-        assertFalse(body.containsKey("parent_project_id"))
+        assertEquals(kotlinx.serialization.json.JsonPrimitive(1), body["parent_project_id"])
         assertFalse(body.containsKey("description"))
+        assertEquals("Someday", db.tasks().get(10)!!.title)
     }
 
     @Test

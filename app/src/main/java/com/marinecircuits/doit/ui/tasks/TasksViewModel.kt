@@ -13,6 +13,7 @@ import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.isInbox
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.local.TaskHistoryEntity
+import com.marinecircuits.doit.data.sync.PromotedTask
 import com.marinecircuits.doit.data.sync.SyncResult
 import java.time.Clock
 import java.time.LocalDate
@@ -121,7 +122,7 @@ class TasksViewModel(
     syncResults: StateFlow<SyncResult?>,
     private val sync: suspend () -> SyncResult,
     private val createSubproject: suspend (Long, String) -> Unit,
-    private val promoteTask: suspend (Long, String, String, Long) -> ProjectEntity,
+    private val promoteTask: suspend (Long, String, String, Long) -> PromotedTask,
     private val signOut: suspend () -> Unit,
     private val clock: Clock,
 ) : ViewModel() {
@@ -649,8 +650,8 @@ class TasksViewModel(
     }
 
     /**
-     * Creates a project from this task and removes the task. Inbox becomes a top-level project;
-     * any other selected project becomes the parent. [onDone] receives null when the new project is open.
+     * Creates a subproject from this task when the user asks. The task is removed only when the
+     * server copied its name and description. [onDone] receives null when the new project is open.
      */
     fun promoteToProject(
         task: TaskEntity,
@@ -666,18 +667,16 @@ class TasksViewModel(
         viewModelScope.launch {
             try {
                 val created = promoteTask(task.id, title.trim(), description.trim(), projectId)
-                repository.delete(task.id)
-                completedHere.update { it - task.id }
+                if (created.removeTask) {
+                    repository.delete(task.id)
+                    completedHere.update { it - task.id }
+                }
                 viewChanged()
                 onLeave()
                 contextIndex.value = null
                 openLabelId.value = null
-                val parentPath = if (created.parentProjectId > 0) {
-                    ProjectTree.pathTo(created.parentProjectId, state.value.projects)
-                } else {
-                    emptyList()
-                }
-                projectPath.value = parentPath + created.id
+                val parentPath = ProjectTree.pathTo(created.project.parentProjectId, state.value.projects)
+                projectPath.value = parentPath + created.project.id
                 onDone(null)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

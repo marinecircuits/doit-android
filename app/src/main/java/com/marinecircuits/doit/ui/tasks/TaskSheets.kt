@@ -105,6 +105,7 @@ fun EditSheet(
     val projectPickerItems = remember(projects) { ProjectTree.pickerItems(projects) }
     var confirmingDelete by remember(task.id) { mutableStateOf(false) }
     var confirmingPromote by remember(task.id) { mutableStateOf(false) }
+    var promoteName by remember(task.id) { mutableStateOf(task.title) }
     var promoting by remember(task.id) { mutableStateOf(false) }
     var promoteError by remember(task.id) { mutableStateOf<SubprojectError?>(null) }
 
@@ -228,7 +229,8 @@ fun EditSheet(
                     onClick = {
                         commitTitle()
                         commitDetails()
-                        if (savedTitle.isNotBlank()) confirmingPromote = true
+                        promoteName = savedTitle
+                        if (promoteName.isNotBlank()) confirmingPromote = true
                     },
                     enabled = !promoting,
                     modifier = Modifier.align(Alignment.End),
@@ -250,6 +252,16 @@ fun EditSheet(
             title = { Text(stringResource(R.string.promote_title)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = promoteName,
+                        onValueChange = { promoteName = it },
+                        label = { Text(stringResource(R.string.promote_name)) },
+                        singleLine = true,
+                        enabled = !promoting,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(stringResource(R.string.promote_inside, projects.firstOrNull { it.id == projectId }?.title ?: "—"))
                     Text(stringResource(R.string.promote_body))
                     promoteError?.let { error ->
                         Text(
@@ -265,11 +277,11 @@ fun EditSheet(
             },
             confirmButton = {
                 TextButton(
-                    enabled = !promoting,
+                    enabled = !promoting && promoteName.isNotBlank(),
                     onClick = {
                         promoting = true
                         promoteError = null
-                        onPromote(savedTitle, savedDetails, projectId) { error ->
+                        onPromote(promoteName, savedDetails, projectId) { error ->
                             promoting = false
                             if (error == null) {
                                 confirmingPromote = false

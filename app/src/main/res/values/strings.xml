@@ -96,10 +96,12 @@
     <string name="edit_clear_date">Clear</string>
     <string name="edit_project">Project</string>
     <string name="edit_delete">Delete task</string>
-    <string name="promote_task">Make project</string>
-    <string name="promote_title">Make this a project?</string>
-    <string name="promote_body">The task becomes a project and is removed. In Inbox it is a top-level project. In any other project it becomes a subproject of that project. The due date and labels are not kept. Details are saved as the project description.</string>
-    <string name="promote_confirm">Make project</string>
+    <string name="promote_task">Promote to project</string>
+    <string name="promote_title">Promote to project</string>
+    <string name="promote_name">Name</string>
+    <string name="promote_inside">Inside %1$s</string>
+    <string name="promote_body">The description is copied. After the project is created, the task is deleted, including its labels and due date. A connection is required.</string>
+    <string name="promote_confirm">Create</string>
     <string name="start_working">Start working</string>
     <string name="stop_working">Stop working</string>
     <string name="doing_warning">%1$d tasks marked @doing</string>

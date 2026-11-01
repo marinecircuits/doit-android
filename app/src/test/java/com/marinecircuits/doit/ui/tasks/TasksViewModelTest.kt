@@ -10,6 +10,7 @@ import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.sync.PendingChanges
+import com.marinecircuits.doit.data.sync.PromotedTask
 import com.marinecircuits.doit.data.sync.SyncResult
 import com.marinecircuits.doit.inMemoryDatabase
 import com.marinecircuits.doit.testClock
@@ -36,8 +37,10 @@ class TasksViewModelTest {
     private val syncResults = MutableStateFlow<SyncResult?>(null)
     private val createdProjects = mutableListOf<Pair<Long, String>>()
     private var createProjectAction: suspend (Long, String) -> Unit = { parent, title -> createdProjects += parent to title }
-    private var promoteAction: suspend (Long, String, String, Long) -> ProjectEntity =
-        { _, title, description, projectId -> ProjectEntity(20, title, false, 0.0, projectId, description = description) }
+    private var promoteAction: suspend (Long, String, String, Long) -> PromotedTask =
+        { _, title, description, projectId ->
+            PromotedTask(ProjectEntity(20, title, false, 0.0, projectId, description = description), true)
+        }
     private var syncs = 0
     private var signedOut = false
     private lateinit var viewModel: TasksViewModel
@@ -185,10 +188,9 @@ class TasksViewModelTest {
         seedProjects()
         waitUntil { titles().size == 3 }
         promoteAction = { _, title, description, projectId ->
-            val parent = if (projectId == 1L) 0L else projectId
-            val created = ProjectEntity(20, title, false, 0.0, parent, description = description)
+            val created = ProjectEntity(20, title, false, 0.0, projectId, description = description)
             runBlocking { db.projects().insertAll(listOf(created)) }
-            created
+            PromotedTask(created, true)
         }
         val task = viewModel.state.value.rows.first { it.task.id == 11L }.task
         var finished = false
