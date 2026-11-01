@@ -81,6 +81,10 @@ class SettingsStore(
         prefs[PROJECT_ARCHIVES].orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
     }
 
+    /** Project names chosen locally and not yet accepted by the server. */
+    val pendingProjectTitles: Flow<Map<Long, String>> =
+        dataStore.data.map { decodeProjectTitles(it[PROJECT_TITLES]) }
+
     suspend fun migrateShoppingProjects() { dataStore.edit { migrateShoppingProjects(it) } }
 
     private fun migrateShoppingProjects(prefs: androidx.datastore.preferences.core.MutablePreferences) {
@@ -203,6 +207,24 @@ class SettingsStore(
         }
     }
 
+    suspend fun pendingProjectTitles(): Map<Long, String> = decodeProjectTitles(dataStore.data.first()[PROJECT_TITLES])
+
+    suspend fun setPendingProjectTitle(projectId: Long, title: String) {
+        dataStore.edit { prefs ->
+            val titles = decodeProjectTitles(prefs[PROJECT_TITLES]).toMutableMap()
+            titles[projectId] = title
+            prefs[PROJECT_TITLES] = encodeProjectTitles(titles)
+        }
+    }
+
+    suspend fun removePendingProjectTitle(projectId: Long) {
+        dataStore.edit { prefs ->
+            val titles = decodeProjectTitles(prefs[PROJECT_TITLES]).toMutableMap()
+            if (titles.remove(projectId) == null) return@edit
+            if (titles.isEmpty()) prefs.remove(PROJECT_TITLES) else prefs[PROJECT_TITLES] = encodeProjectTitles(titles)
+        }
+    }
+
     private fun decodeProjectColors(raw: String?): Map<Long, String> =
         raw.orEmpty().lineSequence().mapNotNull { line ->
             val id = line.substringBefore('=', "").toLongOrNull() ?: return@mapNotNull null
@@ -211,6 +233,16 @@ class SettingsStore(
 
     private fun encodeProjectColors(colors: Map<Long, String>): String =
         colors.entries.joinToString("\n") { "${it.key}=${it.value}" }
+
+    private fun decodeProjectTitles(raw: String?): Map<Long, String> =
+        raw.orEmpty().lineSequence().mapNotNull { line ->
+            val id = line.substringBefore('\t', "").toLongOrNull() ?: return@mapNotNull null
+            val title = line.substringAfter('\t', "")
+            if (title.isEmpty()) null else id to title
+        }.toMap()
+
+    private fun encodeProjectTitles(titles: Map<Long, String>): String =
+        titles.entries.joinToString("\n") { "${it.key}\t${it.value.replace('\n', ' ')}" }
 
     private companion object {
         val API_BASE = stringPreferencesKey("api_base")
@@ -231,5 +263,6 @@ class SettingsStore(
         val PROJECT_MARKER_REVISION = longPreferencesKey("project_marker_revision")
         val PROJECT_COLORS = stringPreferencesKey("project_colors")
         val PROJECT_ARCHIVES = stringSetPreferencesKey("pending_project_archives")
+        val PROJECT_TITLES = stringPreferencesKey("pending_project_titles")
     }
 }

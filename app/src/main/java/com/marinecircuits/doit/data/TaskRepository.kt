@@ -58,8 +58,9 @@ class TaskRepository(
         db.pendingChanges().observeCount(),
         settings.pendingProjectMarkers,
         settings.pendingProjectArchives,
-    ) { tasks, projects, archives ->
-        tasks + projects.size + archives.size
+        settings.pendingProjectTitles,
+    ) { tasks, projects, archives, titles ->
+        tasks + projects.size + archives.size + titles.size
     }
     val labels: Flow<List<LabelEntity>> = db.labels().observeAll()
     val taskLabels: Flow<List<TaskLabelEntity>> = db.taskLabels().observeAll()
@@ -355,6 +356,17 @@ class TaskRepository(
         if (project.hexColor.equals(hex, ignoreCase = true)) return
         db.projects().setColor(projectId, hex)
         settings.setPendingProjectColor(projectId, hex)
+        onLocalChange()
+    }
+
+    /** Renames [projectId] immediately and queues the new title. A blank name is ignored. */
+    suspend fun renameProject(projectId: Long, title: String) {
+        val name = title.trim().replace(Regex("\\s+"), " ")
+        if (name.isEmpty()) return
+        val project = db.projects().all().find { it.id == projectId } ?: return
+        if (project.title == name || project.id <= 0) return
+        db.projects().setTitle(projectId, name)
+        settings.setPendingProjectTitle(projectId, name)
         onLocalChange()
     }
 

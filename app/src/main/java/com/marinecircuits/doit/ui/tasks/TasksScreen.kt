@@ -530,12 +530,21 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
 
     if (shoppingOpen && currentProject != null) {
+        val projectId = currentProject.id
+        var projectName by remember(projectId) { mutableStateOf(currentProject.title) }
         AlertDialog(
             onDismissRequest = { shoppingOpen = false },
             title = { Text(stringResource(R.string.project_settings)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(currentProject.title, style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = projectName,
+                        onValueChange = { projectName = it },
+                        label = { Text(stringResource(R.string.project_name)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.shopping_list), Modifier.weight(1f))
                         Switch(checked = currentProject.id in state.shoppingProjects, onCheckedChange = viewModel::setShoppingProject)
@@ -544,7 +553,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     Text(stringResource(R.string.shopping_quantity_hint))
                 }
             },
-            confirmButton = { TextButton(onClick = { shoppingOpen = false }) { Text(stringResource(R.string.ok)) } },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.renameOpenProject(projectName)
+                    shoppingOpen = false
+                }) { Text(stringResource(R.string.ok)) }
+            },
         )
     }
 

@@ -616,6 +616,30 @@ class SyncEngineTest {
     }
 
     @Test
+    fun renameIsSentAndSurvivesTheNextPull() = runTest {
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.renameProject(2, "  Workshop  ")
+        assertEquals("Workshop", db.projects().all().single { it.id == 2L }.title)
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("Workshop", db.projects().all().single { it.id == 2L }.title)
+        assertTrue(settings.pendingProjectTitles().isEmpty())
+        assertTrue(fake.requests.any { it.startsWith("PATCH projects/2") && "Workshop" in it })
+    }
+
+    @Test
+    fun refusedRenameComesBackFromTheServer() = runTest {
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.renameProject(2, "Workshop")
+        fake.projectsUpdatable = false
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("Work", db.projects().all().single { it.id == 2L }.title)
+        assertTrue(settings.pendingProjectTitles().isEmpty())
+        assertTrue(settings.notices.first().single().contains("Workshop"))
+    }
+
+    @Test
     fun projectColourIsSentAndSurvivesTheNextPull() = runTest {
         assertEquals(SyncResult.Synced, engine.sync())
         repository.setProjectColor(2, "#1565C0")

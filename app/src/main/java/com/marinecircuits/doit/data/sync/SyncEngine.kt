@@ -110,9 +110,10 @@ class SyncEngine(
         val projects = api.projects()
         val colors = settings.pendingProjectColors()
         val archives = settings.pendingProjectArchives()
+        val titles = settings.pendingProjectTitles()
         db.withTransaction {
             db.projects().clear()
-            db.projects().insertAll(projects.filter { it.id > 0 }.map { overlayProject(it, colors, archives) })
+            db.projects().insertAll(projects.filter { it.id > 0 }.map { overlayProject(it, colors, archives, titles) })
         }
         settings.setSyncedShoppingProjects(projects.filter { Shopping.isProject(it.description) }.mapTo(HashSet()) { it.id })
     }
@@ -164,6 +165,7 @@ class SyncEngine(
 
     private suspend fun push(api: VikunjaApi) {
         pushProjectArchives(api)
+        pushProjectTitles(api)
         pushProjectColors(api)
         // A change kept because it was edited mid-flight is sent again on the next turn; the cap only guards
         // against a server that keeps accepting without the queue shrinking.
@@ -189,6 +191,25 @@ class SyncEngine(
                     else -> e.problem ?: "the server refused the change (${e.status})"
                 }
                 settings.addNotice("Couldn't archive \u201c$title\u201d: $reason")
+            }
+        }
+    }
+
+    /** Sends renames chosen in the app. A refusal is reported and dropped; the next pull restores the server name. */
+    private suspend fun pushProjectTitles(api: VikunjaApi) {
+        for ((id, title) in settings.pendingProjectTitles()) {
+            try {
+                val updated = api.updateProject(id, buildJsonObject { put("title", title) })
+                settings.removePendingProjectTitle(id)
+                db.projects().setTitle(id, updated.title)
+            } catch (e: ApiException) {
+                if (e.isUnauthorized || e.isTransient) throw e
+                settings.removePendingProjectTitle(id)
+                val reason = when {
+                    e.isNotFound -> "the project is no longer available"
+                    else -> e.problem ?: "the server refused the change (${e.status})"
+                }
+                settings.addNotice("Couldn't rename \u201c$title\u201d: $reason")
             }
         }
     }
@@ -492,9 +513,10 @@ class SyncEngine(
             val generation = db.tasks().maxSyncGeneration() + 1
             val pendingColors = settings.pendingProjectColors()
             val pendingArchives = settings.pendingProjectArchives()
+            val pendingTitles = settings.pendingProjectTitles()
             db.projects().clear()
             db.projects().insertAll(
-                projects.filter { it.id > 0 }.map { overlayProject(it, pendingColors, pendingArchives) },
+                projects.filter { it.id > 0 }.map { overlayProject(it, pendingColors, pendingArchives, pendingTitles) },
             )
             if (labels != null) replaceLabels(labels)
             val pending = db.pendingChanges().all().map { it.taskId }.toSet()
@@ -527,9 +549,18 @@ class SyncEngine(
 
         fun ProjectDto.toEntity() = ProjectEntity(id, title, isArchived, position, parentProjectId, hexColor, description)
 
-        fun overlayProject(dto: ProjectDto, colors: Map<Long, String>, archives: Set<Long>): ProjectEntity {
+        fun overlayProject(
+            dto: ProjectDto,
+            colors: Map<Long, String>,
+            archives: Set<Long>,
+            titles: Map<Long, String>,
+        ): ProjectEntity {
             val entity = dto.toEntity()
-            return entity.copy(hexColor = colors[dto.id] ?: entity.hexColor, archived = entity.archived || dto.id in archives)
+            return entity.copy(
+                title = titles[dto.id] ?: entity.title,
+                hexColor = colors[dto.id] ?: entity.hexColor,
+                archived = entity.archived || dto.id in archives,
+            )
         }
     }
 }

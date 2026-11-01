@@ -558,6 +558,12 @@ class TasksViewModel(
         viewModelScope.launch { repository.setProjectColor(projectId, hexColor) }
     }
 
+    /** Renames the open project. A blank name is ignored. */
+    fun renameOpenProject(title: String) {
+        val projectId = state.value.path.lastOrNull()?.id ?: return
+        viewModelScope.launch { repository.renameProject(projectId, title) }
+    }
+
     /** Archives the open project and returns to its parent, or the main view. Subprojects stay. */
     fun archiveOpenProject() {
         val projectId = openPath.lastOrNull() ?: return

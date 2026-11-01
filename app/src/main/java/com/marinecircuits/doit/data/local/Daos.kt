@@ -67,6 +67,9 @@ interface ProjectDao {
     @Query("UPDATE projects SET hexColor = :hexColor WHERE id = :id")
     suspend fun setColor(id: Long, hexColor: String)
 
+    @Query("UPDATE projects SET title = :title WHERE id = :id")
+    suspend fun setTitle(id: Long, title: String)
+
     @Query("UPDATE projects SET archived = 1 WHERE id = :id")
     suspend fun archive(id: Long)
 
