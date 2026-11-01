@@ -257,6 +257,17 @@ class TaskRepositoryTest {
     }
 
     @Test
+    fun mainScreenCaptureGoesToInboxEvenWhenTheVikunjaDefaultIsElsewhere() = runTest {
+        settings.setDefaultProjectId(2)
+        val id = repository.capture("Buy milk")!!
+        assertEquals(1L, db.tasks().get(id)!!.projectId)
+
+        db.projects().archive(1)
+        val fallback = repository.capture("Buy tape")!!
+        assertEquals(2L, db.tasks().get(fallback)!!.projectId)
+    }
+
+    @Test
     fun unknownAndArchivedProjectNamesKeepTheUsualDestination() = runTest {
         db.projects().insertAll(listOf(ProjectEntity(3, "Old", true, 3.0)))
         settings.setDefaultProjectId(1)

@@ -95,13 +95,19 @@ class TaskRepository(
         return projects.firstOrNull { it.id == configured }?.id ?: projects.firstOrNull()?.id
     }
 
+    /** Main-screen and share captures land in Inbox, even when Vikunja's default project is something else. */
+    private suspend fun inboxOrDefault(): Long? {
+        val inbox = db.projects().all().firstOrNull { !it.archived && it.title.equals("Inbox", ignoreCase = true) }
+        return inbox?.id ?: defaultProjectId()
+    }
+
     /**
      * Creates a task in the `#project` named in [text], otherwise [projectId] or the default project.
      * Existing `@labels` become labels (see [CaptureSyntax]); the [description] is kept as it is.
      * Returns the task's (temporary) id, or null when nothing is left of the title.
      */
     suspend fun capture(text: String, description: String? = null, projectId: Long? = null, dueDate: LocalDate? = null): Long? {
-        val fallback = projectId ?: defaultProjectId() ?: 0
+        val fallback = projectId?.takeIf { it > 0 } ?: inboxOrDefault() ?: 0
         val shopping = settings.shoppingProjects.first()
         val (title, parsedLabels, namedProjectId) = Shopping.parse(text, db.labels().all(), db.projects().all(), fallback, shopping)
         if (title.isEmpty()) return null

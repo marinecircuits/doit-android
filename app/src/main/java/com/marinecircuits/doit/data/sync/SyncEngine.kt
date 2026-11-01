@@ -10,6 +10,7 @@ import com.marinecircuits.doit.data.local.DoitDatabase
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.PendingChangeEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
+import com.marinecircuits.doit.data.local.isInbox
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.remote.ApiException
 import com.marinecircuits.doit.data.remote.ProjectDto
@@ -73,9 +74,9 @@ class SyncEngine(
     suspend fun createSubproject(parentId: Long, title: String) = mutex.withLock {
         val name = title.trim()
         require(name.isNotEmpty()) { "A project needs a name" }
-        require(db.projects().all().any { it.id == parentId && !it.archived && it.id > 0 }) {
-            "The parent project is no longer available"
-        }
+        val parent = db.projects().all().find { it.id == parentId && !it.archived && it.id > 0 }
+        require(parent != null) { "The parent project is no longer available" }
+        require(!parent.isInbox(settings.defaultProjectId.first())) { "Inbox cannot contain a subproject" }
         val credentials = checkNotNull(settings.credentials()) { "Not connected" }
         val created = apiFor(credentials).createSubproject(parentId, name)
         check(created.id > 0 && created.parentProjectId == parentId) { "Unexpected project response" }
