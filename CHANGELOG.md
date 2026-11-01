@@ -2,6 +2,7 @@
 
 ### Feat
 
+- add a launcher shortcut to quickly capture a task
 - open configured label on swipe down
 - sort next actions first
 
