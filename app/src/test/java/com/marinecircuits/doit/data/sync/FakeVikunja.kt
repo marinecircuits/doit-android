@@ -23,6 +23,7 @@ class FakeVikunja : Dispatcher() {
         var done: Boolean = false,
         var dueDate: String? = null,
         var projectId: Long = 1,
+        var description: String = "",
         val labelIds: MutableList<Long> = mutableListOf(),
     )
 
@@ -141,6 +142,7 @@ class FakeVikunja : Dispatcher() {
 
     private fun apply(task: Task, fields: JsonObject) {
         fields["title"]?.jsonPrimitive?.contentOrNull?.let { task.title = it }
+        fields["description"]?.jsonPrimitive?.contentOrNull?.let { task.description = it }
         fields["done"]?.jsonPrimitive?.booleanOrNull?.let { task.done = it }
         fields["project_id"]?.jsonPrimitive?.longOrNull?.let { task.projectId = it }
         if ("due_date" in fields) task.dueDate = fields["due_date"]!!.jsonPrimitive.contentOrNull
@@ -154,7 +156,7 @@ class FakeVikunja : Dispatcher() {
         val labelsJson = if (taskLabels.isEmpty()) "null" else taskLabels.joinToString(",", "[", "]") { encode(it) }
         return """{"id":${task.id},"title":"${task.title}","done":${task.done},"project_id":${task.projectId},""" +
             """"due_date":"${task.dueDate ?: "0001-01-01T00:00:00Z"}","created":"2026-10-26T10:00:00Z",""" +
-            """"labels":$labelsJson}"""
+            """"description":${JsonPrimitive(task.description)},"labels":$labelsJson}"""
     }
 
     private fun encode(label: Label) = """{"id":${label.id},"title":"${label.title}","hex_color":"${label.hexColor}"}"""

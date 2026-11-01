@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -81,6 +82,7 @@ fun EditSheet(
     words: DueWords,
     locale: Locale,
     onTitleChange: (String) -> Unit,
+    onDescriptionChange: (String) -> Unit,
     onDateChange: (LocalDate?) -> Unit,
     onProjectChange: (Long) -> Unit,
     onDelete: () -> Unit,
@@ -92,6 +94,9 @@ fun EditSheet(
     var title by remember(task.id) { mutableStateOf(TextFieldValue(task.title, TextRange(task.title.length))) }
     var savedTitle by remember(task.id) { mutableStateOf(task.title) }
     var titleFocused by remember(task.id) { mutableStateOf(false) }
+    var details by remember(task.id) { mutableStateOf(TaskDescriptions.plain(task.description)) }
+    var savedDetails by remember(task.id) { mutableStateOf(details) }
+    var detailsFocused by remember(task.id) { mutableStateOf(false) }
     var date by remember(task.id) { mutableStateOf(task.dueAt?.let { DueDates.localDate(it, zone) }) }
     var projectId by remember(task.id) { mutableStateOf(task.projectId) }
     var pickingDate by remember { mutableStateOf(false) }
@@ -114,8 +119,15 @@ fun EditSheet(
         onTitleChange(raw)
     }
 
+    fun commitDetails() {
+        if (details == savedDetails) return
+        savedDetails = details
+        onDescriptionChange(details)
+    }
+
     fun dismiss() {
         commitTitle()
+        commitDetails()
         onDismiss()
     }
 
@@ -139,12 +151,19 @@ fun EditSheet(
                     titleFocused = focus.isFocused
                 },
             )
-            val description = TaskDescriptions.plain(task.description)
-            val links = TaskDescriptions.links(task.description)
-            if (description.isNotEmpty() || links.isNotEmpty()) {
-                TaskDescriptionText(description, maxLines = 8)
-                TaskLinkIcons(links)
-            }
+            OutlinedTextField(
+                value = details,
+                onValueChange = { details = it },
+                label = { Text(stringResource(R.string.edit_description)) },
+                minLines = 2,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp).onFocusChanged { focus ->
+                    if (detailsFocused && !focus.isFocused) commitDetails()
+                    detailsFocused = focus.isFocused
+                },
+            )
+            val links = TaskDescriptions.links(details)
+            if (links.isNotEmpty()) TaskLinkIcons(links)
             if (titleFocused) {
                 SyntaxKeyRow(onInsert = { token -> title = SyntaxKeys.insert(title, token) }, onPickDate = { pickingDate = true })
                 val suggestions = if (title.selection.collapsed) {

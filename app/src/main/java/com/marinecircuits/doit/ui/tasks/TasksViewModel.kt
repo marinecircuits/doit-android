@@ -618,6 +618,10 @@ class TasksViewModel(
         viewModelScope.launch { repository.applyEditedTitle(task.id, raw) }
     }
 
+    fun setDescription(task: TaskEntity, description: String) {
+        viewModelScope.launch { repository.setDescription(task.id, description) }
+    }
+
     fun move(task: TaskEntity, projectId: Long) {
         viewModelScope.launch { repository.move(task.id, projectId) }
     }

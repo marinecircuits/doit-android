@@ -271,6 +271,14 @@ class TaskRepository(
         write(task.id, fields(TITLE to JsonPrimitive(trimmed))) { it.copy(title = trimmed) }
     }
 
+    /** Saves the task description. Blank clears it. The text is stored as typed. */
+    suspend fun setDescription(taskId: Long, description: String) {
+        val text = description.trim()
+        val task = db.tasks().get(idRemap.resolve(taskId)) ?: return
+        if (text == task.description) return
+        write(task.id, fields(DESCRIPTION to JsonPrimitive(text))) { it.copy(description = text) }
+    }
+
     /**
      * Saves a title typed in the edit sheet. Recognized `@labels` are added to the labels the task
      * already has, and a recognized `#project` moves it. The stored title is what remains; an edit
@@ -412,6 +420,7 @@ class TaskRepository(
 
     companion object {
         const val TITLE = "title"
+        const val DESCRIPTION = "description"
         const val DONE = "done"
         const val DUE_DATE = "due_date"
         const val PROJECT_ID = "project_id"
