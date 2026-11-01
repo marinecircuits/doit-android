@@ -2,6 +2,7 @@ package com.marinecircuits.doit
 
 import android.app.Application
 import android.content.Context
+import android.util.Log
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.glance.appwidget.updateAll
@@ -31,6 +32,8 @@ class DoitApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        runCatching { CaptureShortcut.register(this) }
+            .onFailure { Log.w("DoitApp", "Could not register Add task shortcut", it) }
         SyncScheduler.schedulePeriodic(this)
     }
 }
