@@ -1,3 +1,10 @@
+## 0.24.0 (2026-11-01)
+
+### Feat
+
+- open configured label on swipe down
+- sort next actions first
+
 ## 0.23.0 (2026-10-29)
 
 ### Feat
