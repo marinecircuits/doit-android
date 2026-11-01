@@ -713,6 +713,18 @@ class SyncEngineTest {
     }
 
     @Test
+    fun descriptionEditIsSentAndSurvivesTheNextPull() = runTest {
+        fake.tasks[1] = FakeVikunja.Task(1, "Order capacitors", description = "old note")
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.setDescription(1, "  bring the schematic  ")
+        assertEquals("bring the schematic", db.tasks().get(1)!!.description)
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("bring the schematic", db.tasks().get(1)!!.description)
+        assertTrue(fake.requests.any { it.startsWith("PATCH tasks/1") && "bring the schematic" in it })
+    }
+
+    @Test
     fun pullsLabelsAndTaskLabels() = runTest {
         fake.labels += listOf(FakeVikunja.Label(7, "errand", "e8a33d"), FakeVikunja.Label(9, "15 min"))
         fake.tasks[1] = FakeVikunja.Task(1, "Order capacitors", labelIds = mutableListOf(9, 7))
