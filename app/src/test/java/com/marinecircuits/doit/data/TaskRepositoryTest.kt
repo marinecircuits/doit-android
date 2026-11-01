@@ -191,7 +191,7 @@ class TaskRepositoryTest {
     }
 
     @Test
-    fun captureCreatesLocalTaskAndQueuedCreateInDefaultProject() = runTest {
+    fun captureCreatesLocalTaskAndQueuedCreateInInbox() = runTest {
         settings.setDefaultProjectId(2)
 
         val id = repository.capture("  Buy filament  ")!!
@@ -199,11 +199,11 @@ class TaskRepositoryTest {
         assertTrue(id < 0)
         val task = db.tasks().get(id)!!
         assertEquals("Buy filament", task.title)
-        assertEquals(2L, task.projectId)
+        assertEquals(1L, task.projectId)
         val change = db.pendingChanges().forTask(id)!!
         assertEquals(PendingChangeEntity.CREATE, change.kind)
         assertEquals(
-            JsonObject(mapOf("title" to JsonPrimitive("Buy filament"), "project_id" to JsonPrimitive(2))),
+            JsonObject(mapOf("title" to JsonPrimitive("Buy filament"), "project_id" to JsonPrimitive(1))),
             PendingChanges.decode(change.fields),
         )
         assertEquals(1, localChanges)
