@@ -30,6 +30,8 @@ Configure up to three **Label screens** from the home menu, plus a separate labe
 
 ## Using it
 
+- Long-press the app icon and choose **Add task** to open the home capture box. New tasks go to your default project unless you specify a `#project`.
+- Share text or a link from another app and choose **Add to doit** to review and save it as a task. A shared page title becomes the task title, and its link becomes the description.
 - Choose **Menu → Next actions label** to put tasks with that label first in lists and the widget. The default is `@next` when it exists; choose **None** to disable this. The choice belongs to this device and does not change settings on other devices. Within each group, the usual date order applies.
 - The main view shows large top-level project tiles only. Tiles take their project's Vikunja colour, a little lighter. Tap a tile to see that project's tasks, with smaller subproject tiles below; back returns to the parent. The open project screen uses that same lightened colour for the whole page, including the task list. A project without a colour keeps the normal background.
 - Add labels with **`@`**: typing `@` in the capture box, the edit sheet, or the share dialog's title shows your labels, narrowing as you type; tap one to complete it. `@"two words"` works for names with spaces. Sending only `@errand` or `@"15 min"` opens that label's tasks instead of creating one. The `@label` words are taken out of the title, and an `@name` that isn't one of your labels stays in the title as plain text (doit never creates labels). On an existing task, recognized labels are added to the ones it already has. Labels show as small coloured chips under the task's title. This is the same `@` syntax as doit for Linux.
