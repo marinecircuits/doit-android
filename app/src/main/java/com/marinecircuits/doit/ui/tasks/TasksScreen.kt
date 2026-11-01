@@ -507,6 +507,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     onInsert = { token -> captureText = SyntaxKeys.insert(captureText, token) },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     onPickDate = { pickingCaptureDate = true },
+                    includeSearch = true,
                 )
             }
         }
