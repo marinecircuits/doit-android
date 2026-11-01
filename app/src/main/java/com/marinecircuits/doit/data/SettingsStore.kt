@@ -76,6 +76,11 @@ class SettingsStore(
 
     val pendingProjectMarkers: Flow<Map<Long, ProjectMarkerChange>> = dataStore.data.map { decodeProjectMarkers(it[PROJECT_MARKERS]) }
 
+    /** Projects archived on this device and not yet accepted by the server. */
+    val pendingProjectArchives: Flow<Set<Long>> = dataStore.data.map { prefs ->
+        prefs[PROJECT_ARCHIVES].orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+    }
+
     suspend fun migrateShoppingProjects() { dataStore.edit { migrateShoppingProjects(it) } }
 
     private fun migrateShoppingProjects(prefs: androidx.datastore.preferences.core.MutablePreferences) {
@@ -182,6 +187,22 @@ class SettingsStore(
         }
     }
 
+    suspend fun pendingProjectArchives(): Set<Long> =
+        dataStore.data.first()[PROJECT_ARCHIVES].orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+
+    suspend fun addPendingProjectArchive(projectId: Long) {
+        dataStore.edit { prefs ->
+            prefs[PROJECT_ARCHIVES] = prefs[PROJECT_ARCHIVES].orEmpty() + projectId.toString()
+        }
+    }
+
+    suspend fun removePendingProjectArchive(projectId: Long) {
+        dataStore.edit { prefs ->
+            val remaining = prefs[PROJECT_ARCHIVES].orEmpty() - projectId.toString()
+            if (remaining.isEmpty()) prefs.remove(PROJECT_ARCHIVES) else prefs[PROJECT_ARCHIVES] = remaining
+        }
+    }
+
     private fun decodeProjectColors(raw: String?): Map<Long, String> =
         raw.orEmpty().lineSequence().mapNotNull { line ->
             val id = line.substringBefore('=', "").toLongOrNull() ?: return@mapNotNull null
@@ -209,5 +230,6 @@ class SettingsStore(
         val PROJECT_MARKERS = stringPreferencesKey("pending_project_markers")
         val PROJECT_MARKER_REVISION = longPreferencesKey("project_marker_revision")
         val PROJECT_COLORS = stringPreferencesKey("project_colors")
+        val PROJECT_ARCHIVES = stringSetPreferencesKey("pending_project_archives")
     }
 }

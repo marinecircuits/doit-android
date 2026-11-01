@@ -54,8 +54,12 @@ class TaskRepository(
 ) {
     val openTasks: Flow<List<TaskEntity>> = db.tasks().observeOpen()
     val projects: Flow<List<ProjectEntity>> = db.projects().observeAll()
-    val pendingCount: Flow<Int> = combine(db.pendingChanges().observeCount(), settings.pendingProjectMarkers) { tasks, projects ->
-        tasks + projects.size
+    val pendingCount: Flow<Int> = combine(
+        db.pendingChanges().observeCount(),
+        settings.pendingProjectMarkers,
+        settings.pendingProjectArchives,
+    ) { tasks, projects, archives ->
+        tasks + projects.size + archives.size
     }
     val labels: Flow<List<LabelEntity>> = db.labels().observeAll()
     val taskLabels: Flow<List<TaskLabelEntity>> = db.taskLabels().observeAll()
@@ -351,6 +355,15 @@ class TaskRepository(
         if (project.hexColor.equals(hex, ignoreCase = true)) return
         db.projects().setColor(projectId, hex)
         settings.setPendingProjectColor(projectId, hex)
+        onLocalChange()
+    }
+
+    /** Hides [projectId] immediately and queues Vikunja's `is_archived` flag. Subprojects are left alone. */
+    suspend fun archiveProject(projectId: Long) {
+        val project = db.projects().all().find { it.id == projectId } ?: return
+        if (project.archived || project.id <= 0) return
+        db.projects().archive(projectId)
+        settings.addPendingProjectArchive(projectId)
         onLocalChange()
     }
 

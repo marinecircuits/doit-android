@@ -558,6 +558,16 @@ class TasksViewModel(
         viewModelScope.launch { repository.setProjectColor(projectId, hexColor) }
     }
 
+    /** Archives the open project and returns to its parent, or the main view. Subprojects stay. */
+    fun archiveOpenProject() {
+        val projectId = openPath.lastOrNull() ?: return
+        val parent = openPath.dropLast(1)
+        viewChanged()
+        onLeave()
+        projectPath.value = parent
+        viewModelScope.launch { repository.archiveProject(projectId) }
+    }
+
     fun complete(task: TaskEntity) {
         val current = state.value
         val names = current.rows.firstOrNull { it.task.id == task.id }?.labels?.map { it.title }.orEmpty()
