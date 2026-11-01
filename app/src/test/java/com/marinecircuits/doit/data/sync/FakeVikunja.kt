@@ -80,7 +80,7 @@ class FakeVikunja : Dispatcher() {
             request.method == "PATCH" && path.matches(Regex("projects/\\d+")) -> {
                 if (!projectsUpdatable) return json(403, """{"title":"Forbidden","detail":"missing permission to update projects"}""")
                 val id = path.removePrefix("projects/").toLong()
-                val title = projects.find { it.first == id }?.second ?: return json(404, """{"title":"Not Found"}""")
+                var title = projects.find { it.first == id }?.second ?: return json(404, """{"title":"Not Found"}""")
                 if (request.getHeader("Content-Type")?.startsWith("application/json-patch+json") == true) {
                     val patch = VikunjaJson.parseToJsonElement(body).jsonArray
                     val previous = patch[0].jsonObject.getValue("value").jsonPrimitive.content
@@ -90,6 +90,11 @@ class FakeVikunja : Dispatcher() {
                     val fields = parse(body)
                     fields["hex_color"]?.jsonPrimitive?.contentOrNull?.let { projectColors[id] = it }
                     if (fields["is_archived"]?.jsonPrimitive?.booleanOrNull == true) archivedProjects += id
+                    fields["title"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { name ->
+                        title = name
+                        val index = projects.indexOfFirst { it.first == id }
+                        if (index >= 0) projects[index] = id to name
+                    }
                 }
                 val hex = projectColors[id].orEmpty()
                 json(200, """{"id":$id,"title":"$title","is_archived":${id in archivedProjects},"hex_color":"$hex","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}""")
