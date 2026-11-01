@@ -15,11 +15,12 @@ class CaptureShortcutTest {
     fun shortcutTargetsTheInstalledPackageAndCaptureAction() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val shortcut = CaptureShortcut.create(context)
+        val intent = requireNotNull(shortcut.intent)
 
         assertEquals("add_task_v2", shortcut.id)
-        assertEquals(context.packageName, shortcut.intent.component?.packageName)
-        assertEquals(MainActivity::class.java.name, shortcut.intent.component?.className)
-        assertEquals(MainActivity.ACTION_CAPTURE, shortcut.intent.action)
+        assertEquals(context.packageName, intent.component?.packageName)
+        assertEquals(MainActivity::class.java.name, intent.component?.className)
+        assertEquals(MainActivity.ACTION_CAPTURE, intent.action)
 
         CaptureShortcut.register(context)
         val manager = context.getSystemService(ShortcutManager::class.java)
