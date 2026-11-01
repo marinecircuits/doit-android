@@ -31,6 +31,7 @@ Configure up to three **Label screens** from the home menu, plus a separate labe
 ## Using it
 
 - Long-press the app icon and choose **Add task** to open the home capture box. New tasks go to your default project unless you specify a `#project`.
+- If an older pinned **Add task** icon says “App isn't installed”, remove it, open the updated app once, then long-press its app icon and drag a new **Add task** shortcut onto the home screen.
 - Share text or a link from another app and choose **Add to doit** to review and save it as a task. A shared page title becomes the task title, and its link becomes the description.
 - Choose **Menu → Next actions label** to put tasks with that label first in lists and the widget. The default is `@next` when it exists; choose **None** to disable this. The choice belongs to this device and does not change settings on other devices. Within each group, the usual date order applies.
 - The main view shows large top-level project tiles only. Tiles take their project's Vikunja colour, a little lighter. Tap a tile to see that project's tasks, with smaller subproject tiles below; back returns to the parent. The open project screen uses that same lightened colour for the whole page, including the task list. A project without a colour keeps the normal background.
