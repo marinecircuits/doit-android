@@ -29,6 +29,8 @@ import kotlinx.coroutines.launch
 data class TasksUiState(
     val today: LocalDate,
     val rows: List<TaskRow> = emptyList(),
+    /** Every cached open task, regardless of the current project or label view, for slash search. */
+    val searchRows: List<TaskRow> = emptyList(),
     /** False until the database answered once, so an empty list isn't mistaken for "nothing to do". */
     val loaded: Boolean = false,
     /** Non-archived projects, for the edit sheet. */
@@ -318,6 +320,11 @@ class TasksViewModel(
         val taskLabels = labels.byTask + retained.mapValues { (_, snapshot) ->
             snapshot.labels.filterNot { name -> doing != null && name.equals(doing.title, ignoreCase = true) }
         }
+        val searchRows = TaskListModel.rows(
+            open.filterNot { it.done }, projects, defaultProjectId, day, clock.zone,
+            taskLabels = labels.byTask, labels = labels.labels, shoppingProjects = shopping,
+            nextActionsLabel = nextName,
+        )
         val openLabel = labelId?.let { id -> labels.labels.find { it.id == id } }
         if (openLabel != null) {
             val shown = tasks.filter { task ->
@@ -338,6 +345,7 @@ class TasksViewModel(
                     nextActionsLabel = nextName,
                 ),
                 loaded = true,
+                searchRows = searchRows,
                 projects = visible,
                 labels = labels.labels,
                 openLabel = openLabel,
@@ -360,6 +368,7 @@ class TasksViewModel(
                 nextActionsLabel = nextName,
             ),
             loaded = true,
+            searchRows = searchRows,
             projects = visible,
             path = path,
             tiles = ProjectTree.tiles(tileProjects, open),
@@ -403,6 +412,17 @@ class TasksViewModel(
         onLeave()
         openLabelId.value = null
         projectPath.value = openPath + projectId
+    }
+
+    /** Search results can point to a project outside the currently open branch. */
+    fun openSearchProject(projectId: Long) {
+        val path = ProjectTree.pathTo(projectId, state.value.projects)
+        if (path.isEmpty()) return
+        viewChanged()
+        contextIndex.value = null
+        onLeave()
+        openLabelId.value = null
+        projectPath.value = path
     }
 
     /** Back from a label or project screen: closes the label, or returns to the parent project or the main view. */

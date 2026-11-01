@@ -81,6 +81,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -155,6 +161,18 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var colorOpen by remember { mutableStateOf(false) }
     var shoppingOpen by remember { mutableStateOf(false) }
     var recentOpen by remember { mutableStateOf(false) }
+    var selectedSearchIndex by remember { mutableIntStateOf(0) }
+    val searchQuery = TaskSearch.query(captureText.text)
+    val searchResults = searchQuery?.let { TaskSearch.matches(it, state.searchRows, state.projects, state.labels) }.orEmpty()
+    fun openSearchResult(result: TaskSearch.Result) {
+        captureText = TextFieldValue()
+        selectedSearchIndex = 0
+        when (result.kind) {
+            TaskSearch.Kind.PROJECT -> viewModel.openSearchProject(result.id)
+            TaskSearch.Kind.TASK -> editTarget = state.searchRows.firstOrNull { it.task.id == result.id }?.task
+            TaskSearch.Kind.LABEL -> viewModel.openLabel(result.id)
+        }
+    }
     val recent by viewModel.recentTasks.collectAsStateWithLifecycle()
     val subproject by viewModel.subproject.collectAsStateWithLifecycle()
     subproject?.let { draft ->
@@ -192,6 +210,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
 
     BackHandler(enabled = isContext || openLabel != null || currentProject != null) { viewModel.navigateUp() }
+    BackHandler(enabled = searchQuery != null) { captureText = TextFieldValue(); selectedSearchIndex = 0 }
 
     LaunchedEffect(focusCaptureRequests) {
         if (focusCaptureRequests > 0) {
@@ -225,6 +244,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
 
     fun capture() {
+        if (searchQuery != null) {
+            searchResults.getOrNull(selectedSearchIndex.coerceIn(0, (searchResults.size - 1).coerceAtLeast(0)))?.let(::openSearchResult)
+            return
+        }
         val text = captureText.text
         if (text.isBlank()) return
         val dueDate = captureDueDate
@@ -288,8 +311,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             )
         }) {
             val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else currentProject?.title
-            headerTitle?.let { ProjectHeader(if (currentProject != null && currentProject.id in state.shoppingProjects) "🛒 $it" else it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
-            state.doingTask?.let { row ->
+            if (searchQuery == null) headerTitle?.let { ProjectHeader(if (currentProject != null && currentProject.id in state.shoppingProjects) "🛒 $it" else it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
+            if (searchQuery == null) state.doingTask?.let { row ->
                 DoingTop(
                     row = row,
                     count = state.doingCount,
@@ -302,13 +325,25 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             CaptureBar(
                 hint = currentProject?.let { stringResource(R.string.capture_hint_project, it.title) }
                     ?: stringResource(R.string.capture_hint),
-                belowStatusBar = headerTitle == null && state.doingTask == null,
+                belowStatusBar = searchQuery != null || (headerTitle == null && state.doingTask == null),
                 text = captureText,
                 onTextChange = { value ->
-                    val withoutTrigger = DateTrigger.consume(captureText, value)
+                    if (TaskSearch.query(value.text) != searchQuery) selectedSearchIndex = 0
+                    val withoutTrigger = if (searchQuery == null) DateTrigger.consume(captureText, value) else null
                     captureText = withoutTrigger ?: value
                     if (withoutTrigger != null) pickingCaptureDate = true
                 },
+                onSearchKey = { event ->
+                    if (searchQuery == null || event.type != KeyEventType.KeyDown) false else when (event.key) {
+                        Key.DirectionDown -> { selectedSearchIndex = (selectedSearchIndex + 1).coerceAtMost(searchResults.lastIndex.coerceAtLeast(0)); true }
+                        Key.DirectionUp -> { selectedSearchIndex = (selectedSearchIndex - 1).coerceAtLeast(0); true }
+                        Key.Escape -> { captureText = TextFieldValue(); selectedSearchIndex = 0; true }
+                        Key.Enter, Key.NumPadEnter -> { capture(); true }
+                        else -> false
+                    }
+                },
+                searchMode = searchQuery != null,
+                hasSearchResult = searchResults.isNotEmpty(),
                 onFocusChange = { captureFocused = it },
                 onSend = ::capture,
                 onSignOut = viewModel::requestSignOut,
@@ -326,7 +361,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 syncError = state.syncError,
                 focusRequester = captureFocus,
             )
-            captureDueDate?.let { selected ->
+            if (searchQuery == null) captureDueDate?.let { selected ->
                 Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { pickingCaptureDate = true }) {
                         Text(stringResource(R.string.capture_due_date, selected.toString()))
@@ -334,7 +369,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     TextButton(onClick = { captureDueDate = null }) { Text(stringResource(R.string.edit_clear_date)) }
                 }
             }
-            val suggestions = if (captureFocused && captureText.selection.collapsed) {
+            val suggestions = if (searchQuery == null && captureFocused && captureText.selection.collapsed) {
                 CaptureSyntax.suggestionsAt(captureText.text, captureText.selection.end, state.labels, state.projects)
             } else {
                 emptyList()
@@ -364,6 +399,9 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 }
             }
             Box(Modifier.fillMaxWidth().weight(1f).nestedScroll(downConnection)) {
+                if (searchQuery != null) {
+                    SearchResults(searchQuery, searchResults, selectedSearchIndex.coerceAtMost(searchResults.lastIndex.coerceAtLeast(0)), ::openSearchResult)
+                } else {
                 Column(Modifier.fillMaxSize()) {
                     if (state.tokenRejected) TokenRejectedBanner(onEnterNewToken)
                     StatusLine(state.status)
@@ -462,8 +500,9 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 52.dp),
                     )
                 }
+                }
             }
-            if (captureFocused) {
+            if (captureFocused && searchQuery == null) {
                 SyntaxKeyRow(
                     onInsert = { token -> captureText = SyntaxKeys.insert(captureText, token) },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -635,6 +674,9 @@ private fun CaptureBar(
     belowStatusBar: Boolean,
     text: TextFieldValue,
     onTextChange: (TextFieldValue) -> Unit,
+    onSearchKey: (KeyEvent) -> Boolean,
+    searchMode: Boolean,
+    hasSearchResult: Boolean,
     onFocusChange: (Boolean) -> Unit,
     onSend: () -> Unit,
     onSignOut: () -> Unit,
@@ -671,15 +713,16 @@ private fun CaptureBar(
             onValueChange = onTextChange,
             placeholder = { Text(hint, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { onSend() }),
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = if (searchMode) ImeAction.Search else ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { onSend() }, onSearch = { onSend() }),
             trailingIcon = {
-                IconButton(onClick = onSend, enabled = text.text.isNotBlank()) {
-                    Icon(painterResource(R.drawable.ic_send), contentDescription = stringResource(R.string.capture_send))
+                IconButton(onClick = onSend, enabled = if (searchMode) hasSearchResult else text.text.isNotBlank()) {
+                    Icon(painterResource(R.drawable.ic_send), contentDescription = stringResource(if (searchMode) R.string.search_open else R.string.capture_send))
                 }
             },
             modifier = Modifier
                 .weight(1f)
+                .onPreviewKeyEvent(onSearchKey)
                 .focusRequester(focusRequester)
                 .onFocusChanged { onFocusChange(it.isFocused) },
         )
