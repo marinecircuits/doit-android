@@ -8,7 +8,9 @@ import android.graphics.drawable.Icon
 
 /** Create the launcher shortcut with the installed package, including the .debug variant. */
 internal object CaptureShortcut {
-    private const val ID = "add_task"
+    // Use a new ID so a pinned, immutable shortcut from the old XML definition
+    // cannot block registration of the corrected target.
+    private const val ID = "add_task_v2"
 
     fun create(context: Context): ShortcutInfo = ShortcutInfo.Builder(context, ID)
         .setShortLabel(context.getString(R.string.shortcut_add_task))

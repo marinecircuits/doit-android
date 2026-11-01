@@ -16,7 +16,7 @@ class CaptureShortcutTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val shortcut = CaptureShortcut.create(context)
 
-        assertEquals("add_task", shortcut.id)
+        assertEquals("add_task_v2", shortcut.id)
         assertEquals(context.packageName, shortcut.intent.component?.packageName)
         assertEquals(MainActivity::class.java.name, shortcut.intent.component?.className)
         assertEquals(MainActivity.ACTION_CAPTURE, shortcut.intent.action)
