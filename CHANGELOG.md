@@ -1,3 +1,9 @@
+## 0.26.0 (2026-11-01)
+
+### Feat
+
+- add a slash button beside the capture syntax keys
+
 ## 0.25.0 (2026-11-01)
 
 ### Feat
