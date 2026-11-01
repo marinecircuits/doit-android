@@ -36,6 +36,10 @@ data class ProjectEntity(
     @ColumnInfo(defaultValue = "") val description: String = "",
 )
 
+/** The Vikunja inbox is the default project. A project still titled Inbox counts too. */
+fun ProjectEntity.isInbox(defaultProjectId: Long?): Boolean =
+    id == defaultProjectId || title.equals("Inbox", ignoreCase = true)
+
 /**
  * The unsent local changes of one task. Later changes are merged into the same row, so there is at most one row
  * per task; [revision] grows with every merge so the sync can tell whether the row changed while it was being sent.

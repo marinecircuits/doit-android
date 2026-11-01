@@ -10,6 +10,7 @@ import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
+import com.marinecircuits.doit.data.local.isInbox
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.local.TaskHistoryEntity
 import com.marinecircuits.doit.data.sync.SyncResult
@@ -64,6 +65,8 @@ data class TasksUiState(
     val doingTaskIds: Set<Long> = emptySet(),
     /** The first open doing task in the app's normal task order, across all projects. */
     val doingTask: TaskRow? = null,
+    /** Vikunja's default project. Together with a title of Inbox, this cannot have subprojects. */
+    val defaultProjectId: Long? = null,
 )
 
 data class RecentTasksState(
@@ -127,6 +130,7 @@ class TasksViewModel(
     fun showCreateSubproject() {
         if (_subproject.value != null) return
         val parent = state.value.path.lastOrNull() ?: return
+        if (parent.isInbox(state.value.defaultProjectId)) return
         _subproject.value = CreateSubprojectState(parent)
     }
 
@@ -140,6 +144,10 @@ class TasksViewModel(
 
     fun submitSubproject() {
         val draft = _subproject.value ?: return
+        if (draft.parent.isInbox(state.value.defaultProjectId)) {
+            _subproject.value = null
+            return
+        }
         if (draft.saving || draft.title.isBlank()) return
         _subproject.value = draft.copy(saving = true, error = null)
         viewModelScope.launch {
@@ -349,6 +357,7 @@ class TasksViewModel(
                 projects = visible,
                 labels = labels.labels,
                 openLabel = openLabel,
+                defaultProjectId = defaultProjectId,
             )
         }
         val shown = if (current == null) tasks else tasks.filter { it.projectId == current.id }
@@ -373,6 +382,7 @@ class TasksViewModel(
             path = path,
             tiles = ProjectTree.tiles(tileProjects, open),
             labels = labels.labels,
+            defaultProjectId = defaultProjectId,
         )
     }
 

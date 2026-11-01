@@ -592,6 +592,23 @@ class TasksViewModelTest {
     }
 
     @Test
+    fun inboxDoesNotOpenTheSubprojectDialog() {
+        seedProjects()
+        waitUntil { tiles().size == 2 }
+        viewModel.openProject(1)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 1L }
+        viewModel.showCreateSubproject()
+        assertEquals(null, viewModel.subproject.value)
+
+        viewModel.navigateHome()
+        waitUntil { viewModel.state.value.path.isEmpty() }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 2L }
+        viewModel.showCreateSubproject()
+        assertEquals(2L, viewModel.subproject.value?.parent?.id)
+    }
+
+    @Test
     fun settingAProjectColourUpdatesTheOpenProject() {
         seedProjects()
         waitUntil { tiles().size == 2 }

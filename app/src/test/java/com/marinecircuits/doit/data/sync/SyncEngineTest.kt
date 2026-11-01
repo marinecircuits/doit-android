@@ -111,6 +111,31 @@ class SyncEngineTest {
     }
 
     @Test
+    fun inboxCannotContainASubproject() = runTest {
+        engine.sync()
+        val requestsBefore = server.requestCount
+        try {
+            engine.createSubproject(1, "Under inbox")
+            org.junit.Assert.fail("Expected inbox rejection")
+        } catch (_: IllegalArgumentException) {
+        }
+        settings.setDefaultProjectId(2)
+        db.projects().insertAll(listOf(com.marinecircuits.doit.data.local.ProjectEntity(3, "Notes", false, 3.0)))
+        try {
+            engine.createSubproject(2, "Under default")
+            org.junit.Assert.fail("Expected default-project rejection")
+        } catch (_: IllegalArgumentException) {
+        }
+        try {
+            engine.createSubproject(1, "Still inbox by title")
+            org.junit.Assert.fail("Expected title rejection")
+        } catch (_: IllegalArgumentException) {
+        }
+        assertEquals(requestsBefore, server.requestCount)
+        assertEquals(listOf("Inbox", "Work", "Notes"), db.projects().all().map { it.title })
+    }
+
+    @Test
     fun createSubprojectPostsTrimmedNameAndCachesTheChildUnderItsParent() = runTest {
         engine.sync()
         // Creating a child of an existing subproject must keep that exact parent, not its root.
@@ -151,7 +176,7 @@ class SyncEngineTest {
             if (request.method == "POST") okhttp3.mockwebserver.MockResponse().setResponseCode(403).setBody("{}") else null
         }
         try {
-            engine.createSubproject(1, "Restricted")
+            engine.createSubproject(2, "Restricted")
             org.junit.Assert.fail("Expected permission failure")
         } catch (e: com.marinecircuits.doit.data.remote.ApiException) {
             assertEquals(403, e.status)

@@ -119,6 +119,7 @@ import com.marinecircuits.doit.R
 import com.marinecircuits.doit.container
 import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.data.local.LabelEntity
+import com.marinecircuits.doit.data.local.isInbox
 import com.marinecircuits.doit.data.local.TaskEntity
 import java.time.LocalDate
 import java.util.Locale
@@ -354,7 +355,9 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 showContextOption = currentProject == null && (openLabel == null || isContext),
                 onProjectColor = currentProject?.let { { colorOpen = true } },
                 onProjectSettings = currentProject?.let { { shoppingOpen = true } },
-                onCreateSubproject = currentProject?.let { viewModel::showCreateSubproject },
+                onCreateSubproject = currentProject
+                    ?.takeUnless { it.isInbox(state.defaultProjectId) }
+                    ?.let { viewModel::showCreateSubproject },
                 onArchiveProject = currentProject?.let { { archiveOpen = true } },
                 serverAddress = state.serverAddress,
                 status = state.status,
