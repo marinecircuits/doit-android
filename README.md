@@ -74,6 +74,7 @@ Every push to `main` also produces a debug build (`doit debug`, package `com.mar
 - There is no local Android toolchain requirement: the **Build** workflow compiles, runs the unit tests and uploads the debug APK. Locally, `./gradlew testDebugUnitTest assembleDebug` works with JDK 21 and the Android SDK.
 - Changes are planned with [OpenSpec](https://github.com/Fission-AI/OpenSpec): proposals live in `openspec/changes/`, accepted behaviour in `openspec/specs/`. In Claude Code use `/opsx:propose`, `/opsx:apply` and `/opsx:archive`.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org); the version is derived from them.
+- **Merge pull requests with a regular merge commit** (the default “Create a merge commit” option), the same way previous merges in this repository were done. Do not squash or rebase. This keeps the individual Conventional Commits from the branch in history so Commitizen can see them and produce the next version bump.
 
 ## Releasing
 
