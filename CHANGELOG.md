@@ -1,3 +1,11 @@
+## 0.28.0 (2026-11-01)
+
+### Feat
+
+- edit a task's details in the edit sheet
+- rename the open project from project settings
+- keep Inbox flat and send main-screen tasks there
+
 ## 0.27.0 (2026-11-01)
 
 ### Feat
