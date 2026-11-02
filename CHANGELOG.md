@@ -1,3 +1,18 @@
+## 0.30.0 (2026-11-02)
+
+### Feat
+
+- link to the project from the edit sheet (#94)
+- link to the project from the edit sheet
+- open the project from the edit sheet link
+- link to the project from the edit sheet
+
+### Fix
+
+- show Next actions label only on the main screen (#93)
+- show Next actions label only on the main screen
+- show Next actions label only on the main screen
+
 ## 0.29.0 (2026-11-02)
 
 ### Feat
