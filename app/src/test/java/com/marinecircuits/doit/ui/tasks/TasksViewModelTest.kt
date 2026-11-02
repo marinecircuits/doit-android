@@ -10,6 +10,7 @@ import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.sync.PendingChanges
+import com.marinecircuits.doit.data.sync.PromotedTask
 import com.marinecircuits.doit.data.sync.SyncResult
 import com.marinecircuits.doit.inMemoryDatabase
 import com.marinecircuits.doit.testClock
@@ -36,6 +37,10 @@ class TasksViewModelTest {
     private val syncResults = MutableStateFlow<SyncResult?>(null)
     private val createdProjects = mutableListOf<Pair<Long, String>>()
     private var createProjectAction: suspend (Long, String) -> Unit = { parent, title -> createdProjects += parent to title }
+    private var promoteAction: suspend (Long, String, String, Long) -> PromotedTask =
+        { _, title, description, projectId ->
+            PromotedTask(ProjectEntity(20, title, false, 0.0, projectId, description = description), true)
+        }
     private var syncs = 0
     private var signedOut = false
     private lateinit var viewModel: TasksViewModel
@@ -51,6 +56,7 @@ class TasksViewModelTest {
             syncResults = syncResults,
             sync = { syncs++; SyncResult.Synced },
             createSubproject = { parent, title -> createProjectAction(parent, title) },
+            promoteTask = { taskId, title, description, projectId -> promoteAction(taskId, title, description, projectId) },
             signOut = { signedOut = true },
             clock = testClock,
         )
@@ -175,6 +181,49 @@ class TasksViewModelTest {
         assertEquals(JsonPrimitive(false), fields["done"])
         viewModel.onLeave()
         waitUntil { row(10)?.completed == false }
+    }
+
+    @Test
+    fun promotingATaskOpensTheNewProjectAndRemovesTheTask() {
+        seedProjects()
+        waitUntil { titles().size == 3 }
+        promoteAction = { _, title, description, projectId ->
+            val created = ProjectEntity(20, title, false, 0.0, projectId, description = description)
+            runBlocking { db.projects().insertAll(listOf(created)) }
+            PromotedTask(created, true)
+        }
+        val task = viewModel.state.value.rows.first { it.task.id == 11L }.task
+        var finished = false
+        var error: SubprojectError? = null
+        viewModel.promoteToProject(task, "  Review PR  ", " notes ", 2L) {
+            error = it
+            finished = true
+        }
+        waitUntil { finished }
+        assertEquals(null, error)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 20L }
+        assertEquals(listOf(2L, 20L), viewModel.state.value.path.map { it.id })
+        assertEquals("notes", viewModel.state.value.path.last().description)
+        waitUntil { viewModel.state.value.rows.none { it.task.id == 11L } }
+        assertEquals(null, runBlocking { db.tasks().get(11) })
+    }
+
+    @Test
+    fun refusedPromotionKeepsTheTask() {
+        seedProjects()
+        waitUntil { titles().contains("Review PR") }
+        promoteAction = { _, _, _, _ -> throw java.io.IOException("offline") }
+        val task = viewModel.state.value.rows.first { it.task.id == 11L }.task
+        var finished = false
+        var error: SubprojectError? = null
+        viewModel.promoteToProject(task, "Review PR", "", 2L) {
+            error = it
+            finished = true
+        }
+        waitUntil { finished }
+        assertEquals(SubprojectError.CONNECTION, error)
+        assertEquals("Review PR", runBlocking { db.tasks().get(11) }!!.title)
+        assertTrue(viewModel.state.value.path.isEmpty())
     }
 
     private fun seedProjects() = runBlocking {

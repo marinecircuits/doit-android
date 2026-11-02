@@ -34,6 +34,9 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
+/** A project created from a task. [removeTask] is false when the task should be kept. */
+data class PromotedTask(val project: ProjectEntity, val removeTask: Boolean)
+
 sealed interface SyncResult {
     data object Synced : SyncResult
     data object NotConnected : SyncResult
@@ -81,6 +84,31 @@ class SyncEngine(
         val created = apiFor(credentials).createSubproject(parentId, name)
         check(created.id > 0 && created.parentProjectId == parentId) { "Unexpected project response" }
         db.projects().insertAll(listOf(created.toEntity()))
+    }
+
+    /**
+     * Creates a subproject from a task, online only. The task stays until [PromotedTask.removeTask] is true,
+     * which is only when the server echoes the name and description and the task did not change meanwhile.
+     */
+    suspend fun promoteTask(taskId: Long, title: String, description: String, projectId: Long): PromotedTask = mutex.withLock {
+        val name = title.trim()
+        require(name.isNotEmpty()) { "A project needs a name" }
+        val id = idRemap.resolve(taskId)
+        val task = db.tasks().get(id) ?: throw IllegalArgumentException("The task is no longer available")
+        require(!task.done) { "A completed task cannot become a project" }
+        val parent = db.projects().all().find { it.id == projectId && !it.archived && it.id > 0 }
+            ?: throw IllegalArgumentException("The task's project is unavailable")
+        val sent = description.trim()
+        val credentials = checkNotNull(settings.credentials()) { "Not connected" }
+        val created = apiFor(credentials).createProject(name, parent.id, sent)
+        check(created.id > 0 && created.parentProjectId == parent.id) { "Unexpected project response" }
+        val entity = created.toEntity()
+        db.projects().insertAll(listOf(entity))
+        val current = db.tasks().get(id)
+        val unchanged = current != null && !current.done && current.title == task.title &&
+            current.description == task.description && current.projectId == task.projectId
+        val echoed = created.title.trim() == name && created.description.trim() == sent
+        PromotedTask(entity, unchanged && echoed)
     }
 
     private suspend fun runSync(): SyncResult {

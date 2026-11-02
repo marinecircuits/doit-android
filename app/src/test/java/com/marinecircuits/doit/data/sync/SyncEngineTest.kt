@@ -186,6 +186,76 @@ class SyncEngineTest {
     }
 
     @Test
+    fun promotingATaskInAProjectCreatesThatSubproject() = runTest {
+        fake.tasks[10] = FakeVikunja.Task(10, "Order boards", projectId = 2)
+        assertEquals(SyncResult.Synced, engine.sync())
+        val created = engine.promoteTask(10, "  Order boards  ", " bring the schematic ", 2)
+        assertTrue(created.removeTask)
+        assertEquals("Order boards", created.project.title)
+        assertEquals(2L, created.project.parentProjectId)
+        assertEquals("bring the schematic", created.project.description)
+        assertEquals("Order boards", db.tasks().get(10)!!.title)
+
+        val request = fake.requests.last { it.startsWith("POST projects ") }.removePrefix("POST projects ")
+        val body = com.marinecircuits.doit.data.remote.VikunjaJson.decodeFromString<kotlinx.serialization.json.JsonObject>(request)
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("Order boards"), body["title"])
+        assertEquals(kotlinx.serialization.json.JsonPrimitive(2), body["parent_project_id"])
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("bring the schematic"), body["description"])
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        val stored = db.projects().all().single { it.title == "Order boards" }
+        assertEquals(2L, stored.parentProjectId)
+        assertEquals("bring the schematic", stored.description)
+    }
+
+    @Test
+    fun promotingAnInboxTaskStaysASubprojectOfInbox() = runTest {
+        fake.tasks[10] = FakeVikunja.Task(10, "Someday", projectId = 1)
+        assertEquals(SyncResult.Synced, engine.sync())
+        settings.setDefaultProjectId(2)
+        val before = fake.requests.size
+        val created = engine.promoteTask(10, "Someday", "   ", 1)
+        assertTrue(created.removeTask)
+        assertEquals(1L, created.project.parentProjectId)
+        val request = fake.requests.drop(before).single { it.startsWith("POST projects ") }.removePrefix("POST projects ")
+        val body = com.marinecircuits.doit.data.remote.VikunjaJson.decodeFromString<kotlinx.serialization.json.JsonObject>(request)
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("Someday"), body["title"])
+        assertEquals(kotlinx.serialization.json.JsonPrimitive(1), body["parent_project_id"])
+        assertFalse(body.containsKey("description"))
+        assertEquals("Someday", db.tasks().get(10)!!.title)
+    }
+
+    @Test
+    fun refusedPromotionDoesNotCacheAProject() = runTest {
+        fake.tasks[10] = FakeVikunja.Task(10, "Order boards", projectId = 2)
+        assertEquals(SyncResult.Synced, engine.sync())
+        val before = db.projects().all()
+        fake.intercept = { request ->
+            if (request.method == "POST" && request.requestUrl!!.encodedPath == "/api/v2/projects") {
+                okhttp3.mockwebserver.MockResponse().setResponseCode(403).setBody("{}")
+            } else {
+                null
+            }
+        }
+        try {
+            engine.promoteTask(10, "Order boards", "", 2)
+            org.junit.Assert.fail("Expected permission failure")
+        } catch (e: com.marinecircuits.doit.data.remote.ApiException) {
+            assertEquals(403, e.status)
+        }
+        assertEquals(before, db.projects().all())
+        assertEquals("Order boards", db.tasks().get(10)!!.title)
+
+        val requestsBefore = server.requestCount
+        try {
+            engine.promoteTask(10, "  ", "", 2)
+            org.junit.Assert.fail("Expected a name")
+        } catch (_: IllegalArgumentException) {
+        }
+        assertEquals(requestsBefore, server.requestCount)
+    }
+
+    @Test
     fun restoreDuringDeleteRequestLeavesOneRecreatedTask() = runTest {
         fake.tasks[1] = FakeVikunja.Task(1, "Milk")
         engine.sync()

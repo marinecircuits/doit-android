@@ -86,6 +86,7 @@ fun EditSheet(
     onDateChange: (LocalDate?) -> Unit,
     onProjectChange: (Long) -> Unit,
     onDelete: () -> Unit,
+    onPromote: (title: String, description: String, projectId: Long, onDone: (SubprojectError?) -> Unit) -> Unit,
     working: Boolean,
     onWork: (() -> Unit)?,
     onDismiss: () -> Unit,
@@ -103,6 +104,10 @@ fun EditSheet(
     var projectMenuOpen by remember { mutableStateOf(false) }
     val projectPickerItems = remember(projects) { ProjectTree.pickerItems(projects) }
     var confirmingDelete by remember(task.id) { mutableStateOf(false) }
+    var confirmingPromote by remember(task.id) { mutableStateOf(false) }
+    var promoteName by remember(task.id) { mutableStateOf(task.title) }
+    var promoting by remember(task.id) { mutableStateOf(false) }
+    var promoteError by remember(task.id) { mutableStateOf<SubprojectError?>(null) }
 
     fun commitTitle() {
         val raw = title.text
@@ -219,10 +224,81 @@ fun EditSheet(
                     Text(stringResource(if (working) R.string.stop_working else R.string.start_working))
                 }
             }
-            TextButton(onClick = { confirmingDelete = true }, modifier = Modifier.align(Alignment.End)) {
+            if (!task.done) {
+                TextButton(
+                    onClick = {
+                        commitTitle()
+                        commitDetails()
+                        promoteName = savedTitle
+                        if (promoteName.isNotBlank()) confirmingPromote = true
+                    },
+                    enabled = !promoting,
+                    modifier = Modifier.align(Alignment.End),
+                ) { Text(stringResource(R.string.promote_task)) }
+            }
+            TextButton(
+                onClick = { confirmingDelete = true },
+                enabled = !promoting,
+                modifier = Modifier.align(Alignment.End),
+            ) {
                 Text(stringResource(R.string.edit_delete), color = MaterialTheme.colorScheme.error)
             }
         }
+    }
+
+    if (confirmingPromote) {
+        AlertDialog(
+            onDismissRequest = { if (!promoting) confirmingPromote = false },
+            title = { Text(stringResource(R.string.promote_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = promoteName,
+                        onValueChange = { promoteName = it },
+                        label = { Text(stringResource(R.string.promote_name)) },
+                        singleLine = true,
+                        enabled = !promoting,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(stringResource(R.string.promote_inside, projects.firstOrNull { it.id == projectId }?.title ?: "—"))
+                    Text(stringResource(R.string.promote_body))
+                    promoteError?.let { error ->
+                        Text(
+                            stringResource(when (error) {
+                                SubprojectError.CONNECTION -> R.string.subproject_connection_error
+                                SubprojectError.PERMISSION -> R.string.subproject_permission_error
+                                SubprojectError.OTHER -> R.string.subproject_create_error
+                            }),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !promoting && promoteName.isNotBlank(),
+                    onClick = {
+                        promoting = true
+                        promoteError = null
+                        onPromote(promoteName, savedDetails, projectId) { error ->
+                            promoting = false
+                            if (error == null) {
+                                confirmingPromote = false
+                                onDismiss()
+                            } else {
+                                promoteError = error
+                            }
+                        }
+                    },
+                ) { Text(stringResource(if (promoting) R.string.subproject_creating else R.string.promote_confirm)) }
+            },
+            dismissButton = {
+                TextButton(enabled = !promoting, onClick = { confirmingPromote = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 
     if (confirmingDelete) {

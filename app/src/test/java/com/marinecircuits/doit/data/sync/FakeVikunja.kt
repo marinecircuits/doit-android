@@ -33,6 +33,7 @@ class FakeVikunja : Dispatcher() {
     val projects = mutableListOf(1L to "Inbox", 2L to "Work")
     val projectColors = mutableMapOf<Long, String>()
     val projectDescriptions = mutableMapOf<Long, String>()
+    val projectParents = mutableMapOf<Long, Long>()
     val archivedProjects = mutableSetOf<Long>()
 
     /** False: the token may not update projects (403 on that route). */
@@ -69,7 +70,7 @@ class FakeVikunja : Dispatcher() {
                 else json(401, """{"message":"Unauthorized"}""")
             request.method == "GET" && path == "projects" -> page(
                 projects.map { (id, title) ->
-                    """{"id":$id,"title":"$title","is_archived":${id in archivedProjects},"hex_color":"${projectColors[id].orEmpty()}","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}"""
+                    """{"id":$id,"title":"$title","is_archived":${id in archivedProjects},"hex_color":"${projectColors[id].orEmpty()}","parent_project_id":${projectParents[id] ?: 0},"description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}"""
                 },
             )
             request.method == "GET" && path.matches(Regex("projects/\\d+")) -> {
@@ -122,6 +123,18 @@ class FakeVikunja : Dispatcher() {
                 val task = tasks[parts[1].toLong()] ?: return json(404, """{"title":"Not Found"}""")
                 if (!task.labelIds.remove(parts[3].toLong())) return json(404, """{"title":"Not Found"}""")
                 MockResponse().setResponseCode(204)
+            }
+            request.method == "POST" && path == "projects" -> {
+                val fields = parse(body)
+                val title = fields["title"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                    ?: return json(400, """{"title":"Bad Request"}""")
+                val parent = fields["parent_project_id"]?.jsonPrimitive?.longOrNull ?: 0L
+                val description = fields["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val id = nextId++
+                projects += id to title
+                projectParents[id] = parent
+                if (description.isNotEmpty()) projectDescriptions[id] = description
+                json(201, """{"id":$id,"title":${JsonPrimitive(title)},"parent_project_id":$parent,"description":${JsonPrimitive(description)}}""")
             }
             request.method == "POST" && path.matches(Regex("projects/\\d+/tasks")) -> {
                 val fields = parse(body)
