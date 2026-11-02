@@ -1,3 +1,9 @@
+## 0.29.0 (2026-11-02)
+
+### Feat
+
+- promote task to project and pin sync note to bottom
+
 ## 0.28.0 (2026-11-01)
 
 ### Feat
