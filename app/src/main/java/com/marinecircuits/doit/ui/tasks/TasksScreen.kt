@@ -125,8 +125,9 @@ import java.time.LocalDate
 import java.util.Locale
 
 /**
- * The main view and every project screen: capture box, status line, project tiles, and a task list in projects,
- * and the sheets for rescheduling and editing. [focusCaptureRequests] grows each time the widget's + button asks
+ * The main view and every project screen: capture box, project tiles, a task list in projects,
+ * and the sheets for rescheduling and editing. The sync status sits at the bottom so it does not push the list down.
+ * [focusCaptureRequests] grows each time the widget's + button asks
  * for the capture box, which always opens the main view.
  */
 @Composable
@@ -409,7 +410,6 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 } else {
                 Column(Modifier.fillMaxSize()) {
                     if (state.tokenRejected) TokenRejectedBanner(onEnterNewToken)
-                    StatusLine(state.status)
 
                     if (openLabel == null && currentProject == null) {
                         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
@@ -435,7 +435,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                             when {
                                 state.rows.isNotEmpty() -> LazyColumn(
                                     state = listState,
-                                    contentPadding = if (hasTiles) {
+                                    contentPadding = if (hasTiles || state.status.isNotEmpty()) {
                                         PaddingValues()
                                     } else {
                                         WindowInsets.navigationBars.asPaddingValues()
@@ -506,6 +506,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     )
                 }
                 }
+            }
+            if (searchQuery == null && state.status.isNotEmpty()) {
+                StatusLine(
+                    state.status,
+                    modifier = if (captureFocused) Modifier else Modifier.navigationBarsPadding(),
+                )
             }
             if (captureFocused && searchQuery == null) {
                 SyntaxKeyRow(
@@ -1040,7 +1046,7 @@ private fun HomeLabelShortcuts(labels: List<LabelEntity>, onOpen: (Long) -> Unit
 }
 
 @Composable
-private fun StatusLine(parts: List<StatusPart>) {
+private fun StatusLine(parts: List<StatusPart>, modifier: Modifier = Modifier) {
     if (parts.isEmpty()) return
     val texts = parts.map { part ->
         when (part) {
@@ -1054,7 +1060,7 @@ private fun StatusLine(parts: List<StatusPart>) {
         texts.joinToString(" · "),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
     )
 }
 
