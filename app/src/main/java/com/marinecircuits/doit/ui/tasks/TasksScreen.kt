@@ -353,6 +353,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onRecent = { viewModel.openRecentTasks(); recentOpen = true },
                 onConfigureContext = { labelPickerOpen = true },
                 onConfigureNextActions = { nextActionsPickerOpen = true },
+                showNextActionsOption = currentProject == null && openLabel == null,
                 showContextOption = currentProject == null && (openLabel == null || isContext),
                 onProjectColor = currentProject?.let { { colorOpen = true } },
                 onProjectSettings = currentProject?.let { { shoppingOpen = true } },
@@ -729,6 +730,7 @@ private fun CaptureBar(
     onRecent: () -> Unit,
     onConfigureContext: () -> Unit,
     onConfigureNextActions: () -> Unit,
+    showNextActionsOption: Boolean,
     showContextOption: Boolean,
     onProjectColor: (() -> Unit)?,
     onProjectSettings: (() -> Unit)?,
@@ -782,10 +784,12 @@ private fun CaptureBar(
                     text = { Text(stringResource(R.string.recent_tasks)) },
                     onClick = { menuOpen = false; onRecent() },
                 )
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.next_actions_label)) },
-                    onClick = { menuOpen = false; onConfigureNextActions() },
-                )
+                if (showNextActionsOption) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.next_actions_label)) },
+                        onClick = { menuOpen = false; onConfigureNextActions() },
+                    )
+                }
                 if (showContextOption) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_context_label)) },
