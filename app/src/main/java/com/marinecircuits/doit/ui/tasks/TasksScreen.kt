@@ -596,6 +596,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             onDescriptionChange = { viewModel.setDescription(task, it) },
             onDateChange = { viewModel.reschedule(task, it) },
             onProjectChange = { viewModel.move(task, it) },
+            onOpenProject = { id ->
+                editTarget = null
+                viewModel.openSearchProject(id)
+            },
             onDelete = {
                 viewModel.delete(task)
                 editTarget = null
@@ -603,10 +607,6 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             onPromote = { title, description, projectId, onDone ->
                 viewModel.promoteToProject(task, title, description, projectId, onDone)
             },
-            working = task.id in state.doingTaskIds,
-            onWork = if (state.doingLabel != null && !task.done) {
-                { viewModel.setDoing(task, task.id !in state.doingTaskIds) }
-            } else null,
             onDismiss = { editTarget = null },
         )
     }

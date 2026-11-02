@@ -85,10 +85,9 @@ fun EditSheet(
     onDescriptionChange: (String) -> Unit,
     onDateChange: (LocalDate?) -> Unit,
     onProjectChange: (Long) -> Unit,
+    onOpenProject: (Long) -> Unit,
     onDelete: () -> Unit,
     onPromote: (title: String, description: String, projectId: Long, onDone: (SubprojectError?) -> Unit) -> Unit,
-    working: Boolean,
-    onWork: (() -> Unit)?,
     onDismiss: () -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
@@ -198,9 +197,12 @@ fun EditSheet(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.edit_project), Modifier.weight(1f))
+                TextButton(onClick = { onOpenProject(projectId) }) {
+                    Text(projects.firstOrNull { it.id == projectId }?.title ?: "—")
+                }
                 Box {
                     TextButton(onClick = { projectMenuOpen = true }) {
-                        Text(projects.firstOrNull { it.id == projectId }?.title ?: "—")
+                        Text("▾")
                     }
                     DropdownMenu(expanded = projectMenuOpen, onDismissRequest = { projectMenuOpen = false }) {
                         projectPickerItems.forEach { item ->
@@ -217,11 +219,6 @@ fun EditSheet(
                             )
                         }
                     }
-                }
-            }
-            if (onWork != null && projectId !in shoppingProjects) {
-                TextButton(onClick = onWork) {
-                    Text(stringResource(if (working) R.string.stop_working else R.string.start_working))
                 }
             }
             if (!task.done) {
