@@ -52,8 +52,8 @@ class TaskRepository(
     private val settings: SettingsStore,
     private val idRemap: IdRemap,
     private val clock: Clock,
-    private val onLocalChange: () -> Unit,
     private val attachmentsDir: File = File(System.getProperty("java.io.tmpdir"), "doit-attachments"),
+    private val onLocalChange: () -> Unit,
 ) {
     val openTasks: Flow<List<TaskEntity>> = db.tasks().observeOpen()
     val projects: Flow<List<ProjectEntity>> = db.projects().observeAll()
