@@ -120,6 +120,9 @@
     <string name="share_add">Add</string>
     <string name="share_not_connected">Connect doit to your Vikunja server first.</string>
     <string name="share_open_app">Open doit</string>
+    <string name="share_pdf_name">PDF: %1$s</string>
+    <string name="share_pdf_too_large">This PDF is larger than 25 MB. Share a smaller file.</string>
+    <string name="share_failed">Could not add the task or attachment. Check the file and try again.</string>
 
     <!-- Widget -->
     <string name="widget_description">Open tasks with tap-to-complete</string>

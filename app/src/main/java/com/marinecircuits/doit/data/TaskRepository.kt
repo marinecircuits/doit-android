@@ -17,6 +17,8 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -105,12 +107,36 @@ class TaskRepository(
         return inbox?.id ?: defaultProjectId()
     }
 
+    private data class PdfCapture(val filename: String, val bytes: ByteArray)
+
     /**
      * Creates a task in the `#project` named in [text], otherwise [projectId] or the default project.
      * Existing `@labels` become labels (see [CaptureSyntax]); the [description] is kept as it is.
      * Returns the task's (temporary) id, or null when nothing is left of the title.
      */
-    suspend fun capture(text: String, description: String? = null, projectId: Long? = null, dueDate: LocalDate? = null): Long? {
+    suspend fun capture(text: String, description: String? = null, projectId: Long? = null, dueDate: LocalDate? = null): Long? =
+        captureInternal(text, description, projectId, dueDate, null)
+
+    /**
+     * Capture a shared PDF atomically with its task and pending upload, so a background sync cannot
+     * remap the temporary task ID between task creation and attachment insertion.
+     * The file is staged before the database transaction and removed if the transaction fails.
+     */
+    suspend fun capturePdf(
+        text: String,
+        filename: String,
+        bytes: ByteArray,
+        description: String? = null,
+        dueDate: LocalDate? = null,
+    ): Long? = captureInternal(text, description, null, dueDate, PdfCapture(filename, bytes))
+
+    private suspend fun captureInternal(
+        text: String,
+        description: String?,
+        projectId: Long?,
+        dueDate: LocalDate?,
+        pdf: PdfCapture?,
+    ): Long? {
         val fallback = projectId?.takeIf { it > 0 } ?: inboxOrDefault() ?: 0
         val shopping = settings.shoppingProjects.first()
         val (title, parsedLabels, namedProjectId) = Shopping.parse(text, db.labels().all(), db.projects().all(), fallback, shopping)
@@ -119,26 +145,55 @@ class TaskRepository(
         val labelNames = if (destination in shopping) parsedLabels.filterNot { it.equals("doing", ignoreCase = true) } else parsedLabels
         if (labelNames.size != parsedLabels.size) settings.addNotice("Added “$title” without @doing: this project is a shopping list")
         val dueAt = dueDate?.let { DueDates.withDate(null, it, clock.zone).toEpochMilli() }
-        val id = db.withTransaction {
-            val id = minOf(db.tasks().minId() ?: 0, 0) - 1
-            db.tasks().upsert(
-                TaskEntity(
-                    id, title, dueAt = dueAt, projectId = destination, done = false, createdAt = clock.millis(),
-                    description = description?.trim().orEmpty(),
-                ),
-            )
-            val fields = buildJsonObject {
-                put("title", title)
-                if (!description.isNullOrBlank()) put("description", description.trim())
-                if (destination > 0) put("project_id", destination)
-                if (dueAt != null) put(DUE_DATE, dueJson(dueAt))
-                if (labelNames.isNotEmpty()) put(LABELS, JsonArray(labelNames.map { JsonPrimitive(it) }))
+        val stagedFile = pdf?.let { attachment ->
+            withContext(Dispatchers.IO) {
+                attachmentsDir.mkdirs()
+                val file = File.createTempFile("shared-", ".pdf", attachmentsDir)
+                try {
+                    file.writeBytes(attachment.bytes)
+                    file
+                } catch (e: Throwable) {
+                    file.delete()
+                    throw e
+                }
             }
-            db.taskLabels().set(id, labelNames) // also clears what a dropped task with this id may have left
-            db.pendingChanges().insert(
-                PendingChangeEntity(taskId = id, kind = PendingChangeEntity.CREATE, fields = fields.toString()),
-            )
-            id
+        }
+        val id = try {
+            db.withTransaction {
+                val id = minOf(db.tasks().minId() ?: 0, 0) - 1
+                db.tasks().upsert(
+                    TaskEntity(
+                        id, title, dueAt = dueAt, projectId = destination, done = false, createdAt = clock.millis(),
+                        description = description?.trim().orEmpty(),
+                    ),
+                )
+                val fields = buildJsonObject {
+                    put("title", title)
+                    if (!description.isNullOrBlank()) put("description", description.trim())
+                    if (destination > 0) put("project_id", destination)
+                    if (dueAt != null) put(DUE_DATE, dueJson(dueAt))
+                    if (labelNames.isNotEmpty()) put(LABELS, JsonArray(labelNames.map { JsonPrimitive(it) }))
+                }
+                db.taskLabels().set(id, labelNames)
+                db.pendingChanges().insert(
+                    PendingChangeEntity(taskId = id, kind = PendingChangeEntity.CREATE, fields = fields.toString()),
+                )
+                if (pdf != null && stagedFile != null) {
+                    db.attachments().insert(
+                        AttachmentEntity(
+                            taskId = id,
+                            filename = pdf.filename.replace('\\', '/').substringAfterLast('/').ifBlank { "document.pdf" },
+                            size = pdf.bytes.size.toLong(),
+                            localPath = stagedFile.absolutePath,
+                            pending = AttachmentEntity.UPLOAD,
+                        ),
+                    )
+                }
+                id
+            }
+        } catch (e: Throwable) {
+            stagedFile?.delete()
+            throw e
         }
         onLocalChange()
         return id
