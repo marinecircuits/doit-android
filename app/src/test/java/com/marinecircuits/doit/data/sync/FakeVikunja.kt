@@ -154,6 +154,14 @@ class FakeVikunja : Dispatcher() {
                 if (reopenOnComplete && task.done) task.done = false
                 json(200, encode(task))
             }
+            request.method == "GET" && path.matches(Regex("tasks/\\d+/attachments")) ->
+                page(emptyList())
+            request.method == "POST" && path.matches(Regex("tasks/\\d+/attachments")) ->
+                json(201, """{"success":[{"id":1,"task_id":1,"file":{"id":1,"name":"doc.pdf","mime":"application/pdf","size":1}}]}""")
+            request.method == "GET" && path.matches(Regex("tasks/\\d+/attachments/\\d+")) ->
+                MockResponse().setResponseCode(200).setBody("pdf")
+            request.method == "DELETE" && path.matches(Regex("tasks/\\d+/attachments/\\d+")) ->
+                MockResponse().setResponseCode(204)
             else -> json(404, """{"title":"Not Found"}""")
         }
     }
