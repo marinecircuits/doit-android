@@ -91,6 +91,10 @@ private fun DoitRoot(container: AppContainer, focusCaptureRequests: Int) {
                     createSubproject = container.syncEngine::createSubproject,
                     promoteTask = container.syncEngine::promoteTask,
                     signOut = container::signOut,
+                    downloadPdf = { taskId, remoteId ->
+                        val credentials = container.settings.credentials()
+                        if (credentials == null) ByteArray(0) else container.apiFor(credentials).downloadAttachment(taskId, remoteId)
+                    },
                     clock = DeviceClock,
                 )
             },

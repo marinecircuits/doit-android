@@ -8,6 +8,7 @@ import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.Shopping
 import com.marinecircuits.doit.data.local.DoitDatabase
 import com.marinecircuits.doit.data.local.LabelEntity
+import com.marinecircuits.doit.data.local.AttachmentEntity
 import com.marinecircuits.doit.data.local.PendingChangeEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
 import com.marinecircuits.doit.data.local.isInbox
@@ -15,6 +16,7 @@ import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.remote.ApiException
 import com.marinecircuits.doit.data.remote.ProjectDto
 import com.marinecircuits.doit.data.remote.TaskDto
+import java.io.File
 import com.marinecircuits.doit.data.remote.VikunjaApi
 import com.marinecircuits.doit.data.remote.VikunjaDates
 import java.io.IOException
@@ -55,6 +57,7 @@ class SyncEngine(
     private val settings: SettingsStore,
     private val idRemap: IdRemap,
     private val apiFor: (Credentials) -> VikunjaApi,
+    private val attachmentCache: File = File(System.getProperty("java.io.tmpdir"), "doit-attachments"),
     private val onSynced: () -> Unit,
 ) {
     private val mutex = Mutex()
@@ -123,6 +126,8 @@ class SyncEngine(
             Shopping.enforce(db, settings)
             push(api)
             pull(api)
+            pushAttachments(api)
+            pullAttachments(api)
             if (Shopping.enforce(db, settings)) push(api)
             pushProjectMarkers(api)
             SyncResult.Synced
@@ -464,6 +469,7 @@ class SyncEngine(
             db.tasks().changeId(temporaryId, created.id)
             db.taskLabels().changeTaskId(temporaryId, created.id)
             db.taskHistory().changeTaskId(temporaryId, created.id)
+            db.attachments().changeTaskId(temporaryId, created.id)
             db.pendingChanges().changeTaskId(temporaryId, created.id)
             val kept = db.tasks().get(created.id)
             when {
@@ -592,6 +598,70 @@ class SyncEngine(
             )
         }
     }
+
+    private suspend fun pushAttachments(api: VikunjaApi) {
+        for (row in db.attachments().pending()) {
+            try {
+                when {
+                    row.pending == AttachmentEntity.UPLOAD && row.taskId > 0 && row.localPath.isNotBlank() -> {
+                        val file = File(row.localPath)
+                        if (!file.exists()) continue
+                        val result = api.uploadAttachment(row.taskId, file, row.filename, row.mime)
+                        val remote = result.success.firstOrNull()
+                        if (remote != null) db.attachments().update(row.copy(remoteId = remote.id, pending = ""))
+                    }
+                    row.pending == AttachmentEntity.DELETE && row.remoteId != null && row.taskId > 0 -> {
+                        api.deleteAttachment(row.taskId, row.remoteId)
+                        row.localPath.takeIf { it.isNotBlank() }?.let { File(it).delete() }
+                        db.attachments().delete(row.id)
+                    }
+                }
+            } catch (_: Exception) {
+                // Leave the row pending; the next sync retries.
+            }
+        }
+    }
+
+    /** Downloads PDFs that are not already cached so they open offline. */
+    private suspend fun pullAttachments(api: VikunjaApi) {
+        attachmentCache.mkdirs()
+        val tasks = db.tasks().open().filter { it.id > 0 }
+        for (task in tasks) {
+            try {
+                val remote = api.attachments(task.id)
+                val local = db.attachments().forTask(task.id)
+                val byRemote = local.associateBy { it.remoteId }
+                for (item in remote) {
+                    if (item.file.mime != "application/pdf" && !item.file.name.endsWith(".pdf", ignoreCase = true)) continue
+                    val existing = byRemote[item.id]
+                    val cached = existing?.localPath?.takeIf { it.isNotBlank() }?.let { File(it) }
+                    if (cached != null && cached.exists()) continue
+                    val bytes = api.downloadAttachment(task.id, item.id)
+                    val name = item.file.name.ifBlank { "document.pdf" }
+                    val file = File(attachmentCache, "${item.id}_$name")
+                    file.writeBytes(bytes)
+                    if (existing == null) {
+                        db.attachments().insert(
+                            AttachmentEntity(
+                                taskId = task.id,
+                                filename = name,
+                                mime = item.file.mime.ifBlank { "application/pdf" },
+                                size = bytes.size.toLong(),
+                                remoteId = item.id,
+                                localPath = file.absolutePath,
+                            ),
+                        )
+                    } else {
+                        db.attachments().update(existing.copy(localPath = file.absolutePath, size = bytes.size.toLong()))
+                    }
+                }
+            } catch (_: Exception) {
+                // A task without attachment permission stays as it was.
+            }
+        }
+    }
+
 }
+
 
 private class ShoppingCleanupException(message: String) : Exception(message)

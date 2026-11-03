@@ -13,7 +13,9 @@ import okhttp3.HttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 
 /** The server answered with a non-2xx status. Network failures stay [java.io.IOException]s. */
 class ApiException(val status: Int, val problem: String?) : Exception("HTTP $status${problem?.let { ": $it" } ?: ""}") {
@@ -136,6 +138,33 @@ class VikunjaApi(
     suspend fun updateTask(taskId: Long, fields: JsonObject): TaskDto {
         val request = authorized(url("tasks/$taskId")).patch(fields.toString().toRequestBody(MERGE_PATCH)).build()
         return execute(request, TaskDto.serializer())
+    }
+
+
+    suspend fun attachments(taskId: Long): List<AttachmentDto> =
+        getAllPages(url("tasks/$taskId/attachments"), AttachmentDto.serializer())
+
+    suspend fun uploadAttachment(taskId: Long, file: File, filename: String, mime: String = "application/pdf"): AttachmentUploadResultDto {
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("files", filename, file.readBytes().toRequestBody(mime.toMediaType()))
+            .build()
+        val request = authorized(url("tasks/$taskId/attachments")).post(body).build()
+        return execute(request, AttachmentUploadResultDto.serializer())
+    }
+
+    suspend fun downloadAttachment(taskId: Long, attachmentId: Long): ByteArray = withContext(Dispatchers.IO) {
+        val request = authorized(url("tasks/$taskId/attachments/$attachmentId")).build()
+        client.newCall(request).execute().use { response ->
+            val bytes = response.body?.bytes() ?: ByteArray(0)
+            if (!response.isSuccessful) throw ApiException(response.code, problemText(bytes.decodeToString()))
+            bytes
+        }
+    }
+
+    suspend fun deleteAttachment(taskId: Long, attachmentId: Long) {
+        val request = authorized(url("tasks/$taskId/attachments/$attachmentId")).delete().build()
+        execute(request, JsonObject.serializer())
     }
 
     private fun url(path: String): HttpUrl = apiBase.resolve(path) ?: error("Bad API path $path")

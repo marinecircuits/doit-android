@@ -124,6 +124,7 @@ class TasksViewModel(
     private val createSubproject: suspend (Long, String) -> Unit,
     private val promoteTask: suspend (Long, String, String, Long) -> PromotedTask,
     private val signOut: suspend () -> Unit,
+    private val downloadPdf: suspend (Long, Long) -> ByteArray = { _, _ -> ByteArray(0) },
     private val clock: Clock,
 ) : ViewModel() {
     private val _subproject = MutableStateFlow<CreateSubprojectState?>(null)
@@ -639,6 +640,19 @@ class TasksViewModel(
     fun setDescription(task: TaskEntity, description: String) {
         viewModelScope.launch { repository.setDescription(task.id, description) }
     }
+
+    fun attachments(taskId: Long) = repository.observeAttachments(taskId)
+
+    fun addPdf(taskId: Long, filename: String, bytes: ByteArray) {
+        viewModelScope.launch { repository.addPdf(taskId, filename, bytes) }
+    }
+
+    fun removePdf(id: Long) {
+        viewModelScope.launch { repository.removeAttachment(id) }
+    }
+
+    /** Opens the cached PDF, downloading it into the cache if this device does not have it yet. */
+    suspend fun localPdf(id: Long) = repository.localPdf(id) { taskId, remoteId -> downloadPdf(taskId, remoteId) }
 
     fun move(task: TaskEntity, projectId: Long) {
         viewModelScope.launch { repository.move(task.id, projectId) }

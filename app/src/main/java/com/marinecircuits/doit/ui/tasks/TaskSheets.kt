@@ -42,6 +42,7 @@ import com.marinecircuits.doit.data.Shopping
 import com.marinecircuits.doit.data.DueDates
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
+import com.marinecircuits.doit.data.local.AttachmentEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import java.time.Instant
 import java.time.LocalDate
@@ -86,6 +87,10 @@ fun EditSheet(
     onDateChange: (LocalDate?) -> Unit,
     onProjectChange: (Long) -> Unit,
     onOpenProject: (Long) -> Unit,
+    attachments: List<AttachmentEntity> = emptyList(),
+    onAddPdf: () -> Unit = {},
+    onOpenPdf: (Long) -> Unit = {},
+    onRemovePdf: (Long) -> Unit = {},
     onDelete: () -> Unit,
     onPromote: (title: String, description: String, projectId: Long, onDone: (SubprojectError?) -> Unit) -> Unit,
     onDismiss: () -> Unit,
@@ -221,6 +226,18 @@ fun EditSheet(
                     }
                 }
             }
+            Text(stringResource(R.string.pdfs), style = MaterialTheme.typography.titleSmall)
+            attachments.forEach { pdf ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { onOpenPdf(pdf.id) }, modifier = Modifier.weight(1f)) {
+                        Text(pdf.filename)
+                    }
+                    TextButton(onClick = { onRemovePdf(pdf.id) }) {
+                        Text(stringResource(R.string.remove_pdf))
+                    }
+                }
+            }
+            TextButton(onClick = onAddPdf) { Text(stringResource(R.string.add_pdf)) }
             if (!task.done) {
                 TextButton(
                     onClick = {

@@ -5,7 +5,9 @@ import com.marinecircuits.doit.data.local.DoitDatabase
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.PendingChangeEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
+import com.marinecircuits.doit.data.local.AttachmentEntity
 import com.marinecircuits.doit.data.local.TaskEntity
+import java.io.File
 import com.marinecircuits.doit.data.local.TaskHistoryEntity
 import com.marinecircuits.doit.data.local.TaskLabelEntity
 import com.marinecircuits.doit.data.remote.VikunjaDates
@@ -50,6 +52,7 @@ class TaskRepository(
     private val settings: SettingsStore,
     private val idRemap: IdRemap,
     private val clock: Clock,
+    private val attachmentsDir: File = File(System.getProperty("java.io.tmpdir"), "doit-attachments"),
     private val onLocalChange: () -> Unit,
 ) {
     val openTasks: Flow<List<TaskEntity>> = db.tasks().observeOpen()
@@ -410,6 +413,48 @@ class TaskRepository(
         }
         if (changed.isEmpty()) return
         write(task.id, changed) { it.copy(title = newTitle, dueAt = dueAt, projectId = projectId) }
+    }
+
+
+    fun observeAttachments(taskId: Long) = db.attachments().observeForTask(taskId)
+
+    /** Copies a PDF onto the device and queues it for upload. Works offline, including for unsent tasks. */
+    suspend fun addPdf(taskId: Long, filename: String, bytes: ByteArray): Long {
+        attachmentsDir.mkdirs()
+        val safe = filename.substringAfterLast('/').ifBlank { "document.pdf" }
+        val id = db.attachments().insert(
+            AttachmentEntity(taskId = taskId, filename = safe, size = bytes.size.toLong(), pending = AttachmentEntity.UPLOAD),
+        )
+        val file = File(attachmentsDir, "${id}_$safe")
+        file.writeBytes(bytes)
+        db.attachments().update(db.attachments().get(id)!!.copy(localPath = file.absolutePath))
+        onLocalChange()
+        return id
+    }
+
+    suspend fun removeAttachment(id: Long) {
+        val row = db.attachments().get(id) ?: return
+        if (row.remoteId != null) {
+            db.attachments().update(row.copy(pending = AttachmentEntity.DELETE))
+        } else {
+            row.localPath.takeIf { it.isNotBlank() }?.let { File(it).delete() }
+            db.attachments().delete(id)
+        }
+        onLocalChange()
+    }
+
+    /** Ensures the PDF is on disk, downloading it when only the server copy is known. */
+    suspend fun localPdf(id: Long, download: suspend (taskId: Long, remoteId: Long) -> ByteArray): File? {
+        val row = db.attachments().get(id) ?: return null
+        val existing = row.localPath.takeIf { it.isNotBlank() }?.let { File(it) }
+        if (existing != null && existing.exists()) return existing
+        val remote = row.remoteId ?: return null
+        val bytes = download(row.taskId, remote)
+        attachmentsDir.mkdirs()
+        val file = File(attachmentsDir, "${row.id}_${row.filename}")
+        file.writeBytes(bytes)
+        db.attachments().update(row.copy(localPath = file.absolutePath, size = bytes.size.toLong()))
+        return file
     }
 
     private fun normalizeHex(hexColor: String): String? {
