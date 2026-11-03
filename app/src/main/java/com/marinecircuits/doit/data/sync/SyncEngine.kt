@@ -57,8 +57,8 @@ class SyncEngine(
     private val settings: SettingsStore,
     private val idRemap: IdRemap,
     private val apiFor: (Credentials) -> VikunjaApi,
-    private val onSynced: () -> Unit,
     private val attachmentCache: File = File(System.getProperty("java.io.tmpdir"), "doit-attachments"),
+    private val onSynced: () -> Unit,
 ) {
     private val mutex = Mutex()
 
