@@ -597,10 +597,6 @@ class SyncEngine(
                 archived = entity.archived || dto.id in archives,
             )
         }
-    }
-}
-
-
     private suspend fun pushAttachments(api: VikunjaApi) {
         for (row in db.attachments().pending()) {
             try {
@@ -662,5 +658,8 @@ class SyncEngine(
             }
         }
     }
+
+}
+
 
 private class ShoppingCleanupException(message: String) : Exception(message)
