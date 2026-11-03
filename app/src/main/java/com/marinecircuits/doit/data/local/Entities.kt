@@ -100,3 +100,27 @@ data class TaskHistoryEntity(
         const val DELETED = "deleted"
     }
 }
+
+
+/**
+ * A PDF attached to a task. Offline tasks keep a local file until the task exists on the server.
+ * [pending] is empty when idle, "upload" until the file is sent, or "delete" until the server copy is removed.
+ */
+@Entity(tableName = "attachments", indices = [Index("taskId")])
+data class AttachmentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val taskId: Long,
+    val filename: String,
+    @ColumnInfo(defaultValue = "'application/pdf'") val mime: String = "application/pdf",
+    @ColumnInfo(defaultValue = "0") val size: Long = 0,
+    /** Server attachment id, null until uploaded. */
+    val remoteId: Long? = null,
+    /** Absolute path to the local file. Empty when only metadata is known. */
+    @ColumnInfo(defaultValue = "''") val localPath: String = "",
+    @ColumnInfo(defaultValue = "''") val pending: String = "",
+) {
+    companion object {
+        const val UPLOAD = "upload"
+        const val DELETE = "delete"
+    }
+}
