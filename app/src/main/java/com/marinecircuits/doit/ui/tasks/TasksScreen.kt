@@ -3,7 +3,12 @@
 package com.marinecircuits.doit.ui.tasks
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -120,7 +125,11 @@ import com.marinecircuits.doit.container
 import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.isInbox
+import com.marinecircuits.doit.data.local.AttachmentEntity
 import com.marinecircuits.doit.data.local.TaskEntity
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.produceState
 import java.time.LocalDate
 import java.util.Locale
 
@@ -160,6 +169,21 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var pickingCaptureDate by remember { mutableStateOf(false) }
     var scrollToTaskId by remember { mutableStateOf<Long?>(null) }
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
+    val scope = rememberCoroutineScope()
+    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        val task = editTarget ?: return@rememberLauncherForActivityResult
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val name = uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { null } ?: "document.pdf"
+            val bytes = appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@launch
+            viewModel.addPdf(task.id, if (name.endsWith(".pdf", true)) name else "$name.pdf", bytes)
+        }
+    }
+    val pdfs by produceState(emptyList<AttachmentEntity>(), editTarget?.id) {
+        val id = editTarget?.id
+        if (id == null) { value = emptyList(); return@produceState }
+        viewModel.attachments(id).collect { value = it }
+    }
     var colorOpen by remember { mutableStateOf(false) }
     var shoppingOpen by remember { mutableStateOf(false) }
     var archiveOpen by remember { mutableStateOf(false) }
@@ -600,6 +624,18 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 editTarget = null
                 viewModel.openSearchProject(id)
             },
+            attachments = pdfs,
+            onAddPdf = { pickPdf.launch(arrayOf("application/pdf")) },
+            onOpenPdf = { id ->
+                scope.launch {
+                    val file = viewModel.localPdf(id) ?: return@launch
+                    val uri = FileProvider.getUriForFile(appContext, appContext.packageName + ".fileprovider", file)
+                    val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf")
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    runCatching { appContext.startActivity(intent) }
+                }
+            },
+            onRemovePdf = { id -> viewModel.removePdf(id) },
             onDelete = {
                 viewModel.delete(task)
                 editTarget = null
