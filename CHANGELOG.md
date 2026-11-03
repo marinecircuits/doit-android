@@ -1,3 +1,36 @@
+## 0.31.0 (2026-11-03)
+
+### Feat
+
+- attach PDFs to tasks (#96)
+- attach PDFs to tasks
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- attach PDFs to tasks
+- attach PDFs to tasks
+- attach PDFs to tasks
+- attach PDFs to tasks
+- attach PDFs to tasks
+- attach PDFs to tasks
+
+### Fix
+
+- keep constructor trailing lambdas working
+- keep constructor trailing lambdas working
+- keep constructor trailing lambdas working
+- PDF cache methods belong to SyncEngine, not its companion
+- keep PDF cache sync inside SyncEngine
+
 ## 0.30.0 (2026-11-02)
 
 ### Feat
