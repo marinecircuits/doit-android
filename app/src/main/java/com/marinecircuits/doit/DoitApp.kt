@@ -52,12 +52,12 @@ class AppContainer(private val context: Context) {
 
     private val attachmentsDir = java.io.File(context.filesDir, "attachments")
 
-    val repository = TaskRepository(database, settings, idRemap, DeviceClock, {
+    val repository = TaskRepository(database, settings, idRemap, DeviceClock, attachmentsDir) {
         SyncScheduler.requestSync(context)
         refreshWidgets()
-    }, attachmentsDir)
+    }
 
-    val syncEngine = SyncEngine(database, settings, idRemap, ::apiFor, { refreshWidgets() }, attachmentsDir)
+    val syncEngine = SyncEngine(database, settings, idRemap, ::apiFor, attachmentsDir) { refreshWidgets() }
 
     fun apiFor(credentials: Credentials) = VikunjaApi(credentials.apiBase, credentials.token)
 
