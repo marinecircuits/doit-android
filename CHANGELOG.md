@@ -1,3 +1,9 @@
+## 0.32.0 (2026-11-03)
+
+### Feat
+
+- accept shared PDFs as offline tasks
+
 ## 0.31.0 (2026-11-03)
 
 ### Feat
