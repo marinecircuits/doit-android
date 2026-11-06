@@ -1,3 +1,9 @@
+## 0.33.0 (2026-11-06)
+
+### Feat
+
+- add explicit recurring tasks and repeat indicators
+
 ## 0.32.0 (2026-11-03)
 
 ### Feat
