@@ -69,6 +69,15 @@ class SyncEngine(
     /** Outcome of the latest sync in this process; null until one ran. */
     val lastResult: StateFlow<SyncResult?> = _lastResult.asStateFlow()
 
+    suspend fun previewProjectDeletion(id: Long) = mutex.withLock {
+        com.marinecircuits.doit.data.ProjectDeletion(db, settings, apiFor).preview(id)
+    }
+
+    suspend fun deleteProject(preview: com.marinecircuits.doit.data.ProjectDeletion.Preview) = mutex.withLock {
+        com.marinecircuits.doit.data.ProjectDeletion(db, settings, apiFor).delete(preview)
+        onSynced()
+    }
+
     suspend fun sync(): SyncResult = mutex.withLock {
         val result = runSync()
         _lastResult.value = result

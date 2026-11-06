@@ -15,6 +15,10 @@ private const val OPEN_TASKS = """
 
 @Dao
 interface TaskDao {
+    @Query("SELECT * FROM tasks WHERE projectId IN (:ids)")
+    suspend fun inProjects(ids: List<Long>): List<TaskEntity>
+    @Query("DELETE FROM tasks WHERE projectId IN (:ids)")
+    suspend fun deleteInProjects(ids: List<Long>)
     @Query(OPEN_TASKS)
     fun observeOpen(): Flow<List<TaskEntity>>
 
@@ -55,6 +59,8 @@ interface TaskDao {
 
 @Dao
 interface ProjectDao {
+    @Query("DELETE FROM projects WHERE id IN (:ids)")
+    suspend fun deleteIds(ids: List<Long>)
     @Query("SELECT * FROM projects ORDER BY position, title")
     fun observeAll(): Flow<List<ProjectEntity>>
 
@@ -162,6 +168,8 @@ interface TaskLabelDao {
 
 @Dao
 interface TaskHistoryDao {
+    @Query("DELETE FROM task_history WHERE projectId IN (:ids)")
+    suspend fun deleteInProjects(ids: List<Long>)
     @Query("SELECT * FROM task_history WHERE id = :id")
     suspend fun get(id: Long): TaskHistoryEntity?
 

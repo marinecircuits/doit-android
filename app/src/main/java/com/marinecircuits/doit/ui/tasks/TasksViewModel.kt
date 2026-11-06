@@ -561,7 +561,12 @@ class TasksViewModel(
             }
             null -> {
                 val projectId = current.path.lastOrNull()?.id
-                viewModelScope.launch { repository.capture(text, projectId = projectId, dueDate = dueDate, repeat = repeat)?.let(onCreated) }
+                viewModelScope.launch {
+                    try { repository.capture(text, projectId = projectId, dueDate = dueDate, repeat = repeat)?.let(onCreated) }
+                    catch (e: com.marinecircuits.doit.data.ProjectUnavailable) {
+                        settings.addNotice("Could not save “$text”: ${e.message}. Choose another project and try again.")
+                    }
+                }
             }
         }
     }
