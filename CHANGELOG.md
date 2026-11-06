@@ -1,3 +1,16 @@
+## 0.34.0 (2026-11-06)
+
+### Feat
+
+- filter Android tasks by labels and project
+- support arbitrary task attachments
+- remove task labels offline
+- delete Android projects with a verified contents preview
+
+### Fix
+
+- guard late attachment writes after project deletion
+
 ## 0.33.0 (2026-11-06)
 
 ### Feat
