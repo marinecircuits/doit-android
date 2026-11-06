@@ -35,8 +35,12 @@ import com.marinecircuits.doit.R
 import com.marinecircuits.doit.container
 import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.ui.tasks.CaptureSuggestions
-import com.marinecircuits.doit.ui.tasks.DateTrigger
-import com.marinecircuits.doit.ui.tasks.PickDateDialog
+import com.marinecircuits.doit.ui.tasks.ScheduleState
+import com.marinecircuits.doit.ui.tasks.ScheduleChips
+import com.marinecircuits.doit.ui.tasks.ScheduleSuggestions
+import com.marinecircuits.doit.ui.tasks.ScheduleDialogs
+import com.marinecircuits.doit.data.Recurrence
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import com.marinecircuits.doit.ui.tasks.SyntaxKeyRow
 import com.marinecircuits.doit.ui.tasks.SyntaxKeys
 import com.marinecircuits.doit.ui.theme.DoitTheme
@@ -74,7 +78,7 @@ class ShareActivity : ComponentActivity() {
                 ShareDialog(
                     shared = shared,
                     pdfName = pdf?.filename,
-                    onAdd = { title, description, dueDate ->
+                    onAdd = { title, description, dueDate, repeat ->
                         if (pdf != null) {
                             val source = pdfUri ?: throw FileNotFoundException("The shared PDF has no URI")
                             // Read while the sending app's temporary URI permission is still valid.
@@ -84,11 +88,11 @@ class ShareActivity : ComponentActivity() {
                             }
                             checkNotNull(
                                 container.repository.capturePdf(
-                                    title, pdf.filename, bytes, description = description, dueDate = dueDate,
+                                    title, pdf.filename, bytes, description = description, dueDate = dueDate, repeat = repeat,
                                 ),
                             ) { "The task needs a title" }
                         } else {
-                            container.repository.capture(title, description, dueDate = dueDate)
+                            container.repository.capture(title, description, dueDate = dueDate, repeat = repeat)
                         }
                         finish()
                     },
@@ -122,7 +126,7 @@ class ShareActivity : ComponentActivity() {
 private fun ShareDialog(
     shared: SharedTask,
     pdfName: String?,
-    onAdd: suspend (title: String, description: String?, dueDate: LocalDate?) -> Unit,
+    onAdd: suspend (title: String, description: String?, dueDate: LocalDate?, repeat: Recurrence.Rule) -> Unit,
     onOpenApp: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -137,8 +141,8 @@ private fun ShareDialog(
     val labels by container.repository.labels.collectAsState(initial = emptyList())
     val projects by container.repository.projects.collectAsState(initial = emptyList())
     var adding by remember { mutableStateOf(false) }
-    var dueDate by remember { mutableStateOf<LocalDate?>(null) }
-    var pickingDate by remember { mutableStateOf(false) }
+    val schedule = remember { ScheduleState() }
+    schedule.changeText = { title = it }
 
     when (connected) {
         null -> Unit
@@ -156,29 +160,19 @@ private fun ShareDialog(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = title,
-                        onValueChange = { value ->
-                            val withoutTrigger = DateTrigger.consume(title, value)
-                            title = withoutTrigger ?: value
-                            if (withoutTrigger != null) pickingDate = true
-                        },
+                        onValueChange = { title = it },
                         label = { Text(stringResource(R.string.edit_title)) },
-                        modifier = Modifier.fillMaxWidth().onFocusChanged { titleFocused = it.isFocused },
+                        modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { schedule.key(it, title) }.onFocusChanged { titleFocused = it.isFocused },
                     )
                     if (titleFocused) {
                         SyntaxKeyRow(
                             onInsert = { token -> title = SyntaxKeys.insert(title, token) },
                             modifier = Modifier.fillMaxWidth(),
-                            onPickDate = { pickingDate = true },
+                            onPickDate = { title = SyntaxKeys.insert(title, "!") },
                         )
                     }
-                    dueDate?.let { selected ->
-                        androidx.compose.foundation.layout.Row {
-                            TextButton(onClick = { pickingDate = true }) {
-                                Text(stringResource(R.string.capture_due_date, selected.toString()))
-                            }
-                            TextButton(onClick = { dueDate = null }) { Text(stringResource(R.string.edit_clear_date)) }
-                        }
-                    }
+                    ScheduleChips(schedule)
+                    if (titleFocused) ScheduleSuggestions(schedule, title, Modifier.fillMaxWidth())
                     val suggestions = if (titleFocused && title.selection.collapsed) {
                         CaptureSyntax.suggestionsAt(title.text, title.selection.end, labels, projects)
                     } else {
@@ -220,11 +214,12 @@ private fun ShareDialog(
                 TextButton(
                     enabled = title.text.isNotBlank() && !adding,
                     onClick = {
+                        if (!schedule.prepare(title)) return@TextButton
                         adding = true
                         error = null
                         scope.launch {
                             try {
-                                onAdd(title.text, shared.description, dueDate)
+                                onAdd(title.text, shared.description, schedule.day, schedule.rule)
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (_: PdfTooLargeException) {
@@ -243,11 +238,5 @@ private fun ShareDialog(
             },
         )
     }
-    if (connected == true && pickingDate) {
-        PickDateDialog(
-            initial = dueDate ?: LocalDate.now(),
-            onPicked = { dueDate = it; pickingDate = false },
-            onDismiss = { pickingDate = false },
-        )
-    }
+    if (connected == true) ScheduleDialogs(schedule)
 }

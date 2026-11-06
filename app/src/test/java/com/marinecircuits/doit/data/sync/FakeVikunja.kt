@@ -25,6 +25,8 @@ class FakeVikunja : Dispatcher() {
         var projectId: Long = 1,
         var description: String = "",
         val labelIds: MutableList<Long> = mutableListOf(),
+        var repeatAfter: Long = 0,
+        var repeatMode: Int = 0,
     )
 
     data class Label(val id: Long, val title: String, val hexColor: String = "")
@@ -171,6 +173,8 @@ class FakeVikunja : Dispatcher() {
         fields["description"]?.jsonPrimitive?.contentOrNull?.let { task.description = it }
         fields["done"]?.jsonPrimitive?.booleanOrNull?.let { task.done = it }
         fields["project_id"]?.jsonPrimitive?.longOrNull?.let { task.projectId = it }
+        fields["repeat_after"]?.jsonPrimitive?.longOrNull?.let { task.repeatAfter = it }
+        fields["repeat_mode"]?.jsonPrimitive?.longOrNull?.let { task.repeatMode = it.toInt() }
         if ("due_date" in fields) task.dueDate = fields["due_date"]!!.jsonPrimitive.contentOrNull
     }
 
@@ -182,7 +186,7 @@ class FakeVikunja : Dispatcher() {
         val labelsJson = if (taskLabels.isEmpty()) "null" else taskLabels.joinToString(",", "[", "]") { encode(it) }
         return """{"id":${task.id},"title":"${task.title}","done":${task.done},"project_id":${task.projectId},""" +
             """"due_date":"${task.dueDate ?: "0001-01-01T00:00:00Z"}","created":"2026-10-26T10:00:00Z",""" +
-            """"description":${JsonPrimitive(task.description)},"labels":$labelsJson}"""
+            """"repeat_after":${task.repeatAfter},"repeat_mode":${task.repeatMode},"description":${JsonPrimitive(task.description)},"labels":$labelsJson}"""
     }
 
     private fun encode(label: Label) = """{"id":${label.id},"title":"${label.title}","hex_color":"${label.hexColor}"}"""

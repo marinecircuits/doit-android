@@ -35,6 +35,45 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class TaskRepositoryTest {
+    @Test
+    fun dateOnlyEditDoesNotOverwriteServerRepeatSettings() = runTest {
+        serverTask(1, millis("2027-01-01T12:00"))
+        repository.setRepeat(1, Recurrence.Rule(), LocalDate.of(2027, 1, 5))
+        assertEquals(setOf(TaskRepository.DUE_DATE), pendingFields(1).keys)
+    }
+
+    @Test
+    fun repeatShortcutsRequireFirstDateAndPreserveLiteralWords() = runTest {
+        val plain = repository.capture("Write weekly report !weelky")!!
+        assertEquals("Write weekly report !weelky", db.tasks().get(plain)!!.title)
+        try {
+            repository.capture("Water !weekly")
+            org.junit.Assert.fail("A first date is required")
+        } catch (_: IllegalArgumentException) { }
+        val id = repository.capture("Water !daily !3d #Work", dueDate = LocalDate.of(2027, 1, 5))!!
+        assertEquals("Water", db.tasks().get(id)!!.title)
+        assertEquals(2L, db.tasks().get(id)!!.projectId)
+        assertEquals(3 * Recurrence.DAY, db.tasks().get(id)!!.repeatAfter)
+        assertEquals(JsonPrimitive(3 * Recurrence.DAY), pendingFields(id)[TaskRepository.REPEAT_AFTER])
+        repository.setRepeat(id, Recurrence.Rule(0, Recurrence.MONTHLY))
+        assertEquals(1, db.tasks().get(id)!!.repeatMode)
+        repository.applyEditedTitle(id, "Water !weekly")
+        assertEquals(Recurrence.WEEK, db.tasks().get(id)!!.repeatAfter)
+        repository.setRepeat(id, Recurrence.Rule())
+        assertEquals(JsonPrimitive(0), pendingFields(id)[TaskRepository.REPEAT_MODE])
+        assertEquals(0L, db.tasks().get(id)!!.repeatAfter)
+    }
+
+    @Test
+    fun deletedTaskHistoryRestoresRepeatSettings() = runTest {
+        val id = repository.capture("Pay !monthly", dueDate = LocalDate.of(2027, 1, 31))!!
+        repository.delete(id)
+        val history = db.taskHistory().observeAll().first().single()
+        assertEquals(1, history.repeatMode)
+        repository.undoHistoryDeletion(history.id)
+        assertEquals(1, db.tasks().open().single().repeatMode)
+    }
+
     private lateinit var db: DoitDatabase
     private lateinit var settings: SettingsStore
     private val idRemap = IdRemap()
@@ -72,11 +111,14 @@ class TaskRepositoryTest {
             val id = repository.capturePdf(
                 "Read guide #Work @errand", "guide.pdf", bytes,
                 description = "From the file manager", dueDate = LocalDate.of(2026, 11, 4),
+                repeat = Recurrence.Rule(0, Recurrence.MONTHLY),
             )!!
             val task = db.tasks().get(id)!!
             assertEquals("Read guide", task.title)
             assertEquals(2L, task.projectId)
             assertEquals("From the file manager", task.description)
+            assertEquals(Recurrence.MONTHLY, task.repeatMode)
+            assertEquals(JsonPrimitive(Recurrence.MONTHLY), pendingFields(id)[TaskRepository.REPEAT_MODE])
             assertEquals(listOf("errand"), db.taskLabels().forTask(id))
             val attachment = db.attachments().forTask(id).single()
             assertEquals(id, attachment.taskId)

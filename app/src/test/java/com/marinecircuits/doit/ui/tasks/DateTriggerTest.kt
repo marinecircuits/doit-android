@@ -4,24 +4,26 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DateTriggerTest {
     private fun value(text: String, cursor: Int = text.length) = TextFieldValue(text, TextRange(cursor))
 
     @Test
-    fun consumesTypedMarkerAtAWordBoundaryAndPreservesTheCursor() {
-        assertEquals(value("Buy "), DateTrigger.consume(value("Buy "), value("Buy !")))
-        assertEquals(value("Buy milk", 4), DateTrigger.consume(value("Buy milk", 4), value("Buy !milk", 5)))
-        assertEquals(value(""), DateTrigger.consume(value(""), value("!")))
+    fun typedMarkerOffersSchedulingWithoutTakingFocusIntoACalendar() {
+        val state = ScheduleState()
+        assertEquals(listOf("date", "daily", "weekly", "monthly"), state.suggestions(value("Buy !")).map { it.token })
+        assertNull(state.picker)
+        assertEquals("weekly", state.suggestions(value("Buy !wee")).single().token)
     }
 
     @Test
-    fun punctuationPastedTextAndQuotedNamesRemainLiteral() {
-        assertNull(DateTrigger.consume(value("Hello"), value("Hello!")))
-        assertNull(DateTrigger.consume(value("Buy "), value("Buy !3")))
-        assertNull(DateTrigger.consume(value("Buy @\"urgent "), value("Buy @\"urgent !")))
-        assertNull(DateTrigger.consume(value("Buy #\"home "), value("Buy #\"home !")))
-        assertNull(DateTrigger.consume(TextFieldValue("Buy milk", TextRange(4, 8)), value("Buy !")))
+    fun punctuationQuotedNamesQuantitiesAndSelectionRemainLiteral() {
+        val state = ScheduleState()
+        for (text in listOf("Hello!", "Buy @\"urgent !", "Buy #\"home !", "Milk [!", "/task !")) {
+            assertTrue(state.suggestions(value(text)).isEmpty())
+        }
+        assertTrue(state.suggestions(TextFieldValue("Buy !weekly", TextRange(4, 11))).isEmpty())
     }
 }

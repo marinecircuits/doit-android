@@ -88,7 +88,7 @@
     <string name="edit_description">Details</string>
     <string name="insert_label">Insert @ for a label</string>
     <string name="insert_project">Insert # for a project</string>
-    <string name="insert_date">Choose a due date</string>
+    <string name="insert_date">Insert date or repeat shortcut</string>
     <string name="insert_search">Search with /</string>
     <string name="capture_due_date">Due: %1$s</string>
     <string name="edit_due">Due</string>

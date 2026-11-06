@@ -3,6 +3,7 @@ package com.marinecircuits.doit.ui.tasks
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.marinecircuits.doit.data.CaptureSyntax
+import com.marinecircuits.doit.data.Recurrence
 import com.marinecircuits.doit.data.Doing
 import com.marinecircuits.doit.data.NextActions
 import com.marinecircuits.doit.data.NextActionsChoice
@@ -544,7 +545,7 @@ class TasksViewModel(
      * A capture that is only `#project` or `@label` opens that view.
      * Anything else is captured into a named `#project`, otherwise the open project or the default on the main view.
      */
-    fun capture(text: String, dueDate: LocalDate? = null, onCreated: (Long) -> Unit) {
+    fun capture(text: String, dueDate: LocalDate? = null, repeat: Recurrence.Rule = Recurrence.Rule(), onCreated: (Long) -> Unit) {
         val current = state.value
         when (val destination = CaptureSyntax.destination(text, current.labels, current.projects)) {
             is CaptureSyntax.Destination.Project -> {
@@ -560,7 +561,7 @@ class TasksViewModel(
             }
             null -> {
                 val projectId = current.path.lastOrNull()?.id
-                viewModelScope.launch { repository.capture(text, projectId = projectId, dueDate = dueDate)?.let(onCreated) }
+                viewModelScope.launch { repository.capture(text, projectId = projectId, dueDate = dueDate, repeat = repeat)?.let(onCreated) }
             }
         }
     }
@@ -630,6 +631,10 @@ class TasksViewModel(
 
     fun rename(task: TaskEntity, title: String) {
         viewModelScope.launch { repository.rename(task.id, title) }
+    }
+
+    fun setRepeat(task: TaskEntity, rule: Recurrence.Rule, day: LocalDate?) {
+        viewModelScope.launch { repository.setRepeat(task.id, rule, day) }
     }
 
     /** Saves an edited title, including `@label` and `#project` tokens. */
