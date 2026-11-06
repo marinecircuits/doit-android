@@ -18,7 +18,7 @@ The main screen SHALL have a single-line text field at the top. Submitting it (k
 - **THEN** no task is created
 
 ### Requirement: Plain-text titles
-The capture box SHALL NOT interpret any syntax: characters such as `*`, `+`, `!` and date words SHALL be kept verbatim in the title.
+Only supported explicit `@label`, `#project`, and `!repeat` shortcuts SHALL be interpreted. Plain date words and unsupported syntax such as `*`, `+`, and `!3` SHALL remain verbatim in the title.
 
 #### Scenario: Text that looks like quick-add syntax
 - **WHEN** the user captures "call +Bob tomorrow !3"

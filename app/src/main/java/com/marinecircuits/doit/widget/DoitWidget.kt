@@ -39,6 +39,7 @@ import androidx.glance.text.TextStyle
 import com.marinecircuits.doit.MainActivity
 import com.marinecircuits.doit.R
 import com.marinecircuits.doit.container
+import com.marinecircuits.doit.data.Recurrence
 import com.marinecircuits.doit.ui.tasks.DueLabels
 import com.marinecircuits.doit.ui.tasks.DueWords
 import com.marinecircuits.doit.ui.tasks.TaskListModel
@@ -46,7 +47,9 @@ import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.flow.first
 
-private data class WidgetTask(val id: Long, val title: String, val dueLabel: String?, val overdue: Boolean)
+private data class WidgetTask(
+    val id: Long, val title: String, val dueLabel: String?, val overdue: Boolean, val repeatSummary: String?,
+)
 
 /** Open tasks in list order with tap-to-complete; reads the same local data as the app. */
 class DoitWidget : GlanceAppWidget() {
@@ -79,7 +82,8 @@ class DoitWidget : GlanceAppWidget() {
             zone,
         )
         return rows.map { row ->
-            WidgetTask(row.task.id, row.task.title, row.dueDate?.let { DueLabels.label(it, today, words, locale) }, row.overdue)
+            WidgetTask(row.task.id, row.task.title, row.dueDate?.let { DueLabels.label(it, today, words, locale) },
+                row.overdue, Recurrence.Rule(row.task.repeatAfter, row.task.repeatMode).takeIf { it.active }?.summary)
         }
     }
 }
@@ -143,15 +147,28 @@ private fun WidgetContent(context: Context, connected: Boolean, tasks: List<Widg
                         modifier = GlanceModifier.defaultWeight().clickable(openApp),
                         style = TextStyle(color = GlanceTheme.colors.onSurface, fontSize = 14.sp),
                     )
-                    task.dueLabel?.let { label ->
-                        Text(
-                            label,
+                    if (task.repeatSummary != null || task.dueLabel != null) {
+                        Row(
                             modifier = GlanceModifier.padding(start = 8.dp, end = 8.dp),
-                            style = TextStyle(
-                                color = if (task.overdue) GlanceTheme.colors.error else GlanceTheme.colors.onSurfaceVariant,
-                                fontSize = 12.sp,
-                            ),
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            val scheduleColor = if (task.overdue) GlanceTheme.colors.error else GlanceTheme.colors.onSurfaceVariant
+                            task.repeatSummary?.let { summary ->
+                                Image(
+                                    provider = ImageProvider(R.drawable.ic_repeat),
+                                    contentDescription = summary,
+                                    colorFilter = ColorFilter.tint(scheduleColor),
+                                    modifier = GlanceModifier.size(16.dp),
+                                )
+                            }
+                            task.dueLabel?.let { label ->
+                                Text(
+                                    label,
+                                    modifier = GlanceModifier.padding(start = if (task.repeatSummary != null) 4.dp else 0.dp),
+                                    style = TextStyle(color = scheduleColor, fontSize = 12.sp),
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.marinecircuits.doit.R
 
 /**
- * `@` and `#` keys for task text. They are not focusable, so tapping one leaves the field and its
+ * `@`, `#` and `!` keys for task text. They are not focusable, so tapping one leaves the field and its
  * keyboard open. A space is added on either side when the surrounding character would otherwise
  * swallow the token or glue it to the neighbouring word.
  */
@@ -39,7 +39,7 @@ object SyntaxKeys {
         val start = minOf(selectionStart, selectionEnd).coerceIn(0, text.length)
         val end = maxOf(selectionStart, selectionEnd).coerceIn(0, text.length)
         if (start == end) {
-            // A bare @ or # with no name yet is replaced, so switching keys does not leave "@ # @".
+            // A bare @, # or ! with no name yet is replaced, so switching keys does not leave "@ # @".
             emptyMarkerAt(text, start)?.let { marker ->
                 return if (text[marker] == token.singleOrNull()) {
                     text to start
@@ -53,27 +53,14 @@ object SyntaxKeys {
         return text.replaceRange(start, end, prefix + token + suffix) to start + prefix.length + token.length
     }
 
-    /** Index of an `@` or `#` that ends at [cursor] and has no name characters yet, if the cursor is in one. */
+    /** Index of an `@`, `#` or `!` that ends at [cursor] and has no name characters yet, if the cursor is in one. */
     private fun emptyMarkerAt(text: String, cursor: Int): Int? {
         if (cursor == 0 || cursor > text.length) return null
         val marker = cursor - 1
-        if (text[marker] != '@' && text[marker] != '#') return null
+        if (text[marker] != '@' && text[marker] != '#' && text[marker] != '!') return null
         val atBoundary = marker == 0 || text[marker - 1].isWhitespace()
         val nameNotStarted = cursor == text.length || text[cursor].isWhitespace()
         return marker.takeIf { atBoundary && nameNotStarted }
-    }
-}
-
-/** A typed `!` at a word boundary opens the date picker; pasted text and punctuation stay literal. */
-object DateTrigger {
-    fun consume(previous: TextFieldValue, next: TextFieldValue): TextFieldValue? {
-        if (!previous.selection.collapsed || !next.selection.collapsed) return null
-        val cursor = previous.selection.start
-        if (cursor !in 0..previous.text.length || next.selection.start != cursor + 1) return null
-        if (cursor > 0 && !previous.text[cursor - 1].isWhitespace()) return null
-        if (previous.text.take(cursor).count { it == '"' } % 2 != 0) return null
-        if (next.text != previous.text.replaceRange(cursor, cursor, "!")) return null
-        return TextFieldValue(previous.text, TextRange(cursor))
     }
 }
 

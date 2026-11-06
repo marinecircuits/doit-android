@@ -82,7 +82,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
@@ -105,7 +105,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.marinecircuits.doit.R
+import com.marinecircuits.doit.data.Recurrence
 import com.marinecircuits.doit.data.CaptureSyntax
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import java.time.LocalDate
@@ -119,7 +121,7 @@ import java.util.Locale
 @Composable
 fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNewToken: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
+    val locale = LocalLocale.current.platformLocale
     val words = DueWords(
         today = stringResource(R.string.due_today),
         tomorrow = stringResource(R.string.due_tomorrow),
@@ -140,8 +142,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
 
     var captureText by remember { mutableStateOf(TextFieldValue()) }
     var captureFocused by remember { mutableStateOf(false) }
-    var captureDueDate by remember { mutableStateOf<LocalDate?>(null) }
-    var pickingCaptureDate by remember { mutableStateOf(false) }
+    val captureSchedule = remember { ScheduleState() }
+    captureSchedule.changeText = { captureText = it }
     var scrollToTaskId by remember { mutableStateOf<Long?>(null) }
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var colorOpen by remember { mutableStateOf(false) }
@@ -207,12 +209,14 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
 
     fun capture() {
+        if (!captureSchedule.prepare(captureText)) return
         val text = captureText.text
         if (text.isBlank()) return
-        val dueDate = captureDueDate
+        val dueDate = captureSchedule.day
+        val repeat = captureSchedule.rule
         captureText = TextFieldValue()
-        captureDueDate = null
-        viewModel.capture(text, dueDate) { id -> if (currentProject != null || openLabel != null) scrollToTaskId = id }
+        captureSchedule.reset()
+        viewModel.capture(text, dueDate, repeat) { id -> if (currentProject != null || openLabel != null) scrollToTaskId = id }
     }
 
     val typography = MaterialTheme.typography
@@ -286,11 +290,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     ?: stringResource(R.string.capture_hint),
                 belowStatusBar = headerTitle == null && state.doingTask == null,
                 text = captureText,
-                onTextChange = { value ->
-                    val withoutTrigger = DateTrigger.consume(captureText, value)
-                    captureText = withoutTrigger ?: value
-                    if (withoutTrigger != null) pickingCaptureDate = true
-                },
+                onTextChange = { captureText = it },
+                onScheduleKey = { captureSchedule.key(it, captureText) },
                 onFocusChange = { captureFocused = it },
                 onSend = ::capture,
                 onSignOut = viewModel::requestSignOut,
@@ -307,14 +308,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 syncError = state.syncError,
                 focusRequester = captureFocus,
             )
-            captureDueDate?.let { selected ->
-                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { pickingCaptureDate = true }) {
-                        Text(stringResource(R.string.capture_due_date, selected.toString()))
-                    }
-                    TextButton(onClick = { captureDueDate = null }) { Text(stringResource(R.string.edit_clear_date)) }
-                }
-            }
+            ScheduleChips(captureSchedule, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
             val suggestions = if (captureFocused && captureText.selection.collapsed) {
                 CaptureSyntax.suggestionsAt(captureText.text, captureText.selection.end, state.labels, state.projects)
             } else {
@@ -415,6 +409,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     }
                 }
                 // Over the content, lined up with the capture field, so nothing below it moves.
+                if (captureFocused) ScheduleSuggestions(captureSchedule, captureText,
+                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 52.dp))
                 if (suggestions.isNotEmpty()) {
                     CaptureSuggestions(
                         suggestions,
@@ -432,20 +428,14 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 SyntaxKeyRow(
                     onInsert = { token -> captureText = SyntaxKeys.insert(captureText, token) },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    onPickDate = { pickingCaptureDate = true },
+                    onPickDate = { captureText = SyntaxKeys.insert(captureText, "!") },
                 )
             }
         }
     }
     }
 
-    if (pickingCaptureDate) {
-        PickDateDialog(
-            initial = captureDueDate ?: state.today,
-            onPicked = { date -> captureDueDate = date; pickingCaptureDate = false },
-            onDismiss = { pickingCaptureDate = false },
-        )
-    }
+    ScheduleDialogs(captureSchedule)
 
     if (recentOpen) {
         RecentTasksDialog(recent, state.projects.associate { it.id to it.title },
@@ -492,6 +482,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             words = words,
             locale = locale,
             onTitleChange = { viewModel.applyEditedTitle(task, it) },
+            onScheduleChange = { rule, day -> viewModel.setRepeat(task, rule, day) },
             onDateChange = { viewModel.reschedule(task, it) },
             onProjectChange = { viewModel.move(task, it) },
             onDelete = {
@@ -589,6 +580,7 @@ private fun ContextLabelPicker(labels: List<com.marinecircuits.doit.data.local.L
 
 @Composable
 private fun CaptureBar(
+    onScheduleKey: (androidx.compose.ui.input.key.KeyEvent) -> Boolean,
     hint: String,
     belowStatusBar: Boolean,
     text: TextFieldValue,
@@ -638,6 +630,7 @@ private fun CaptureBar(
             modifier = Modifier
                 .weight(1f)
                 .focusRequester(focusRequester)
+                .onPreviewKeyEvent(onScheduleKey)
                 .onFocusChanged { onFocusChange(it.isFocused) },
         )
         Box {
@@ -951,6 +944,7 @@ private fun TaskRowItem(
     onWork: (() -> Unit)?,
 ) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val repeat = Recurrence.Rule(row.task.repeatAfter, row.task.repeatMode)
     Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
         Row(
             modifier = Modifier
@@ -1005,13 +999,25 @@ private fun TaskRowItem(
                     overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary)
             }
-            dueLabel?.let {
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    it,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (row.overdue) MaterialTheme.colorScheme.error else muted,
-                )
+            if (repeat.active || dueLabel != null) {
+                Row(
+                    Modifier.padding(start = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    val scheduleColor = if (row.overdue) MaterialTheme.colorScheme.error else muted
+                    if (repeat.active) {
+                        Icon(
+                            painterResource(R.drawable.ic_repeat),
+                            contentDescription = repeat.summary,
+                            tint = scheduleColor,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    dueLabel?.let {
+                        Text(it, style = MaterialTheme.typography.labelLarge, color = scheduleColor)
+                    }
+                }
             }
             if (onWork != null) {
                 IconButton(onClick = onWork) {

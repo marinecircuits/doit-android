@@ -20,6 +20,20 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class DatabaseMigrationTest {
+    @Test
+    fun version7UpgradeKeepsPendingTasksAndAddsRepeatDefaults() {
+        createVersion(7) {
+            execSQL("INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration) VALUES (-1, 'Keep me', NULL, 7, 0, 5, 0)")
+            execSQL("INSERT INTO pending_changes (taskId, kind, fields, revision) VALUES (-1, 'create', '{\"title\":\"Keep me\"}', 0)")
+        }
+        upgrade { upgraded ->
+            assertEquals("Keep me", upgraded.tasks().get(-1)?.title)
+            assertEquals(0L, upgraded.tasks().get(-1)?.repeatAfter)
+            assertEquals(0, upgraded.tasks().get(-1)?.repeatMode)
+            assertEquals(PendingChangeEntity.CREATE, upgraded.pendingChanges().forTask(-1)?.kind)
+        }
+    }
+
     private val context: Context = ApplicationProvider.getApplicationContext()
     private val name = "migration-test.db"
 

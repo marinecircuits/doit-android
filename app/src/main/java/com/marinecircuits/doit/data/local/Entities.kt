@@ -19,6 +19,8 @@ data class TaskEntity(
     val createdAt: Long,
     /** The sync that last saw this task on the server; used to sweep tasks the server no longer lists. */
     val syncGeneration: Long = 0,
+    @ColumnInfo(defaultValue = "0") val repeatAfter: Long = 0,
+    @ColumnInfo(defaultValue = "0") val repeatMode: Int = 0,
 )
 
 @Entity(tableName = "projects")
@@ -88,6 +90,8 @@ data class TaskHistoryEntity(
     val dueAt: Long? = null,
     @ColumnInfo(defaultValue = "'[]'") val labelsJson: String = "[]",
     @ColumnInfo(defaultValue = "'{}'") val pendingJson: String = "{}",
+    @ColumnInfo(defaultValue = "0") val repeatAfter: Long = 0,
+    @ColumnInfo(defaultValue = "0") val repeatMode: Int = 0,
 ) {
     companion object {
         const val COMPLETED = "completed"

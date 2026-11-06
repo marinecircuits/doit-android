@@ -37,6 +37,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.marinecircuits.doit.R
 import com.marinecircuits.doit.data.CaptureSyntax
+import com.marinecircuits.doit.data.Recurrence
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import com.marinecircuits.doit.data.Shopping
 import com.marinecircuits.doit.data.DueDates
 import com.marinecircuits.doit.data.local.LabelEntity
@@ -81,6 +83,7 @@ fun EditSheet(
     words: DueWords,
     locale: Locale,
     onTitleChange: (String) -> Unit,
+    onScheduleChange: (Recurrence.Rule, LocalDate?) -> Unit,
     onDateChange: (LocalDate?) -> Unit,
     onProjectChange: (Long) -> Unit,
     onDelete: () -> Unit,
@@ -92,19 +95,21 @@ fun EditSheet(
     var title by remember(task.id) { mutableStateOf(TextFieldValue(task.title, TextRange(task.title.length))) }
     var savedTitle by remember(task.id) { mutableStateOf(task.title) }
     var titleFocused by remember(task.id) { mutableStateOf(false) }
-    var date by remember(task.id) { mutableStateOf(task.dueAt?.let { DueDates.localDate(it, zone) }) }
+    val schedule = remember(task.id) { ScheduleState(task.dueAt?.let { DueDates.localDate(it, zone) }, Recurrence.Rule(task.repeatAfter, task.repeatMode)) }
+    schedule.changeText = { title = it }
+    schedule.onChange = { rule, day -> if (day == null && !rule.active) onDateChange(null) else onScheduleChange(rule, day) }
     var projectId by remember(task.id) { mutableStateOf(task.projectId) }
-    var pickingDate by remember { mutableStateOf(false) }
     var projectMenuOpen by remember { mutableStateOf(false) }
     val projectPickerItems = remember(projects) { ProjectTree.pickerItems(projects) }
     var confirmingDelete by remember(task.id) { mutableStateOf(false) }
 
-    fun commitTitle() {
+    fun commitTitle(): Boolean {
+        if (!schedule.prepare(title, preview = false)) return false
         val raw = title.text
-        if (raw == savedTitle) return
+        if (raw == savedTitle) return true
         if (raw.isBlank()) {
             title = TextFieldValue(savedTitle, TextRange(savedTitle.length))
-            return
+            return true
         }
         val parsed = Shopping.parse(raw, labels, projects, projectId, shoppingProjects)
         val shown = parsed.title.ifEmpty { savedTitle }
@@ -112,35 +117,33 @@ fun EditSheet(
         savedTitle = shown
         title = TextFieldValue(shown, TextRange(shown.length))
         onTitleChange(raw)
+        return true
     }
 
     fun dismiss() {
-        commitTitle()
-        onDismiss()
+        if (commitTitle()) onDismiss()
     }
 
-    ModalBottomSheet(onDismissRequest = ::dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+    ModalBottomSheet(onDismissRequest = ::dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
+        confirmValueChange = { it != androidx.compose.material3.SheetValue.Hidden || commitTitle() })) {
         Column(
             modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             OutlinedTextField(
                 value = title,
-                onValueChange = { value ->
-                    val withoutTrigger = DateTrigger.consume(title, value)
-                    title = withoutTrigger ?: value
-                    if (withoutTrigger != null) pickingDate = true
-                },
+                onValueChange = { title = it },
                 label = { Text(stringResource(R.string.edit_title)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                modifier = Modifier.fillMaxWidth().onFocusChanged { focus ->
+                modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { schedule.key(it, title) }.onFocusChanged { focus ->
                     if (titleFocused && !focus.isFocused) commitTitle()
                     titleFocused = focus.isFocused
                 },
             )
             if (titleFocused) {
-                SyntaxKeyRow(onInsert = { token -> title = SyntaxKeys.insert(title, token) }, onPickDate = { pickingDate = true })
+                SyntaxKeyRow(onInsert = { token -> title = SyntaxKeys.insert(title, token) }, onPickDate = { title = SyntaxKeys.insert(title, "!") })
+                ScheduleSuggestions(schedule, title, Modifier.fillMaxWidth())
                 val suggestions = if (title.selection.collapsed) {
                     CaptureSyntax.suggestionsAt(title.text, title.selection.end, labels, projects)
                 } else {
@@ -158,14 +161,8 @@ fun EditSheet(
                     )
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.edit_due), Modifier.weight(1f))
-                TextButton(onClick = { pickingDate = true }) { Text(dateLabel(date, today, words, locale)) }
-                if (date != null) TextButton(onClick = {
-                    date = null
-                    onDateChange(null)
-                }) { Text(stringResource(R.string.edit_clear_date)) }
-            }
+            ScheduleChips(schedule, Modifier.fillMaxWidth(), showEmptyRepeat = true)
+            if (schedule.day == null) TextButton(onClick = { schedule.picker = "date" }) { Text("Set due date…") }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.edit_project), Modifier.weight(1f))
                 Box {
@@ -215,17 +212,5 @@ fun EditSheet(
         )
     }
 
-    if (pickingDate) {
-        PickDateDialog(
-            initial = date ?: today,
-            onPicked = {
-                if (date != it) {
-                    date = it
-                    onDateChange(it)
-                }
-                pickingDate = false
-            },
-            onDismiss = { pickingDate = false },
-        )
-    }
+    ScheduleDialogs(schedule)
 }

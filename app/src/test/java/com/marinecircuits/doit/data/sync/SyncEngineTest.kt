@@ -27,6 +27,25 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class SyncEngineTest {
+    @Test
+    fun recurrenceSurvivesCreatePullChangesAndRemoval() = runTest {
+        engine.sync()
+        val id = repository.capture("Pay !monthly", dueDate = java.time.LocalDate.of(2027, 1, 31))!!
+        assertEquals(SyncResult.Synced, engine.sync())
+        val remote = fake.tasks.values.single()
+        assertEquals(1, remote.repeatMode)
+        assertEquals(1, db.tasks().get(remote.id)!!.repeatMode)
+        val rule = com.marinecircuits.doit.data.Recurrence.Rule(3 * 86400, 2)
+        repository.setRepeat(id, rule)
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(rule.after, remote.repeatAfter)
+        assertEquals(2, db.tasks().get(remote.id)!!.repeatMode)
+        repository.setRepeat(id, com.marinecircuits.doit.data.Recurrence.Rule())
+        engine.sync()
+        assertEquals(0L, remote.repeatAfter)
+        assertEquals(0, remote.repeatMode)
+    }
+
     private val fake = FakeVikunja()
     private val server = MockWebServer().apply { dispatcher = fake }
     private val idRemap = IdRemap()

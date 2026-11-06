@@ -80,6 +80,7 @@ class TaskRepository(
                     happenedAt = VikunjaDates.parse(task.doneAt)?.toEpochMilli() ?: 0,
                     createdAt = VikunjaDates.parse(task.created)?.toEpochMilli() ?: 0,
                     dueAt = VikunjaDates.parse(task.dueDate)?.toEpochMilli(),
+                    repeatAfter = task.repeatAfter, repeatMode = task.repeatMode,
                     labelsJson = JsonArray(task.labels.map { JsonPrimitive(it.title) }).toString())
             }
     }
@@ -96,10 +97,14 @@ class TaskRepository(
      * Existing `@labels` become labels (see [CaptureSyntax]); the [description] is kept as it is.
      * Returns the task's (temporary) id, or null when nothing is left of the title.
      */
-    suspend fun capture(text: String, description: String? = null, projectId: Long? = null, dueDate: LocalDate? = null): Long? {
+    suspend fun capture(text: String, description: String? = null, projectId: Long? = null, dueDate: LocalDate? = null,
+                        repeat: Recurrence.Rule = Recurrence.Rule()): Long? {
         val fallback = projectId ?: defaultProjectId() ?: 0
         val shopping = settings.shoppingProjects.first()
-        val (title, parsedLabels, namedProjectId) = Shopping.parse(text, db.labels().all(), db.projects().all(), fallback, shopping)
+        val scheduled = Recurrence.parse(text)
+        val rule = scheduled.rule ?: repeat
+        require(!rule.active || dueDate != null) { "Choose the first due date for this repeating task." }
+        val (title, parsedLabels, namedProjectId) = Shopping.parse(scheduled.text, db.labels().all(), db.projects().all(), fallback, shopping)
         if (title.isEmpty()) return null
         val destination = namedProjectId ?: fallback
         val labelNames = if (destination in shopping) parsedLabels.filterNot { it.equals("doing", ignoreCase = true) } else parsedLabels
@@ -108,13 +113,15 @@ class TaskRepository(
         val id = db.withTransaction {
             val id = minOf(db.tasks().minId() ?: 0, 0) - 1
             db.tasks().upsert(
-                TaskEntity(id, title, dueAt = dueAt, projectId = destination, done = false, createdAt = clock.millis()),
+                TaskEntity(id, title, dueAt = dueAt, projectId = destination, done = false, createdAt = clock.millis(),
+                    repeatAfter = rule.after, repeatMode = rule.mode),
             )
             val fields = buildJsonObject {
                 put("title", title)
                 if (!description.isNullOrBlank()) put("description", description.trim())
                 if (destination > 0) put("project_id", destination)
                 if (dueAt != null) put(DUE_DATE, dueJson(dueAt))
+                if (rule.active) { put(REPEAT_AFTER, rule.after); put(REPEAT_MODE, rule.mode) }
                 if (labelNames.isNotEmpty()) put(LABELS, JsonArray(labelNames.map { JsonPrimitive(it) }))
             }
             db.taskLabels().set(id, labelNames) // also clears what a dropped task with this id may have left
@@ -165,6 +172,7 @@ class TaskRepository(
     private fun historySnapshot(task: TaskEntity, kind: String, labels: List<String>, pending: String? = null) =
         TaskHistoryEntity(taskId = task.id, title = task.title, projectId = task.projectId, kind = kind,
             happenedAt = clock.millis(), createdAt = task.createdAt, dueAt = task.dueAt,
+            repeatAfter = task.repeatAfter, repeatMode = task.repeatMode,
             labelsJson = JsonArray(labels.map { JsonPrimitive(it) }).toString(), pendingJson = pending ?: "{}")
 
     private fun historyLabels(entry: TaskHistoryEntity): List<String> =
@@ -177,7 +185,8 @@ class TaskRepository(
         val changed = db.withTransaction {
             if (db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE) return@withTransaction false
             val existing = db.tasks().get(id)
-            val task = existing ?: TaskEntity(id, entry.title, entry.dueAt, entry.projectId, done = true, createdAt = entry.createdAt)
+            val task = existing ?: TaskEntity(id, entry.title, entry.dueAt, entry.projectId, done = true, createdAt = entry.createdAt,
+                repeatAfter = entry.repeatAfter, repeatMode = entry.repeatMode)
             val names = historyLabels(entry)
             if (existing == null) db.taskLabels().set(id, names)
             db.tasks().upsert(task.copy(done = false))
@@ -208,9 +217,12 @@ class TaskRepository(
                 put(TITLE, entry.title)
                 if (entry.projectId > 0) put(PROJECT_ID, entry.projectId)
                 if (entry.dueAt != null) put(DUE_DATE, dueJson(entry.dueAt))
+                put(REPEAT_AFTER, entry.repeatAfter)
+                put(REPEAT_MODE, entry.repeatMode)
                 if (names.isNotEmpty()) put(LABELS, JsonArray(names.map { JsonPrimitive(it) }))
             }
-            db.tasks().upsert(TaskEntity(id, entry.title, entry.dueAt, entry.projectId, done = false, createdAt = entry.createdAt))
+            db.tasks().upsert(TaskEntity(id, entry.title, entry.dueAt, entry.projectId, done = false, createdAt = entry.createdAt,
+                repeatAfter = entry.repeatAfter, repeatMode = entry.repeatMode))
             db.taskLabels().set(id, names)
             db.pendingChanges().insert(PendingChangeEntity(taskId = id, kind = PendingChangeEntity.CREATE, fields = fields.toString()))
             db.taskHistory().delete(historyId)
@@ -251,9 +263,32 @@ class TaskRepository(
     /** Sets the due date to [date] (keeping the time of day, see [DueDates.withDate]) or clears it. */
     suspend fun reschedule(taskId: Long, date: LocalDate?) {
         val task = db.tasks().get(idRemap.resolve(taskId)) ?: return
+        if (date == null && Recurrence.Rule(task.repeatAfter, task.repeatMode).active) return
         val dueAt = date?.let { DueDates.withDate(task.dueAt?.let(Instant::ofEpochMilli), it, clock.zone).toEpochMilli() }
         if (dueAt == task.dueAt) return
         write(task.id, fields(DUE_DATE to dueJson(dueAt))) { it.copy(dueAt = dueAt) }
+    }
+
+    suspend fun setRepeat(taskId: Long, rule: Recurrence.Rule, date: LocalDate? = null) {
+        val id = idRemap.resolve(taskId)
+        val changed = db.withTransaction {
+            val task = db.tasks().get(id) ?: return@withTransaction false
+            if (db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE) return@withTransaction false
+            val dueAt = date?.let { DueDates.withDate(task.dueAt?.let(Instant::ofEpochMilli), it, clock.zone).toEpochMilli() } ?: task.dueAt
+            require(!rule.active || dueAt != null) { "Choose the first due date for this repeating task." }
+            val updated = task.copy(dueAt = dueAt, repeatAfter = rule.after, repeatMode = rule.mode)
+            if (updated == task) return@withTransaction false
+            db.tasks().upsert(updated)
+            record(id, buildJsonObject {
+                if (rule.after != task.repeatAfter || rule.mode != task.repeatMode) {
+                    put(REPEAT_AFTER, rule.after)
+                    put(REPEAT_MODE, rule.mode)
+                }
+                if (dueAt != task.dueAt) put(DUE_DATE, dueJson(dueAt))
+            })
+            true
+        }
+        if (changed) onLocalChange()
     }
 
     suspend fun rename(taskId: Long, title: String) {
@@ -275,7 +310,10 @@ class TaskRepository(
         val written = db.withTransaction {
             val task = db.tasks().get(id) ?: return@withTransaction false
             val shopping = settings.shoppingProjects.first()
-            val parsed = Shopping.parse(raw, db.labels().all(), db.projects().all(), task.projectId, shopping)
+            val scheduled = Recurrence.parse(raw)
+            require(scheduled.rule == null || task.dueAt != null) { "Choose the first due date for this repeating task." }
+            val rule = scheduled.rule ?: Recurrence.Rule(task.repeatAfter, task.repeatMode)
+            val parsed = Shopping.parse(scheduled.text, db.labels().all(), db.projects().all(), task.projectId, shopping)
             val newTitle = parsed.title.ifEmpty { task.title }
             val existing = db.taskLabels().forTask(id)
             val projectId = parsed.projectId ?: task.projectId
@@ -287,6 +325,9 @@ class TaskRepository(
             val supersedesDoing = doing != null && added.any { it.equals(doing.title, ignoreCase = true) } &&
                 db.pendingChanges().forTask(id)?.let { DOING in PendingChanges.decode(it.fields) } == true
             val fields = buildJsonObject {
+                if (rule.after != task.repeatAfter || rule.mode != task.repeatMode) {
+                    put(REPEAT_AFTER, rule.after); put(REPEAT_MODE, rule.mode)
+                }
                 if (newTitle != task.title) put(TITLE, newTitle)
                 if (projectId != task.projectId) put(PROJECT_ID, projectId)
                 if (added.isNotEmpty()) {
@@ -296,7 +337,7 @@ class TaskRepository(
                 if (supersedesDoing && doing != null) put(DOING, buildJsonObject { put("id", doing.id); put("active", true) })
             }
             if (fields.isEmpty()) return@withTransaction false
-            db.tasks().upsert(task.copy(title = newTitle, projectId = projectId))
+            db.tasks().upsert(task.copy(title = newTitle, projectId = projectId, repeatAfter = rule.after, repeatMode = rule.mode))
             if (added.isNotEmpty()) db.taskLabels().set(id, existing + added)
             record(id, fields)
             true
@@ -398,6 +439,8 @@ class TaskRepository(
         const val TITLE = "title"
         const val DONE = "done"
         const val DUE_DATE = "due_date"
+        const val REPEAT_AFTER = "repeat_after"
+        const val REPEAT_MODE = "repeat_mode"
         const val PROJECT_ID = "project_id"
 
         /** Label names; only ever set by a capture, and sent once the task exists on the server. */
