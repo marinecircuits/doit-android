@@ -561,7 +561,12 @@ class TasksViewModel(
             }
             null -> {
                 val projectId = current.path.lastOrNull()?.id
-                viewModelScope.launch { repository.capture(text, projectId = projectId, dueDate = dueDate, repeat = repeat)?.let(onCreated) }
+                viewModelScope.launch {
+                    try { repository.capture(text, projectId = projectId, dueDate = dueDate, repeat = repeat)?.let(onCreated) }
+                    catch (e: com.marinecircuits.doit.data.ProjectUnavailable) {
+                        settings.addNotice("Could not save “$text”: ${e.message}. Choose another project and try again.")
+                    }
+                }
             }
         }
     }
@@ -653,7 +658,12 @@ class TasksViewModel(
     }
 
     fun addPdf(taskId: Long, filename: String, bytes: ByteArray, mime: String = "application/pdf") {
-        viewModelScope.launch { repository.addPdf(taskId, filename, bytes, mime) }
+        viewModelScope.launch {
+            try { repository.addPdf(taskId, filename, bytes, mime) }
+            catch (e: com.marinecircuits.doit.data.TaskUnavailable) {
+                settings.addNotice("Could not attach “$filename”: ${e.message}")
+            }
+        }
     }
 
     fun removePdf(id: Long) {

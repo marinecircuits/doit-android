@@ -17,6 +17,13 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 
+/** Destructive previews must not interpret a missing list envelope as an empty project. */
+@kotlinx.serialization.Serializable
+private data class CountedPage<T>(
+    val items: List<T>, val total: Long, val page: Int,
+    @kotlinx.serialization.SerialName("total_pages") val totalPages: Long,
+)
+
 /** The server answered with a non-2xx status. Network failures stay [java.io.IOException]s. */
 class ApiException(val status: Int, val problem: String?) : Exception("HTTP $status${problem?.let { ": $it" } ?: ""}") {
     val isUnauthorized get() = status == 401
@@ -50,6 +57,18 @@ class VikunjaApi(
     suspend fun currentUser(): UserDto = get(url("user"), UserDto.serializer())
 
     suspend fun projects(): List<ProjectDto> = getAllPages(url("projects"), ProjectDto.serializer())
+
+    suspend fun projectsForDeletion(): List<ProjectDto> = getAllPages(
+        url("projects").newBuilder().addQueryParameter("is_archived", "true").build(), ProjectDto.serializer(), strict = true)
+
+    suspend fun projectTasks(projectId: Long): List<TaskDto> = getAllPages(
+        url("projects/$projectId/tasks").newBuilder().addQueryParameter("sort_by", "id").build(), TaskDto.serializer(), strict = true)
+
+    suspend fun deleteProject(projectId: Long) = withContext(Dispatchers.IO) {
+        client.newCall(authorized(url("projects/$projectId")).delete().build()).execute().use { response ->
+            if (!response.isSuccessful) throw ApiException(response.code, problemText(response.body?.string().orEmpty()))
+        }
+    }
 
     suspend fun project(projectId: Long): Pair<ProjectDto, String?> {
         var etag: String? = null
@@ -169,13 +188,22 @@ class VikunjaApi(
 
     private fun url(path: String): HttpUrl = apiBase.resolve(path) ?: error("Bad API path $path")
 
-    private suspend fun <T> getAllPages(url: HttpUrl, item: KSerializer<T>): List<T> {
+    private suspend fun <T> getAllPages(url: HttpUrl, item: KSerializer<T>, strict: Boolean = false): List<T> {
         val all = mutableListOf<T>()
         var page = 1
         while (true) {
             val pageUrl = url.newBuilder().addQueryParameter("page", page.toString()).build()
-            val result = get(pageUrl, PageDto.serializer(item))
+            val result = if (strict) {
+                val counted = get(pageUrl, CountedPage.serializer(item))
+                PageDto(counted.items, counted.total, counted.page, totalPages = counted.totalPages)
+            } else get(pageUrl, PageDto.serializer(item))
+            if (strict) check(result.page == page && result.totalPages <= MAX_PAGES && result.totalPages >= 0) { "Could not count all project contents" }
             all += result.items
+            if (strict && page >= result.totalPages) {
+                check(all.size.toLong() == result.total) { "Project contents changed while counting; retry" }
+                return all
+            }
+            if (strict) check(result.items.isNotEmpty()) { "Incomplete project contents; retry" }
             if (page >= result.totalPages || result.items.isEmpty() || page >= MAX_PAGES) return all
             page++
         }

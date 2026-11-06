@@ -30,6 +30,7 @@ Configure up to three **Label screens** from the home menu, plus a separate labe
 
 ## Using it
 
+- To permanently delete the open project and its contents, choose **Menu → Delete project**. The app reads the server's full project tree, including archived subprojects and completed tasks, and shows their counts. Nonempty projects require a second confirmation. Deletion needs a connection, project administrator access, and `projects → delete`, `projects → read_all`, and `tasks → read_all` token permissions. Sync unsent changes first. If the contents change before deletion, review and confirm the new preview. Deletion cannot be undone.
 - Submit a combination such as `@errand #Home` to filter open tasks by both label and project, including subprojects. Multiple labels require all of them, for example `@errand @next #Home`. Quoted names work too. Prefix the expression with `/` to see results while typing; ordinary task text still creates a task.
 - Long-press the app icon and choose **Add task** to open the home capture box. New tasks go to **Inbox** unless you specify a `#project`.
 - If an older pinned **Add task** icon says “App isn't installed”, remove it, open the updated app once, then long-press its app icon and drag a new **Add task** shortcut onto the home screen.

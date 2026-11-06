@@ -33,6 +33,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
 /**
@@ -168,6 +169,7 @@ class TaskRepository(
         }
         val id = try {
             db.withTransaction {
+                if (destination != 0L && db.projects().all().none { it.id == destination && !it.archived }) throw ProjectUnavailable()
                 val id = minOf(db.tasks().minId() ?: 0, 0) - 1
                 db.tasks().upsert(
                     TaskEntity(
@@ -551,9 +553,13 @@ class TaskRepository(
         val file = File.createTempFile("attachment-", ".cache", attachmentsDir)
         val id = try {
             file.writeBytes(bytes)
-            db.attachments().insert(AttachmentEntity(taskId = idRemap.resolve(taskId), filename = safe,
-                mime = mime.ifBlank { "application/octet-stream" }, size = bytes.size.toLong(),
-                localPath = file.absolutePath, pending = AttachmentEntity.UPLOAD))
+            db.withTransaction {
+                val target = idRemap.resolve(taskId)
+                if (db.tasks().get(target) == null || db.pendingChanges().forTask(target)?.kind == PendingChangeEntity.DELETE) throw TaskUnavailable()
+                db.attachments().insert(AttachmentEntity(taskId = target, filename = safe,
+                    mime = mime.ifBlank { "application/octet-stream" }, size = bytes.size.toLong(),
+                    localPath = file.absolutePath, pending = AttachmentEntity.UPLOAD))
+            }
         } catch (e: Throwable) {
             file.delete()
             throw e
@@ -596,6 +602,11 @@ class TaskRepository(
         val id = idRemap.resolve(taskId)
         val written = db.withTransaction {
             val task = db.tasks().get(id) ?: return@withTransaction false
+            val destination = fields[PROJECT_ID]?.jsonPrimitive?.longOrNull
+            if (destination != null && db.projects().all().none { it.id == destination && !it.archived }) {
+                settings.addNotice("Task was not moved: the destination project is no longer available")
+                return@withTransaction false
+            }
             db.tasks().upsert(update(task))
             record(id, fields)
             true

@@ -191,6 +191,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     var colorOpen by remember { mutableStateOf(false) }
     var shoppingOpen by remember { mutableStateOf(false) }
     var archiveOpen by remember { mutableStateOf(false) }
+    var deletingProjectId by remember { mutableStateOf<Long?>(null) }
     var recentOpen by remember { mutableStateOf(false) }
     var selectedSearchIndex by remember { mutableIntStateOf(0) }
     val searchQuery = TaskSearch.query(captureText.text)
@@ -395,6 +396,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     ?.takeUnless { it.isInbox(state.defaultProjectId) }
                     ?.let { viewModel::showCreateSubproject },
                 onArchiveProject = currentProject?.let { { archiveOpen = true } },
+                onDeleteProject = currentProject?.let { { deletingProjectId = it.id } },
                 serverAddress = state.serverAddress,
                 status = state.status,
                 syncedOnce = state.syncedOnce,
@@ -651,6 +653,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         )
     }
 
+    deletingProjectId?.let { id ->
+        DeleteProjectDialog(id, appContext.container.syncEngine,
+            onDeleted = { deletingProjectId = null; viewModel.navigateHome(); viewModel.refresh() },
+            onDismiss = { deletingProjectId = null })
+    }
     if (archiveOpen && currentProject != null) {
         val title = currentProject.title
         AlertDialog(
@@ -777,6 +784,7 @@ private fun CaptureBar(
     onProjectSettings: (() -> Unit)?,
     onCreateSubproject: (() -> Unit)?,
     onArchiveProject: (() -> Unit)? = null,
+    onDeleteProject: (() -> Unit)? = null,
     serverAddress: String?,
     status: List<StatusPart>,
     syncedOnce: Boolean,
@@ -853,6 +861,10 @@ private fun CaptureBar(
                             menuOpen = false
                             onProjectColor()
                         },
+                    )
+                    if (onDeleteProject != null) DropdownMenuItem(
+                        text = { Text("Delete project…") },
+                        onClick = { menuOpen = false; onDeleteProject() },
                     )
                     if (onArchiveProject != null) DropdownMenuItem(
                         text = { Text(stringResource(R.string.archive_project)) },
