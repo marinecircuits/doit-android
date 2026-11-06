@@ -22,6 +22,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -304,6 +305,33 @@ class TaskRepository(
         }
         if (changed) onLocalChange()
         return changed
+    }
+
+    fun observeTaskLabels(taskId: Long) = taskLabels.map { all ->
+        all.filter { it.taskId == idRemap.resolve(taskId) }.map { it.title }
+    }
+
+    suspend fun removeTaskLabel(taskId: Long, name: String) {
+        val label = db.labels().all().firstOrNull { it.title.equals(name, true) } ?: return
+        if (label.title.equals("doing", true)) { setDoing(taskId, false); return }
+        val id = idRemap.resolve(taskId)
+        val changed = db.withTransaction {
+            if (db.tasks().get(id) == null || db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE)
+                return@withTransaction false
+            val names = db.taskLabels().forTask(id)
+            if (names.none { it.equals(name, true) }) return@withTransaction false
+            val old = db.pendingChanges().forTask(id)?.let { PendingChanges.decode(it.fields) }.orEmpty()
+            val removals = old[LABEL_REMOVALS]?.jsonArray.orEmpty() + JsonPrimitive(label.id)
+            db.taskLabels().set(id, names.filterNot { it.equals(name, true) })
+            record(id, buildJsonObject {
+                put(LABEL_REMOVALS, JsonArray(removals.distinct()))
+                old[LABELS]?.jsonArray?.let { queued ->
+                    put(LABELS, JsonArray(queued.filterNot { it.jsonPrimitive.contentOrNull?.equals(name, true) == true }))
+                }
+            })
+            true
+        }
+        if (changed) onLocalChange()
     }
 
     /** Changes only the existing doing label, storing the latest desired membership with the task. */
@@ -590,6 +618,7 @@ class TaskRepository(
 
         /** Label names; only ever set by a capture, and sent once the task exists on the server. */
         const val LABELS = "labels"
+        const val LABEL_REMOVALS = "_remove_labels"
         /** Desired membership of the existing doing label, sent only through task-label routes. */
         const val DOING = "_doing"
         private const val HEX_DIGITS = "0123456789abcdefABCDEF"
