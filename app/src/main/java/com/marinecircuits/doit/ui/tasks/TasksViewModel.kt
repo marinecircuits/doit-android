@@ -652,9 +652,13 @@ class TasksViewModel(
     }
 
     fun attachments(taskId: Long) = repository.observeAttachments(taskId)
+    fun taskLabels(taskId: Long) = repository.observeTaskLabels(taskId)
+    fun removeTaskLabel(taskId: Long, name: String) {
+        viewModelScope.launch { repository.removeTaskLabel(taskId, name) }
+    }
 
-    fun addPdf(taskId: Long, filename: String, bytes: ByteArray) {
-        viewModelScope.launch { repository.addPdf(taskId, filename, bytes) }
+    fun addPdf(taskId: Long, filename: String, bytes: ByteArray, mime: String = "application/pdf") {
+        viewModelScope.launch { repository.addPdf(taskId, filename, bytes, mime) }
     }
 
     fun removePdf(id: Long) {

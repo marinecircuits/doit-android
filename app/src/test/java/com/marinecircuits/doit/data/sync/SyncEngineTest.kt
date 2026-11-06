@@ -28,6 +28,70 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class SyncEngineTest {
     @Test
+    fun removingLabelOfflineKeepsOtherLabelsAndRetriesPermissionFailure() = runTest {
+        fake.labels += listOf(FakeVikunja.Label(7, "errand"), FakeVikunja.Label(8, "next"))
+        fake.tasks[1] = FakeVikunja.Task(1, "Task", labelIds = mutableListOf(7, 8))
+        engine.sync()
+        repository.removeTaskLabel(1, "errand")
+        assertEquals(listOf("next"), db.taskLabels().forTask(1))
+        fake.labelsRemovable = false
+        assertTrue(engine.sync() is SyncResult.ServerError)
+        assertTrue(db.pendingChanges().all().isNotEmpty())
+        fake.labelsRemovable = true
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(8L), fake.tasks[1]!!.labelIds)
+        assertTrue(db.pendingChanges().all().isEmpty())
+    }
+
+    @Test
+    fun reAddingLabelDuringRemovalWins() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        fake.tasks[1] = FakeVikunja.Task(1, "Task", labelIds = mutableListOf(7))
+        engine.sync()
+        repository.removeTaskLabel(1, "errand")
+        var edited = false
+        fake.intercept = { request ->
+            if (!edited && request.method == "DELETE" && request.requestUrl!!.encodedPath.endsWith("/labels/7")) {
+                edited = true
+                runBlocking { repository.applyEditedTitle(1, "Task @errand") }
+            }
+            null
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals(listOf(7L), fake.tasks[1]!!.labelIds)
+        assertEquals(listOf("errand"), db.taskLabels().forTask(1))
+    }
+
+    @Test
+    fun removingLabelBeforeFirstSyncDoesNotSendIt() = runTest {
+        fake.labels += FakeVikunja.Label(7, "errand")
+        engine.sync()
+        val id = repository.capture("Task @errand")!!
+        repository.removeTaskLabel(id, "errand")
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(fake.tasks.values.single().labelIds.isEmpty())
+    }
+
+    @Test
+    fun syncDownloadsNonPdfAttachments() = runTest {
+        fake.tasks[901] = FakeVikunja.Task(901, "Sketch")
+        fake.intercept = { request ->
+            when (request.requestUrl!!.encodedPath) {
+                "/api/v2/tasks/901/attachments" -> FakeVikunja.json(200,
+                    """{"items":[{"id":77,"task_id":901,"file":{"id":77,"name":"plan.png","mime":"image/png","size":3}}],"total":1,"page":1,"per_page":50,"total_pages":1}""")
+                "/api/v2/tasks/901/attachments/77" -> okhttp3.mockwebserver.MockResponse().setResponseCode(200).setBody("png")
+                else -> null
+            }
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        val file = db.attachments().forTask(901).single()
+        assertEquals("plan.png", file.filename)
+        assertEquals("image/png", file.mime)
+        assertEquals("png", java.io.File(file.localPath).readText())
+        java.io.File(file.localPath).delete()
+    }
+
+    @Test
     fun recurrenceSurvivesCreatePullChangesAndRemoval() = runTest {
         engine.sync()
         val id = repository.capture("Pay !monthly", dueDate = java.time.LocalDate.of(2027, 1, 31))!!

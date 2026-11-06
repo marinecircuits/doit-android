@@ -282,11 +282,12 @@ class SyncEngine(
                 change.kind == PendingChangeEntity.CREATE -> {
                     // `done` and `labels` go in follow-up updates: a completion is recorded like any other, and labels
                     // need the task's id.
-                    val later = setOf(TaskRepository.DONE, TaskRepository.LABELS, TaskRepository.DOING)
+                    val later = setOf(TaskRepository.DONE, TaskRepository.LABELS, TaskRepository.DOING, TaskRepository.LABEL_REMOVALS)
                     val projectId = fields[TaskRepository.PROJECT_ID]?.jsonPrimitive?.longOrNull ?: fallbackProjectId(api)
                     val created = api.createTask(projectId, JsonObject(fields - later))
                     applyCreated(change, created, leftover = JsonObject(fields.filterKeys { it in later }))
                 }
+                TaskRepository.LABEL_REMOVALS in fields -> pushLabelRemovals(api, change, fields)
                 TaskRepository.LABELS in fields -> pushLabels(api, change, fields)
                 TaskRepository.DOING in fields -> pushDoing(api, change, fields)
                 else -> applyUpdated(change, api.updateTask(change.taskId, fields))
@@ -313,6 +314,25 @@ class SyncEngine(
                 db.tasks().delete(change.taskId)
                 db.taskLabels().deleteForTask(change.taskId)
             }
+        }
+    }
+
+    private suspend fun pushLabelRemovals(api: VikunjaApi, change: PendingChangeEntity, fields: JsonObject) {
+        for (item in fields.getValue(TaskRepository.LABEL_REMOVALS).jsonArray) {
+            try {
+                api.removeLabel(change.taskId, item.jsonPrimitive.content.toLong())
+            } catch (e: ApiException) {
+                if (e.isNotFound) continue
+                if (e.isUnauthorized) api.tokenTest()
+                throw ShoppingCleanupException("Could not remove a task label: ${e.problem ?: "check task-label permissions and project write access"}. The change is still queued.")
+            }
+        }
+        db.withTransaction {
+            val current = db.pendingChanges().get(change.seq) ?: return@withTransaction
+            if (current.revision != change.revision || current.kind == PendingChangeEntity.DELETE) return@withTransaction
+            val rest = PendingChanges.decode(current.fields) - TaskRepository.LABEL_REMOVALS
+            if (rest.isEmpty()) db.pendingChanges().delete(change.seq)
+            else db.pendingChanges().update(current.copy(fields = JsonObject(rest).toString()))
         }
     }
 
@@ -619,7 +639,15 @@ class SyncEngine(
                         if (!file.exists()) continue
                         val result = api.uploadAttachment(row.taskId, file, row.filename, row.mime)
                         val remote = result.success.firstOrNull()
-                        if (remote != null) db.attachments().update(row.copy(remoteId = remote.id, pending = ""))
+                        if (remote != null) db.withTransaction {
+                            val current = db.attachments().get(row.id)
+                            if (current != null) db.attachments().update(current.copy(remoteId = remote.id,
+                                pending = if (current.pending == AttachmentEntity.CANCEL) AttachmentEntity.DELETE else ""))
+                        }
+                    }
+                    row.pending == AttachmentEntity.CANCEL -> {
+                        row.localPath.takeIf { it.isNotBlank() }?.let { File(it).delete() }
+                        db.attachments().delete(row.id)
                     }
                     row.pending == AttachmentEntity.DELETE && row.remoteId != null && row.taskId > 0 -> {
                         api.deleteAttachment(row.taskId, row.remoteId)
@@ -643,27 +671,32 @@ class SyncEngine(
                 val local = db.attachments().forTask(task.id)
                 val byRemote = local.associateBy { it.remoteId }
                 for (item in remote) {
-                    if (item.file.mime != "application/pdf" && !item.file.name.endsWith(".pdf", ignoreCase = true)) continue
                     val existing = byRemote[item.id]
+                    if (existing?.pending == AttachmentEntity.DELETE) continue
                     val cached = existing?.localPath?.takeIf { it.isNotBlank() }?.let { File(it) }
                     if (cached != null && cached.exists()) continue
                     val bytes = api.downloadAttachment(task.id, item.id)
-                    val name = item.file.name.ifBlank { "document.pdf" }
-                    val file = File(attachmentCache, "${item.id}_$name")
+                    val name = item.file.name.replace('\\', '/').substringAfterLast('/').ifBlank { "attachment" }
+                    val file = File(attachmentCache, "${task.id}_${item.id}")
                     file.writeBytes(bytes)
                     if (existing == null) {
                         db.attachments().insert(
                             AttachmentEntity(
                                 taskId = task.id,
                                 filename = name,
-                                mime = item.file.mime.ifBlank { "application/pdf" },
+                                mime = item.file.mime.ifBlank { "application/octet-stream" },
                                 size = bytes.size.toLong(),
                                 remoteId = item.id,
                                 localPath = file.absolutePath,
                             ),
                         )
                     } else {
-                        db.attachments().update(existing.copy(localPath = file.absolutePath, size = bytes.size.toLong()))
+                        db.withTransaction {
+                            val current = db.attachments().get(existing.id)
+                            if (current != null && current.pending != AttachmentEntity.DELETE && current.pending != AttachmentEntity.CANCEL)
+                                db.attachments().update(current.copy(localPath = file.absolutePath, size = bytes.size.toLong()))
+                            else file.delete()
+                        }
                     }
                 }
             } catch (_: Exception) {

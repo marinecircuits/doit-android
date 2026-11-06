@@ -22,6 +22,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -308,6 +309,33 @@ class TaskRepository(
         return changed
     }
 
+    fun observeTaskLabels(taskId: Long) = taskLabels.map { all ->
+        all.filter { it.taskId == idRemap.resolve(taskId) }.map { it.title }
+    }
+
+    suspend fun removeTaskLabel(taskId: Long, name: String) {
+        val label = db.labels().all().firstOrNull { it.title.equals(name, true) } ?: return
+        if (label.title.equals("doing", true)) { setDoing(taskId, false); return }
+        val id = idRemap.resolve(taskId)
+        val changed = db.withTransaction {
+            if (db.tasks().get(id) == null || db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE)
+                return@withTransaction false
+            val names = db.taskLabels().forTask(id)
+            if (names.none { it.equals(name, true) }) return@withTransaction false
+            val old = db.pendingChanges().forTask(id)?.let { PendingChanges.decode(it.fields) }.orEmpty()
+            val removals = old[LABEL_REMOVALS]?.jsonArray.orEmpty() + JsonPrimitive(label.id)
+            db.taskLabels().set(id, names.filterNot { it.equals(name, true) })
+            record(id, buildJsonObject {
+                put(LABEL_REMOVALS, JsonArray(removals.distinct()))
+                old[LABELS]?.jsonArray?.let { queued ->
+                    put(LABELS, JsonArray(queued.filterNot { it.jsonPrimitive.contentOrNull?.equals(name, true) == true }))
+                }
+            })
+            true
+        }
+        if (changed) onLocalChange()
+    }
+
     /** Changes only the existing doing label, storing the latest desired membership with the task. */
     suspend fun setDoing(taskId: Long, active: Boolean) {
         val id = idRemap.resolve(taskId)
@@ -519,28 +547,30 @@ class TaskRepository(
     fun observeAttachments(taskId: Long) = db.attachments().observeForTask(taskId)
 
     /** Copies a PDF onto the device and queues it for upload. Works offline, including for unsent tasks. */
-    suspend fun addPdf(taskId: Long, filename: String, bytes: ByteArray): Long {
+    suspend fun addPdf(taskId: Long, filename: String, bytes: ByteArray, mime: String = "application/pdf"): Long {
         attachmentsDir.mkdirs()
-        val safe = filename.substringAfterLast('/').ifBlank { "document.pdf" }
-        val id = db.attachments().insert(
-            AttachmentEntity(taskId = taskId, filename = safe, size = bytes.size.toLong(), pending = AttachmentEntity.UPLOAD),
-        )
-        val file = File(attachmentsDir, "${id}_$safe")
-        file.writeBytes(bytes)
-        db.attachments().update(db.attachments().get(id)!!.copy(localPath = file.absolutePath))
+        val safe = filename.replace('\\', '/').substringAfterLast('/').ifBlank { "attachment" }
+        val file = File.createTempFile("attachment-", ".cache", attachmentsDir)
+        val id = try {
+            file.writeBytes(bytes)
+            db.attachments().insert(AttachmentEntity(taskId = idRemap.resolve(taskId), filename = safe,
+                mime = mime.ifBlank { "application/octet-stream" }, size = bytes.size.toLong(),
+                localPath = file.absolutePath, pending = AttachmentEntity.UPLOAD))
+        } catch (e: Throwable) {
+            file.delete()
+            throw e
+        }
         onLocalChange()
         return id
     }
 
     suspend fun removeAttachment(id: Long) {
-        val row = db.attachments().get(id) ?: return
-        if (row.remoteId != null) {
-            db.attachments().update(row.copy(pending = AttachmentEntity.DELETE))
-        } else {
-            row.localPath.takeIf { it.isNotBlank() }?.let { File(it).delete() }
-            db.attachments().delete(id)
+        val changed = db.withTransaction {
+            val row = db.attachments().get(id) ?: return@withTransaction false
+            db.attachments().update(row.copy(pending = if (row.remoteId != null) AttachmentEntity.DELETE else AttachmentEntity.CANCEL))
+            true
         }
-        onLocalChange()
+        if (changed) onLocalChange()
     }
 
     /** Ensures the PDF is on disk, downloading it when only the server copy is known. */
@@ -597,6 +627,7 @@ class TaskRepository(
 
         /** Label names; only ever set by a capture, and sent once the task exists on the server. */
         const val LABELS = "labels"
+        const val LABEL_REMOVALS = "_remove_labels"
         /** Desired membership of the existing doing label, sent only through task-label routes. */
         const val DOING = "_doing"
         private const val HEX_DIGITS = "0123456789abcdefABCDEF"

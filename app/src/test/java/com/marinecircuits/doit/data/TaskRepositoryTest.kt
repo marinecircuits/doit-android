@@ -102,6 +102,26 @@ class TaskRepositoryTest {
     }
 
     @Test
+    fun addingNonPdfPreservesNameTypeAndBytesAndCanBeCancelled() = runTest {
+        val directory = Files.createTempDirectory("doit-attachment").toFile()
+        try {
+            repository = TaskRepository(db, settings, idRemap, testClock, directory) { localChanges++ }
+            val taskId = repository.capture("Sketch")!!
+            val bytes = byteArrayOf(1, 2, 3, 4)
+            val id = repository.addPdf(taskId, "plan.png", bytes, "image/png")
+            val attachment = db.attachments().get(id)!!
+            assertEquals("plan.png", attachment.filename)
+            assertEquals("image/png", attachment.mime)
+            assertArrayEquals(bytes, File(attachment.localPath).readBytes())
+            repository.removeAttachment(id)
+            assertEquals("cancel", db.attachments().get(id)!!.pending)
+            assertTrue(db.attachments().observeForTask(taskId).first().isEmpty())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun sharingPdfQueuesItsTaskAndAttachmentTogether() = runTest {
         val directory = Files.createTempDirectory("doit-share-pdf").toFile()
         try {
