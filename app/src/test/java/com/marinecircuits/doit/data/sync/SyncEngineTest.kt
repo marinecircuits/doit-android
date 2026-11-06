@@ -130,6 +130,31 @@ class SyncEngineTest {
     }
 
     @Test
+    fun inboxCannotContainASubproject() = runTest {
+        engine.sync()
+        val requestsBefore = server.requestCount
+        try {
+            engine.createSubproject(1, "Under inbox")
+            org.junit.Assert.fail("Expected inbox rejection")
+        } catch (_: IllegalArgumentException) {
+        }
+        settings.setDefaultProjectId(2)
+        db.projects().insertAll(listOf(com.marinecircuits.doit.data.local.ProjectEntity(3, "Notes", false, 3.0)))
+        try {
+            engine.createSubproject(2, "Under default")
+            org.junit.Assert.fail("Expected default-project rejection")
+        } catch (_: IllegalArgumentException) {
+        }
+        try {
+            engine.createSubproject(1, "Still inbox by title")
+            org.junit.Assert.fail("Expected title rejection")
+        } catch (_: IllegalArgumentException) {
+        }
+        assertEquals(requestsBefore, server.requestCount)
+        assertEquals(listOf("Inbox", "Work", "Notes"), db.projects().all().map { it.title })
+    }
+
+    @Test
     fun createSubprojectPostsTrimmedNameAndCachesTheChildUnderItsParent() = runTest {
         engine.sync()
         // Creating a child of an existing subproject must keep that exact parent, not its root.
@@ -170,13 +195,83 @@ class SyncEngineTest {
             if (request.method == "POST") okhttp3.mockwebserver.MockResponse().setResponseCode(403).setBody("{}") else null
         }
         try {
-            engine.createSubproject(1, "Restricted")
+            engine.createSubproject(2, "Restricted")
             org.junit.Assert.fail("Expected permission failure")
         } catch (e: com.marinecircuits.doit.data.remote.ApiException) {
             assertEquals(403, e.status)
         }
         assertEquals(before, db.projects().all())
         assertEquals(0, db.pendingChanges().count())
+    }
+
+    @Test
+    fun promotingATaskInAProjectCreatesThatSubproject() = runTest {
+        fake.tasks[10] = FakeVikunja.Task(10, "Order boards", projectId = 2)
+        assertEquals(SyncResult.Synced, engine.sync())
+        val created = engine.promoteTask(10, "  Order boards  ", " bring the schematic ", 2)
+        assertTrue(created.removeTask)
+        assertEquals("Order boards", created.project.title)
+        assertEquals(2L, created.project.parentProjectId)
+        assertEquals("bring the schematic", created.project.description)
+        assertEquals("Order boards", db.tasks().get(10)!!.title)
+
+        val request = fake.requests.last { it.startsWith("POST projects ") }.removePrefix("POST projects ")
+        val body = com.marinecircuits.doit.data.remote.VikunjaJson.decodeFromString<kotlinx.serialization.json.JsonObject>(request)
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("Order boards"), body["title"])
+        assertEquals(kotlinx.serialization.json.JsonPrimitive(2), body["parent_project_id"])
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("bring the schematic"), body["description"])
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        val stored = db.projects().all().single { it.title == "Order boards" }
+        assertEquals(2L, stored.parentProjectId)
+        assertEquals("bring the schematic", stored.description)
+    }
+
+    @Test
+    fun promotingAnInboxTaskStaysASubprojectOfInbox() = runTest {
+        fake.tasks[10] = FakeVikunja.Task(10, "Someday", projectId = 1)
+        assertEquals(SyncResult.Synced, engine.sync())
+        settings.setDefaultProjectId(2)
+        val before = fake.requests.size
+        val created = engine.promoteTask(10, "Someday", "   ", 1)
+        assertTrue(created.removeTask)
+        assertEquals(1L, created.project.parentProjectId)
+        val request = fake.requests.drop(before).single { it.startsWith("POST projects ") }.removePrefix("POST projects ")
+        val body = com.marinecircuits.doit.data.remote.VikunjaJson.decodeFromString<kotlinx.serialization.json.JsonObject>(request)
+        assertEquals(kotlinx.serialization.json.JsonPrimitive("Someday"), body["title"])
+        assertEquals(kotlinx.serialization.json.JsonPrimitive(1), body["parent_project_id"])
+        assertFalse(body.containsKey("description"))
+        assertEquals("Someday", db.tasks().get(10)!!.title)
+    }
+
+    @Test
+    fun refusedPromotionDoesNotCacheAProject() = runTest {
+        fake.tasks[10] = FakeVikunja.Task(10, "Order boards", projectId = 2)
+        assertEquals(SyncResult.Synced, engine.sync())
+        val before = db.projects().all()
+        fake.intercept = { request ->
+            if (request.method == "POST" && request.requestUrl!!.encodedPath == "/api/v2/projects") {
+                okhttp3.mockwebserver.MockResponse().setResponseCode(403).setBody("{}")
+            } else {
+                null
+            }
+        }
+        try {
+            engine.promoteTask(10, "Order boards", "", 2)
+            org.junit.Assert.fail("Expected permission failure")
+        } catch (e: com.marinecircuits.doit.data.remote.ApiException) {
+            assertEquals(403, e.status)
+        }
+        assertEquals(before, db.projects().all())
+        assertEquals("Order boards", db.tasks().get(10)!!.title)
+
+        val requestsBefore = server.requestCount
+        try {
+            engine.promoteTask(10, "  ", "", 2)
+            org.junit.Assert.fail("Expected a name")
+        } catch (_: IllegalArgumentException) {
+        }
+        assertEquals(requestsBefore, server.requestCount)
     }
 
     @Test
@@ -635,6 +730,30 @@ class SyncEngineTest {
     }
 
     @Test
+    fun renameIsSentAndSurvivesTheNextPull() = runTest {
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.renameProject(2, "  Workshop  ")
+        assertEquals("Workshop", db.projects().all().single { it.id == 2L }.title)
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("Workshop", db.projects().all().single { it.id == 2L }.title)
+        assertTrue(settings.pendingProjectTitles().isEmpty())
+        assertTrue(fake.requests.any { it.startsWith("PATCH projects/2") && "Workshop" in it })
+    }
+
+    @Test
+    fun refusedRenameComesBackFromTheServer() = runTest {
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.renameProject(2, "Workshop")
+        fake.projectsUpdatable = false
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("Work", db.projects().all().single { it.id == 2L }.title)
+        assertTrue(settings.pendingProjectTitles().isEmpty())
+        assertTrue(settings.notices.first().single().contains("Workshop"))
+    }
+
+    @Test
     fun projectColourIsSentAndSurvivesTheNextPull() = runTest {
         assertEquals(SyncResult.Synced, engine.sync())
         repository.setProjectColor(2, "#1565C0")
@@ -647,6 +766,30 @@ class SyncEngineTest {
     }
 
     @Test
+    fun archiveIsSentAndSurvivesTheNextPull() = runTest {
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.archiveProject(2)
+        assertTrue(db.projects().all().single { it.id == 2L }.archived)
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertTrue(db.projects().all().single { it.id == 2L }.archived)
+        assertTrue(settings.pendingProjectArchives().isEmpty())
+        assertTrue(fake.requests.any { it.startsWith("PATCH projects/2") && "\"is_archived\":true" in it.replace(" ", "") })
+    }
+
+    @Test
+    fun refusedArchiveComesBackFromTheServer() = runTest {
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.archiveProject(2)
+        fake.projectsUpdatable = false
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertFalse(db.projects().all().single { it.id == 2L }.archived)
+        assertTrue(settings.pendingProjectArchives().isEmpty())
+        assertTrue(settings.notices.first().single().contains("Work"))
+    }
+
+    @Test
     fun refusedProjectColourComesBackFromTheServer() = runTest {
         assertEquals(SyncResult.Synced, engine.sync())
         repository.setProjectColor(2, "c62828")
@@ -656,6 +799,18 @@ class SyncEngineTest {
         assertEquals("", db.projects().all().single { it.id == 2L }.hexColor)
         assertTrue(settings.pendingProjectColors().isEmpty())
         assertTrue(settings.notices.first().single().contains("Work"))
+    }
+
+    @Test
+    fun descriptionEditIsSentAndSurvivesTheNextPull() = runTest {
+        fake.tasks[1] = FakeVikunja.Task(1, "Order capacitors", description = "old note")
+        assertEquals(SyncResult.Synced, engine.sync())
+        repository.setDescription(1, "  bring the schematic  ")
+        assertEquals("bring the schematic", db.tasks().get(1)!!.description)
+
+        assertEquals(SyncResult.Synced, engine.sync())
+        assertEquals("bring the schematic", db.tasks().get(1)!!.description)
+        assertTrue(fake.requests.any { it.startsWith("PATCH tasks/1") && "bring the schematic" in it })
     }
 
     @Test

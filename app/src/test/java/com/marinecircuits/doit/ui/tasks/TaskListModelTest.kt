@@ -38,6 +38,19 @@ class TaskListModelTest {
     }
 
     @Test
+    fun showsTheDescriptionAndOneIconTargetPerAddress() {
+        val rows = TaskListModel.rows(
+            listOf(task(1, "Read").copy(description = "See https://example.com/a and https://example.com/a")),
+            emptyList(),
+            1,
+            today,
+            zone,
+        )
+        assertEquals("See https://example.com/a and https://example.com/a", rows.single().description)
+        assertEquals(listOf("https://example.com/a"), rows.single().links)
+    }
+
+    @Test
     fun ordersOverdueThenDatedThenUndatedNewestFirst() {
         val rows = TaskListModel.rows(
             listOf(
@@ -79,6 +92,21 @@ class TaskListModelTest {
         assertFalse(rows[1].overdue)
         assertFalse(rows[0].completed)
         assertTrue(rows[0].overdue)
+    }
+
+    @Test
+    fun nextActionsComeFirstAndKeepTheirExistingDateOrder() {
+        val tasks = listOf(
+            task(1, "overdue", "2026-10-20T12:00"),
+            task(2, "next later", "2026-10-30T12:00"),
+            task(3, "next sooner", "2026-10-27T12:00"),
+            task(4, "undated", createdAt = 10),
+        )
+        val rows = TaskListModel.rows(tasks, emptyList(), 1, today, zone,
+            taskLabels = mapOf(2L to listOf("NEXT"), 3L to listOf("next")), nextActionsLabel = "next")
+        assertEquals(listOf("next sooner", "next later", "overdue", "undated"), rows.map { it.task.title })
+        assertEquals(listOf("overdue", "next sooner", "next later", "undated"),
+            TaskListModel.rows(tasks, emptyList(), 1, today, zone).map { it.task.title })
     }
 
     @Test

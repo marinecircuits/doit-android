@@ -23,6 +23,7 @@ class FakeVikunja : Dispatcher() {
         var done: Boolean = false,
         var dueDate: String? = null,
         var projectId: Long = 1,
+        var description: String = "",
         val labelIds: MutableList<Long> = mutableListOf(),
         var repeatAfter: Long = 0,
         var repeatMode: Int = 0,
@@ -34,6 +35,8 @@ class FakeVikunja : Dispatcher() {
     val projects = mutableListOf(1L to "Inbox", 2L to "Work")
     val projectColors = mutableMapOf<Long, String>()
     val projectDescriptions = mutableMapOf<Long, String>()
+    val projectParents = mutableMapOf<Long, Long>()
+    val archivedProjects = mutableSetOf<Long>()
 
     /** False: the token may not update projects (403 on that route). */
     var projectsUpdatable = true
@@ -69,7 +72,7 @@ class FakeVikunja : Dispatcher() {
                 else json(401, """{"message":"Unauthorized"}""")
             request.method == "GET" && path == "projects" -> page(
                 projects.map { (id, title) ->
-                    """{"id":$id,"title":"$title","hex_color":"${projectColors[id].orEmpty()}","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}"""
+                    """{"id":$id,"title":"$title","is_archived":${id in archivedProjects},"hex_color":"${projectColors[id].orEmpty()}","parent_project_id":${projectParents[id] ?: 0},"description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}"""
                 },
             )
             request.method == "GET" && path.matches(Regex("projects/\\d+")) -> {
@@ -81,17 +84,24 @@ class FakeVikunja : Dispatcher() {
             request.method == "PATCH" && path.matches(Regex("projects/\\d+")) -> {
                 if (!projectsUpdatable) return json(403, """{"title":"Forbidden","detail":"missing permission to update projects"}""")
                 val id = path.removePrefix("projects/").toLong()
-                val title = projects.find { it.first == id }?.second ?: return json(404, """{"title":"Not Found"}""")
+                var title = projects.find { it.first == id }?.second ?: return json(404, """{"title":"Not Found"}""")
                 if (request.getHeader("Content-Type")?.startsWith("application/json-patch+json") == true) {
                     val patch = VikunjaJson.parseToJsonElement(body).jsonArray
                     val previous = patch[0].jsonObject.getValue("value").jsonPrimitive.content
                     if (previous != projectDescriptions[id].orEmpty()) return json(412, """{"title":"Precondition Failed"}""")
                     projectDescriptions[id] = patch[1].jsonObject.getValue("value").jsonPrimitive.content
                 } else {
-                    projectColors[id] = parse(body)["hex_color"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                    val fields = parse(body)
+                    fields["hex_color"]?.jsonPrimitive?.contentOrNull?.let { projectColors[id] = it }
+                    if (fields["is_archived"]?.jsonPrimitive?.booleanOrNull == true) archivedProjects += id
+                    fields["title"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }?.let { name ->
+                        title = name
+                        val index = projects.indexOfFirst { it.first == id }
+                        if (index >= 0) projects[index] = id to name
+                    }
                 }
                 val hex = projectColors[id].orEmpty()
-                json(200, """{"id":$id,"title":"$title","hex_color":"$hex","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}""")
+                json(200, """{"id":$id,"title":"$title","is_archived":${id in archivedProjects},"hex_color":"$hex","description":${JsonPrimitive(projectDescriptions[id].orEmpty())}}""")
             }
             request.method == "GET" && path == "tasks" -> page(tasks.values.filterNot { it.done }.map(::encode))
             request.method == "GET" && path == "labels" ->
@@ -116,6 +126,18 @@ class FakeVikunja : Dispatcher() {
                 if (!task.labelIds.remove(parts[3].toLong())) return json(404, """{"title":"Not Found"}""")
                 MockResponse().setResponseCode(204)
             }
+            request.method == "POST" && path == "projects" -> {
+                val fields = parse(body)
+                val title = fields["title"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                    ?: return json(400, """{"title":"Bad Request"}""")
+                val parent = fields["parent_project_id"]?.jsonPrimitive?.longOrNull ?: 0L
+                val description = fields["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val id = nextId++
+                projects += id to title
+                projectParents[id] = parent
+                if (description.isNotEmpty()) projectDescriptions[id] = description
+                json(201, """{"id":$id,"title":${JsonPrimitive(title)},"parent_project_id":$parent,"description":${JsonPrimitive(description)}}""")
+            }
             request.method == "POST" && path.matches(Regex("projects/\\d+/tasks")) -> {
                 val fields = parse(body)
                 val task = Task(nextId++, fields["title"]!!.jsonPrimitive.content, projectId = path.split("/")[1].toLong())
@@ -134,12 +156,21 @@ class FakeVikunja : Dispatcher() {
                 if (reopenOnComplete && task.done) task.done = false
                 json(200, encode(task))
             }
+            request.method == "GET" && path.matches(Regex("tasks/\\d+/attachments")) ->
+                page(emptyList())
+            request.method == "POST" && path.matches(Regex("tasks/\\d+/attachments")) ->
+                json(201, """{"success":[{"id":1,"task_id":1,"file":{"id":1,"name":"doc.pdf","mime":"application/pdf","size":1}}]}""")
+            request.method == "GET" && path.matches(Regex("tasks/\\d+/attachments/\\d+")) ->
+                MockResponse().setResponseCode(200).setBody("pdf")
+            request.method == "DELETE" && path.matches(Regex("tasks/\\d+/attachments/\\d+")) ->
+                MockResponse().setResponseCode(204)
             else -> json(404, """{"title":"Not Found"}""")
         }
     }
 
     private fun apply(task: Task, fields: JsonObject) {
         fields["title"]?.jsonPrimitive?.contentOrNull?.let { task.title = it }
+        fields["description"]?.jsonPrimitive?.contentOrNull?.let { task.description = it }
         fields["done"]?.jsonPrimitive?.booleanOrNull?.let { task.done = it }
         fields["project_id"]?.jsonPrimitive?.longOrNull?.let { task.projectId = it }
         fields["repeat_after"]?.jsonPrimitive?.longOrNull?.let { task.repeatAfter = it }
@@ -155,7 +186,7 @@ class FakeVikunja : Dispatcher() {
         val labelsJson = if (taskLabels.isEmpty()) "null" else taskLabels.joinToString(",", "[", "]") { encode(it) }
         return """{"id":${task.id},"title":"${task.title}","done":${task.done},"project_id":${task.projectId},""" +
             """"due_date":"${task.dueDate ?: "0001-01-01T00:00:00Z"}","created":"2026-10-26T10:00:00Z",""" +
-            """"repeat_after":${task.repeatAfter},"repeat_mode":${task.repeatMode},"labels":$labelsJson}"""
+            """"repeat_after":${task.repeatAfter},"repeat_mode":${task.repeatMode},"description":${JsonPrimitive(task.description)},"labels":$labelsJson}"""
     }
 
     private fun encode(label: Label) = """{"id":${label.id},"title":"${label.title}","hex_color":"${label.hexColor}"}"""

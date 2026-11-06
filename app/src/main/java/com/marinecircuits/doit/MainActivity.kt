@@ -29,7 +29,7 @@ import com.marinecircuits.doit.ui.tasks.TasksViewModel
 import com.marinecircuits.doit.ui.theme.DoitTheme
 
 class MainActivity : ComponentActivity() {
-    /** Grows each time something (the widget's + button) asks for the capture box to be focused. */
+    /** Grows each time the widget or launcher shortcut asks to focus the capture box. */
     private var focusCaptureRequests by mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,7 +53,7 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        /** Opens the app with the capture box focused (the widget's + button). */
+        /** Opens the app with the capture box focused (widget or launcher shortcut). */
         const val ACTION_CAPTURE = "com.marinecircuits.doit.CAPTURE"
     }
 }
@@ -89,7 +89,12 @@ private fun DoitRoot(container: AppContainer, focusCaptureRequests: Int) {
                     syncResults = container.syncEngine.lastResult,
                     sync = container.syncEngine::sync,
                     createSubproject = container.syncEngine::createSubproject,
+                    promoteTask = container.syncEngine::promoteTask,
                     signOut = container::signOut,
+                    downloadPdf = { taskId, remoteId ->
+                        val credentials = container.settings.credentials()
+                        if (credentials == null) ByteArray(0) else container.apiFor(credentials).downloadAttachment(taskId, remoteId)
+                    },
                     clock = DeviceClock,
                 )
             },

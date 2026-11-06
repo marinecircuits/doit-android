@@ -21,6 +21,31 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class DatabaseMigrationTest {
     @Test
+    fun version9UpgradePreservesDescriptionsAttachmentsAndQueuedWork() {
+        createVersion(9) {
+            execSQL("INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration, description) VALUES (-1, 'Read guide', 1234, 7, 0, 5, 0, 'Keep these notes')")
+            execSQL("INSERT INTO pending_changes (taskId, kind, fields, revision) VALUES (-1, 'create', '{\"title\":\"Read guide\"}', 3)")
+            execSQL("INSERT INTO attachments (taskId, filename, size, localPath, pending) VALUES (-1, 'guide.pdf', 42, '/cache/guide.pdf', 'upload')")
+            execSQL("INSERT INTO task_history (taskId, title, projectId, kind, happenedAt) VALUES (12, 'Old deletion', 7, 'deleted', 6)")
+        }
+        upgrade { upgraded ->
+            val task = upgraded.tasks().get(-1)!!
+            assertEquals("Keep these notes", task.description)
+            assertEquals(1234L, task.dueAt)
+            assertEquals(0L, task.repeatAfter)
+            assertEquals(0, task.repeatMode)
+            assertEquals(3, upgraded.pendingChanges().forTask(-1)?.revision)
+            val pdf = upgraded.attachments().forTask(-1).single()
+            assertEquals("/cache/guide.pdf", pdf.localPath)
+            assertEquals(AttachmentEntity.UPLOAD, pdf.pending)
+            val history = upgraded.taskHistory().observeAll().first().single()
+            assertEquals("Old deletion", history.title)
+            assertEquals(0L, history.repeatAfter)
+            assertEquals(0, history.repeatMode)
+        }
+    }
+
+    @Test
     fun version7UpgradeKeepsPendingTasksAndAddsRepeatDefaults() {
         createVersion(7) {
             execSQL("INSERT INTO tasks (id, title, dueAt, projectId, done, createdAt, syncGeneration) VALUES (-1, 'Keep me', NULL, 7, 0, 5, 0)")

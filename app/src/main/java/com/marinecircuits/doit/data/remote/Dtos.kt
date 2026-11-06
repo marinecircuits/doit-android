@@ -22,6 +22,7 @@ data class TaskDto(
     @SerialName("repeat_after") val repeatAfter: Long = 0,
     @SerialName("repeat_mode") val repeatMode: Int = 0,
     val created: String? = null,
+    val description: String = "",
     /** Vikunja sends null for a task without labels; [VikunjaJson] turns that into the empty default. */
     val labels: List<LabelDto> = emptyList(),
 )
@@ -80,4 +81,25 @@ data class ProblemDto(
     val title: String? = null,
     val detail: String? = null,
     val message: String? = null,
+)
+
+
+@Serializable
+data class FileDto(
+    val id: Long = 0,
+    val name: String = "",
+    val mime: String = "",
+    val size: Long = 0,
+)
+
+@Serializable
+data class AttachmentDto(
+    val id: Long = 0,
+    @SerialName("task_id") val taskId: Long = 0,
+    val file: FileDto = FileDto(),
+)
+
+@Serializable
+data class AttachmentUploadResultDto(
+    val success: List<AttachmentDto> = emptyList(),
 )

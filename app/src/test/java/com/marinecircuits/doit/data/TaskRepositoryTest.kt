@@ -11,6 +11,9 @@ import com.marinecircuits.doit.inMemoryDatabase
 import com.marinecircuits.doit.testClock
 import com.marinecircuits.doit.testSettings
 import com.marinecircuits.doit.testZone
+import java.io.File
+import java.io.IOException
+import java.nio.file.Files
 import java.time.LocalDate
 import java.time.ZonedDateTime
 import kotlinx.coroutines.test.runTest
@@ -20,8 +23,10 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.After
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -94,6 +99,57 @@ class TaskRepositoryTest {
         db.projects().insertAll(projects.map { if (it.id == 1L) it.copy(description = "<p>doit:type=shopping</p>") else it })
         settings.setSyncedShoppingProjects(setOf(1))
         db.labels().insertAll(listOf(LabelEntity(7, "Errand"), LabelEntity(8, "Doing")))
+    }
+
+    @Test
+    fun sharingPdfQueuesItsTaskAndAttachmentTogether() = runTest {
+        val directory = Files.createTempDirectory("doit-share-pdf").toFile()
+        try {
+            repository = TaskRepository(db, settings, idRemap, testClock, directory) { localChanges++ }
+            db.labels().insertAll(listOf(LabelEntity(20, "errand")))
+            val bytes = byteArrayOf(37, 80, 68, 70)
+            val id = repository.capturePdf(
+                "Read guide #Work @errand", "guide.pdf", bytes,
+                description = "From the file manager", dueDate = LocalDate.of(2026, 11, 4),
+                repeat = Recurrence.Rule(0, Recurrence.MONTHLY),
+            )!!
+            val task = db.tasks().get(id)!!
+            assertEquals("Read guide", task.title)
+            assertEquals(2L, task.projectId)
+            assertEquals("From the file manager", task.description)
+            assertEquals(Recurrence.MONTHLY, task.repeatMode)
+            assertEquals(JsonPrimitive(Recurrence.MONTHLY), pendingFields(id)[TaskRepository.REPEAT_MODE])
+            assertEquals(listOf("errand"), db.taskLabels().forTask(id))
+            val attachment = db.attachments().forTask(id).single()
+            assertEquals(id, attachment.taskId)
+            assertEquals("guide.pdf", attachment.filename)
+            assertEquals("upload", attachment.pending)
+            assertArrayEquals(bytes, File(attachment.localPath).readBytes())
+            assertEquals(PendingChangeEntity.CREATE, db.pendingChanges().forTask(id)?.kind)
+            assertEquals(1, localChanges)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun unreadableAttachmentDirectoryDoesNotCreateAPartialTask() = runTest {
+        val fileInsteadOfDirectory = File.createTempFile("doit-share-pdf", ".tmp")
+        try {
+            repository = TaskRepository(db, settings, idRemap, testClock, fileInsteadOfDirectory) { localChanges++ }
+            try {
+                repository.capturePdf("Review document", "review.pdf", byteArrayOf(1, 2, 3))
+                fail("Expected an IOException")
+            } catch (_: IOException) {
+                // Nothing should be queued when the file could not be saved.
+            }
+            assertTrue(db.tasks().open().isEmpty())
+            assertTrue(db.pendingChanges().all().isEmpty())
+            assertTrue(db.attachments().pending().isEmpty())
+            assertEquals(0, localChanges)
+        } finally {
+            fileInsteadOfDirectory.delete()
+        }
     }
 
     @Test
@@ -230,7 +286,7 @@ class TaskRepositoryTest {
     }
 
     @Test
-    fun captureCreatesLocalTaskAndQueuedCreateInDefaultProject() = runTest {
+    fun captureCreatesLocalTaskAndQueuedCreateInInbox() = runTest {
         settings.setDefaultProjectId(2)
 
         val id = repository.capture("  Buy filament  ")!!
@@ -238,11 +294,11 @@ class TaskRepositoryTest {
         assertTrue(id < 0)
         val task = db.tasks().get(id)!!
         assertEquals("Buy filament", task.title)
-        assertEquals(2L, task.projectId)
+        assertEquals(1L, task.projectId)
         val change = db.pendingChanges().forTask(id)!!
         assertEquals(PendingChangeEntity.CREATE, change.kind)
         assertEquals(
-            JsonObject(mapOf("title" to JsonPrimitive("Buy filament"), "project_id" to JsonPrimitive(2))),
+            JsonObject(mapOf("title" to JsonPrimitive("Buy filament"), "project_id" to JsonPrimitive(1))),
             PendingChanges.decode(change.fields),
         )
         assertEquals(1, localChanges)
@@ -293,6 +349,17 @@ class TaskRepositoryTest {
         assertEquals(JsonPrimitive(3), fields["project_id"])
         assertEquals(JsonArray(listOf(JsonPrimitive("Errand"))), fields[TaskRepository.LABELS])
         assertEquals(JsonPrimitive(description), fields["description"])
+    }
+
+    @Test
+    fun mainScreenCaptureGoesToInboxEvenWhenTheVikunjaDefaultIsElsewhere() = runTest {
+        settings.setDefaultProjectId(2)
+        val id = repository.capture("Buy milk")!!
+        assertEquals(1L, db.tasks().get(id)!!.projectId)
+
+        db.projects().archive(1)
+        val fallback = repository.capture("Buy tape")!!
+        assertEquals(2L, db.tasks().get(fallback)!!.projectId)
     }
 
     @Test

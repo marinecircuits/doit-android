@@ -5,12 +5,16 @@ import androidx.lifecycle.viewModelScope
 import com.marinecircuits.doit.data.CaptureSyntax
 import com.marinecircuits.doit.data.Recurrence
 import com.marinecircuits.doit.data.Doing
+import com.marinecircuits.doit.data.NextActions
+import com.marinecircuits.doit.data.NextActionsChoice
 import com.marinecircuits.doit.data.SettingsStore
 import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
+import com.marinecircuits.doit.data.local.isInbox
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.local.TaskHistoryEntity
+import com.marinecircuits.doit.data.sync.PromotedTask
 import com.marinecircuits.doit.data.sync.SyncResult
 import java.time.Clock
 import java.time.LocalDate
@@ -28,6 +32,8 @@ import kotlinx.coroutines.launch
 data class TasksUiState(
     val today: LocalDate,
     val rows: List<TaskRow> = emptyList(),
+    /** Every cached open task, regardless of the current project or label view, for slash search. */
+    val searchRows: List<TaskRow> = emptyList(),
     /** False until the database answered once, so an empty list isn't mistaken for "nothing to do". */
     val loaded: Boolean = false,
     /** Non-archived projects, for the edit sheet. */
@@ -50,8 +56,10 @@ data class TasksUiState(
     /** Set when the capture box opened a label. Mutually exclusive with [path]. */
     val openLabel: LabelEntity? = null,
     val contextLabelIds: List<Long?> = listOf(null, null, null),
+    val swipeDownLabelId: Long? = null,
     val contextIndex: Int? = null,
     val contextScreen: Boolean = false,
+    val nextActionsLabelId: Long? = null,
     val serverAddress: String? = null,
     val shoppingProjects: Set<Long> = emptySet(),
     val doingLabel: LabelEntity? = null,
@@ -59,6 +67,8 @@ data class TasksUiState(
     val doingTaskIds: Set<Long> = emptySet(),
     /** The first open doing task in the app's normal task order, across all projects. */
     val doingTask: TaskRow? = null,
+    /** Vikunja's default project. Together with a title of Inbox, this cannot have subprojects. */
+    val defaultProjectId: Long? = null,
 )
 
 data class RecentTasksState(
@@ -98,6 +108,7 @@ private data class ListInputsForView(
     val index: Int?,
     val generation: Long,
     val shopping: Set<Long>,
+    val nextActions: NextActionsChoice,
 )
 private data class LabelViewFrame(
     val key: LabelViewKey? = null,
@@ -112,7 +123,9 @@ class TasksViewModel(
     syncResults: StateFlow<SyncResult?>,
     private val sync: suspend () -> SyncResult,
     private val createSubproject: suspend (Long, String) -> Unit,
+    private val promoteTask: suspend (Long, String, String, Long) -> PromotedTask,
     private val signOut: suspend () -> Unit,
+    private val downloadPdf: suspend (Long, Long) -> ByteArray = { _, _ -> ByteArray(0) },
     private val clock: Clock,
 ) : ViewModel() {
     private val _subproject = MutableStateFlow<CreateSubprojectState?>(null)
@@ -121,6 +134,7 @@ class TasksViewModel(
     fun showCreateSubproject() {
         if (_subproject.value != null) return
         val parent = state.value.path.lastOrNull() ?: return
+        if (parent.isInbox(state.value.defaultProjectId)) return
         _subproject.value = CreateSubprojectState(parent)
     }
 
@@ -134,6 +148,10 @@ class TasksViewModel(
 
     fun submitSubproject() {
         val draft = _subproject.value ?: return
+        if (draft.parent.isInbox(state.value.defaultProjectId)) {
+            _subproject.value = null
+            return
+        }
         if (draft.saving || draft.title.isBlank()) return
         _subproject.value = draft.copy(saving = true, error = null)
         viewModelScope.launch {
@@ -235,7 +253,7 @@ class TasksViewModel(
         LabelInputs(labels, taskLabels.groupBy({ it.taskId }, { it.title }))
     }
 
-    private val viewInputs = combine(inputs, projectPath, labelInputs, openLabelId, settings.contextLabelIds, contextIndex, viewGeneration, settings.shoppingProjects) { values ->
+    private val viewInputs = combine(inputs, projectPath, labelInputs, openLabelId, settings.contextLabelIds, contextIndex, viewGeneration, settings.shoppingProjects, settings.nextActionsChoice) { values ->
         val latest = values[0] as ListInputs
         val path = values[1] as List<Long>
         val labels = values[2] as LabelInputs
@@ -247,7 +265,7 @@ class TasksViewModel(
         }
         @Suppress("UNCHECKED_CAST")
         val shopping = values[7] as Set<Long>
-        ListInputsForView(latest, path, labels, if (index != null) contextIds[index] else labelId, contextIds, index, values[6] as Long, shopping)
+        ListInputsForView(latest, path, labels, if (index != null) contextIds[index] else labelId, contextIds, index, values[6] as Long, shopping, values[8] as NextActionsChoice)
     }
 
     // Keep tasks already seen in this label view even if their membership changes, until navigation changes the view.
@@ -281,7 +299,9 @@ class TasksViewModel(
             latest.open.filter { it.id in doingIds }, latest.projects, null, latest.today, clock.zone,
             taskLabels = labels.byTask, labels = labels.labels,
         ).firstOrNull()
-        val state = view(latest, current.path, labels, current.labelId, retained, shopping).copy(
+        val nextId = NextActions.labelId(current.nextActions, labels.labels)
+        val nextName = labels.labels.firstOrNull { it.id == nextId }?.title
+        val state = view(latest, current.path, labels, current.labelId, retained, shopping, nextName).copy(
             shoppingProjects = shopping,
             contextLabelIds = current.contextIds,
             contextIndex = current.index,
@@ -290,11 +310,12 @@ class TasksViewModel(
             doingCount = doingIds.size,
             doingTaskIds = doingIds,
             doingTask = doingTask,
+            nextActionsLabelId = nextId,
         )
         LabelViewFrame(key, seen, state)
     }.mapNotNull { it.state }
 
-    private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs, labelId: Long?, retainedIds: Set<Long>, shopping: Set<Long>): TasksUiState {
+    private fun view(inputs: ListInputs, requestedPath: List<Long>, labels: LabelInputs, labelId: Long?, retainedIds: Set<Long>, shopping: Set<Long>, nextName: String?): TasksUiState {
         val (open, projects, defaultProjectId, day, completed) = inputs
         val visible = projects.filterNot { it.archived }
         val byId = visible.associateBy { it.id }
@@ -311,6 +332,11 @@ class TasksViewModel(
         val taskLabels = labels.byTask + retained.mapValues { (_, snapshot) ->
             snapshot.labels.filterNot { name -> doing != null && name.equals(doing.title, ignoreCase = true) }
         }
+        val searchRows = TaskListModel.rows(
+            open.filterNot { it.done }, projects, defaultProjectId, day, clock.zone,
+            taskLabels = labels.byTask, labels = labels.labels, shoppingProjects = shopping,
+            nextActionsLabel = nextName,
+        )
         val openLabel = labelId?.let { id -> labels.labels.find { it.id == id } }
         if (openLabel != null) {
             val shown = tasks.filter { task ->
@@ -328,11 +354,14 @@ class TasksViewModel(
                     taskLabels = taskLabels,
                     labels = labels.labels,
                     shoppingProjects = shopping,
+                    nextActionsLabel = nextName,
                 ),
                 loaded = true,
+                searchRows = searchRows,
                 projects = visible,
                 labels = labels.labels,
                 openLabel = openLabel,
+                defaultProjectId = defaultProjectId,
             )
         }
         val shown = if (current == null) tasks else tasks.filter { it.projectId == current.id }
@@ -349,12 +378,15 @@ class TasksViewModel(
                 taskLabels = taskLabels,
                 labels = labels.labels,
                 shoppingProjects = shopping,
+                nextActionsLabel = nextName,
             ),
             loaded = true,
+            searchRows = searchRows,
             projects = visible,
             path = path,
             tiles = ProjectTree.tiles(tileProjects, open),
             labels = labels.labels,
+            defaultProjectId = defaultProjectId,
         )
     }
 
@@ -372,6 +404,7 @@ class TasksViewModel(
             .combine(refreshing) { state, refreshing -> state.copy(refreshing = refreshing) }
             .combine(signOutConfirmation) { state, pending -> state.copy(signOutConfirmation = pending) }
             .combine(settings.serverAddress) { state, address -> state.copy(serverAddress = address) }
+            .combine(settings.swipeDownLabelId) { state, id -> state.copy(swipeDownLabelId = id) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, TasksUiState(today = today.value))
 
     /** The user left the view: tasks completed here leave the list. */
@@ -393,6 +426,17 @@ class TasksViewModel(
         onLeave()
         openLabelId.value = null
         projectPath.value = openPath + projectId
+    }
+
+    /** Search results can point to a project outside the currently open branch. */
+    fun openSearchProject(projectId: Long) {
+        val path = ProjectTree.pathTo(projectId, state.value.projects)
+        if (path.isEmpty()) return
+        viewChanged()
+        contextIndex.value = null
+        onLeave()
+        openLabelId.value = null
+        projectPath.value = path
     }
 
     /** Back from a label or project screen: closes the label, or returns to the parent project or the main view. */
@@ -455,6 +499,19 @@ class TasksViewModel(
         viewModelScope.launch { settings.setContextLabelId(slot, id) }
     }
 
+    fun setNextActionsLabel(id: Long?, onSaved: () -> Unit = {}) {
+        viewModelScope.launch { settings.setNextActionsLabel(id); onSaved() }
+    }
+
+    fun setSwipeDownLabel(id: Long?) {
+        viewModelScope.launch { settings.setSwipeDownLabelId(id) }
+    }
+
+    /** Open the configured label from any view, ignoring missing or unconfigured labels. */
+    fun openSwipeDownLabel() {
+        state.value.swipeDownLabelId?.let(::openLabel)
+    }
+
     /** Open a cached label's cross-project task list without creating a task. */
     fun openLabel(labelId: Long) {
         if (state.value.labels.none { it.id == labelId }) return
@@ -515,6 +572,22 @@ class TasksViewModel(
         viewModelScope.launch { repository.setProjectColor(projectId, hexColor) }
     }
 
+    /** Renames the open project. A blank name is ignored. */
+    fun renameOpenProject(title: String) {
+        val projectId = state.value.path.lastOrNull()?.id ?: return
+        viewModelScope.launch { repository.renameProject(projectId, title) }
+    }
+
+    /** Archives the open project and returns to its parent, or the main view. Subprojects stay. */
+    fun archiveOpenProject() {
+        val projectId = openPath.lastOrNull() ?: return
+        val parent = openPath.dropLast(1)
+        viewChanged()
+        onLeave()
+        projectPath.value = parent
+        viewModelScope.launch { repository.archiveProject(projectId) }
+    }
+
     fun complete(task: TaskEntity) {
         val current = state.value
         val names = current.rows.firstOrNull { it.task.id == task.id }?.labels?.map { it.title }.orEmpty()
@@ -569,6 +642,23 @@ class TasksViewModel(
         viewModelScope.launch { repository.applyEditedTitle(task.id, raw) }
     }
 
+    fun setDescription(task: TaskEntity, description: String) {
+        viewModelScope.launch { repository.setDescription(task.id, description) }
+    }
+
+    fun attachments(taskId: Long) = repository.observeAttachments(taskId)
+
+    fun addPdf(taskId: Long, filename: String, bytes: ByteArray) {
+        viewModelScope.launch { repository.addPdf(taskId, filename, bytes) }
+    }
+
+    fun removePdf(id: Long) {
+        viewModelScope.launch { repository.removeAttachment(id) }
+    }
+
+    /** Opens the cached PDF, downloading it into the cache if this device does not have it yet. */
+    suspend fun localPdf(id: Long) = repository.localPdf(id) { taskId, remoteId -> downloadPdf(taskId, remoteId) }
+
     fun move(task: TaskEntity, projectId: Long) {
         viewModelScope.launch { repository.move(task.id, projectId) }
     }
@@ -576,6 +666,47 @@ class TasksViewModel(
     fun delete(task: TaskEntity) {
         completedHere.update { it - task.id }
         viewModelScope.launch { repository.delete(task.id) }
+    }
+
+    /**
+     * Creates a subproject from this task when the user asks. The task is removed only when the
+     * server copied its name and description. [onDone] receives null when the new project is open.
+     */
+    fun promoteToProject(
+        task: TaskEntity,
+        title: String,
+        description: String,
+        projectId: Long,
+        onDone: (SubprojectError?) -> Unit,
+    ) {
+        if (task.done || title.isBlank()) {
+            onDone(SubprojectError.OTHER)
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val created = promoteTask(task.id, title.trim(), description.trim(), projectId)
+                if (created.removeTask) {
+                    repository.delete(task.id)
+                    completedHere.update { it - task.id }
+                }
+                viewChanged()
+                onLeave()
+                contextIndex.value = null
+                openLabelId.value = null
+                val parentPath = ProjectTree.pathTo(created.project.parentProjectId, state.value.projects)
+                projectPath.value = parentPath + created.project.id
+                onDone(null)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: java.io.IOException) {
+                onDone(SubprojectError.CONNECTION)
+            } catch (e: com.marinecircuits.doit.data.remote.ApiException) {
+                onDone(if (e.isForbidden || e.isUnauthorized) SubprojectError.PERMISSION else SubprojectError.OTHER)
+            } catch (_: Exception) {
+                onDone(SubprojectError.OTHER)
+            }
+        }
     }
 
     fun requestSignOut() {

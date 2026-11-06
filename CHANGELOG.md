@@ -1,3 +1,111 @@
+## 0.32.0 (2026-11-03)
+
+### Feat
+
+- accept shared PDFs as offline tasks
+
+## 0.31.0 (2026-11-03)
+
+### Feat
+
+- attach PDFs to tasks (#96)
+- attach PDFs to tasks
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- cache task PDFs on the device
+- attach PDFs to tasks
+- attach PDFs to tasks
+- attach PDFs to tasks
+- attach PDFs to tasks
+- attach PDFs to tasks
+- attach PDFs to tasks
+
+### Fix
+
+- keep constructor trailing lambdas working
+- keep constructor trailing lambdas working
+- keep constructor trailing lambdas working
+- PDF cache methods belong to SyncEngine, not its companion
+- keep PDF cache sync inside SyncEngine
+
+## 0.30.0 (2026-11-02)
+
+### Feat
+
+- link to the project from the edit sheet (#94)
+- link to the project from the edit sheet
+- open the project from the edit sheet link
+- link to the project from the edit sheet
+
+### Fix
+
+- show Next actions label only on the main screen (#93)
+- show Next actions label only on the main screen
+- show Next actions label only on the main screen
+
+## 0.29.0 (2026-11-02)
+
+### Feat
+
+- promote task to project and pin sync note to bottom
+
+## 0.28.0 (2026-11-01)
+
+### Feat
+
+- edit a task's details in the edit sheet
+- rename the open project from project settings
+- keep Inbox flat and send main-screen tasks there
+
+## 0.27.0 (2026-11-01)
+
+### Feat
+
+- archive the open project from its menu
+
+## 0.26.0 (2026-11-01)
+
+### Feat
+
+- add a slash button beside the capture syntax keys
+
+## 0.25.0 (2026-11-01)
+
+### Feat
+
+- add leading slash search in task capture
+
+### Fix
+
+- import Compose key event accessors
+- use a new shortcut id to bypass stale pinned entries
+- build task shortcut for installed app package
+
+## 0.24.0 (2026-11-01)
+
+### Feat
+
+- add a launcher shortcut to quickly capture a task
+- open configured label on swipe down
+- sort next actions first
+
+## 0.23.0 (2026-10-29)
+
+### Feat
+
+- show task descriptions with a link icon for each address
+- sync shopping settings through project descriptions
+- recognize shared shopping-list markers and quantities
+
 ## 0.22.0 (2026-10-28)
 
 ### Feat

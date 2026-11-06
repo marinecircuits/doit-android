@@ -15,6 +15,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 data class Credentials(val apiBase: HttpUrl, val token: String)
 data class ProjectMarkerChange(val active: Boolean, val revision: Long)
+data class NextActionsChoice(val configured: Boolean, val labelId: Long?)
 
 /** Everything the app remembers outside the task database. The token is stored encrypted. */
 class SettingsStore(
@@ -37,6 +38,16 @@ class SettingsStore(
 
     val defaultProjectId: Flow<Long?> = dataStore.data.map { it[DEFAULT_PROJECT] }
 
+    /** Null preference means use @next if present; zero means the user explicitly chose None. */
+    val nextActionsChoice: Flow<NextActionsChoice> = dataStore.data.map { prefs ->
+        val value = prefs[NEXT_ACTIONS_LABEL]
+        NextActionsChoice(value != null, value?.takeIf { it > 0 })
+    }
+
+    suspend fun setNextActionsLabel(id: Long?) {
+        dataStore.edit { it[NEXT_ACTIONS_LABEL] = id ?: 0L }
+    }
+
     /** Three ordered label screens. Slot one keeps the original context-label preference on upgrade. */
     val contextLabelIds: Flow<List<Long?>> = dataStore.data.map { prefs -> CONTEXT_LABELS.map { prefs[it] } }
 
@@ -44,6 +55,13 @@ class SettingsStore(
         require(slot in CONTEXT_LABELS.indices)
         val key = CONTEXT_LABELS[slot]
         dataStore.edit { prefs -> if (id == null) prefs.remove(key) else prefs[key] = id }
+    }
+
+    /** Label opened by pulling down at the top of a list. */
+    val swipeDownLabelId: Flow<Long?> = dataStore.data.map { it[SWIPE_DOWN_LABEL] }
+
+    suspend fun setSwipeDownLabelId(id: Long?) {
+        dataStore.edit { prefs -> if (id == null) prefs.remove(SWIPE_DOWN_LABEL) else prefs[SWIPE_DOWN_LABEL] = id }
     }
 
     /** Server markers with offline changes overlaid; the legacy local choice is kept until migrated. */
@@ -57,6 +75,15 @@ class SettingsStore(
     }
 
     val pendingProjectMarkers: Flow<Map<Long, ProjectMarkerChange>> = dataStore.data.map { decodeProjectMarkers(it[PROJECT_MARKERS]) }
+
+    /** Projects archived on this device and not yet accepted by the server. */
+    val pendingProjectArchives: Flow<Set<Long>> = dataStore.data.map { prefs ->
+        prefs[PROJECT_ARCHIVES].orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+    }
+
+    /** Project names chosen locally and not yet accepted by the server. */
+    val pendingProjectTitles: Flow<Map<Long, String>> =
+        dataStore.data.map { decodeProjectTitles(it[PROJECT_TITLES]) }
 
     suspend fun migrateShoppingProjects() { dataStore.edit { migrateShoppingProjects(it) } }
 
@@ -164,6 +191,40 @@ class SettingsStore(
         }
     }
 
+    suspend fun pendingProjectArchives(): Set<Long> =
+        dataStore.data.first()[PROJECT_ARCHIVES].orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+
+    suspend fun addPendingProjectArchive(projectId: Long) {
+        dataStore.edit { prefs ->
+            prefs[PROJECT_ARCHIVES] = prefs[PROJECT_ARCHIVES].orEmpty() + projectId.toString()
+        }
+    }
+
+    suspend fun removePendingProjectArchive(projectId: Long) {
+        dataStore.edit { prefs ->
+            val remaining = prefs[PROJECT_ARCHIVES].orEmpty() - projectId.toString()
+            if (remaining.isEmpty()) prefs.remove(PROJECT_ARCHIVES) else prefs[PROJECT_ARCHIVES] = remaining
+        }
+    }
+
+    suspend fun pendingProjectTitles(): Map<Long, String> = decodeProjectTitles(dataStore.data.first()[PROJECT_TITLES])
+
+    suspend fun setPendingProjectTitle(projectId: Long, title: String) {
+        dataStore.edit { prefs ->
+            val titles = decodeProjectTitles(prefs[PROJECT_TITLES]).toMutableMap()
+            titles[projectId] = title
+            prefs[PROJECT_TITLES] = encodeProjectTitles(titles)
+        }
+    }
+
+    suspend fun removePendingProjectTitle(projectId: Long) {
+        dataStore.edit { prefs ->
+            val titles = decodeProjectTitles(prefs[PROJECT_TITLES]).toMutableMap()
+            if (titles.remove(projectId) == null) return@edit
+            if (titles.isEmpty()) prefs.remove(PROJECT_TITLES) else prefs[PROJECT_TITLES] = encodeProjectTitles(titles)
+        }
+    }
+
     private fun decodeProjectColors(raw: String?): Map<Long, String> =
         raw.orEmpty().lineSequence().mapNotNull { line ->
             val id = line.substringBefore('=', "").toLongOrNull() ?: return@mapNotNull null
@@ -173,11 +234,23 @@ class SettingsStore(
     private fun encodeProjectColors(colors: Map<Long, String>): String =
         colors.entries.joinToString("\n") { "${it.key}=${it.value}" }
 
+    private fun decodeProjectTitles(raw: String?): Map<Long, String> =
+        raw.orEmpty().lineSequence().mapNotNull { line ->
+            val id = line.substringBefore('\t', "").toLongOrNull() ?: return@mapNotNull null
+            val title = line.substringAfter('\t', "")
+            if (title.isEmpty()) null else id to title
+        }.toMap()
+
+    private fun encodeProjectTitles(titles: Map<Long, String>): String =
+        titles.entries.joinToString("\n") { "${it.key}\t${it.value.replace('\n', ' ')}" }
+
     private companion object {
         val API_BASE = stringPreferencesKey("api_base")
         val TOKEN = stringPreferencesKey("token")
         val TOKEN_REJECTED = booleanPreferencesKey("token_rejected")
         val DEFAULT_PROJECT = longPreferencesKey("default_project_id")
+        val NEXT_ACTIONS_LABEL = longPreferencesKey("next_actions_label_id")
+        val SWIPE_DOWN_LABEL = longPreferencesKey("swipe_down_label_id")
         val CONTEXT_LABELS = listOf(
             longPreferencesKey("context_label_id"),
             longPreferencesKey("context_label_id_2"),
@@ -189,5 +262,7 @@ class SettingsStore(
         val PROJECT_MARKERS = stringPreferencesKey("pending_project_markers")
         val PROJECT_MARKER_REVISION = longPreferencesKey("project_marker_revision")
         val PROJECT_COLORS = stringPreferencesKey("project_colors")
+        val PROJECT_ARCHIVES = stringSetPreferencesKey("pending_project_archives")
+        val PROJECT_TITLES = stringPreferencesKey("pending_project_titles")
     }
 }

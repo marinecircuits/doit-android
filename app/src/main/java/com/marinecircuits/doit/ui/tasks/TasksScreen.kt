@@ -3,7 +3,12 @@
 package com.marinecircuits.doit.ui.tasks
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -64,7 +69,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -83,6 +87,18 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLocale
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
@@ -106,21 +122,28 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.marinecircuits.doit.R
 import com.marinecircuits.doit.data.Recurrence
+import com.marinecircuits.doit.container
 import com.marinecircuits.doit.data.CaptureSyntax
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import com.marinecircuits.doit.data.local.LabelEntity
+import com.marinecircuits.doit.data.local.isInbox
+import com.marinecircuits.doit.data.local.AttachmentEntity
 import com.marinecircuits.doit.data.local.TaskEntity
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.produceState
 import java.time.LocalDate
 import java.util.Locale
 
 /**
- * The main view and every project screen: capture box, status line, project tiles, and a task list in projects,
- * and the sheets for rescheduling and editing. [focusCaptureRequests] grows each time the widget's + button asks
+ * The main view and every project screen: capture box, project tiles, a task list in projects,
+ * and the sheets for rescheduling and editing. The sync status sits at the bottom so it does not push the list down.
+ * [focusCaptureRequests] grows each time the widget's + button asks
  * for the capture box, which always opens the main view.
  */
 @Composable
 fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNewToken: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val appContext = LocalContext.current
     val locale = LocalLocale.current.platformLocale
     val words = DueWords(
         today = stringResource(R.string.due_today),
@@ -133,6 +156,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     val openLabel = state.openLabel
     val isContext = state.contextScreen
     var labelPickerOpen by remember { mutableStateOf(false) }
+    var nextActionsPickerOpen by remember { mutableStateOf(false) }
     var labelPickerSlot by remember { mutableStateOf<Int?>(null) }
     val currentProject = state.path.lastOrNull()
     // Each view starts at the top of its own list.
@@ -146,9 +170,37 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     captureSchedule.changeText = { captureText = it }
     var scrollToTaskId by remember { mutableStateOf<Long?>(null) }
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
+    val scope = rememberCoroutineScope()
+    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        val task = editTarget ?: return@rememberLauncherForActivityResult
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val name = uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { null } ?: "document.pdf"
+            val bytes = appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@launch
+            viewModel.addPdf(task.id, if (name.endsWith(".pdf", true)) name else "$name.pdf", bytes)
+        }
+    }
+    val pdfs by produceState(emptyList<AttachmentEntity>(), editTarget?.id) {
+        val id = editTarget?.id
+        if (id == null) { value = emptyList(); return@produceState }
+        viewModel.attachments(id).collect { value = it }
+    }
     var colorOpen by remember { mutableStateOf(false) }
     var shoppingOpen by remember { mutableStateOf(false) }
+    var archiveOpen by remember { mutableStateOf(false) }
     var recentOpen by remember { mutableStateOf(false) }
+    var selectedSearchIndex by remember { mutableIntStateOf(0) }
+    val searchQuery = TaskSearch.query(captureText.text)
+    val searchResults = searchQuery?.let { TaskSearch.matches(it, state.searchRows, state.projects, state.labels) }.orEmpty()
+    fun openSearchResult(result: TaskSearch.Result) {
+        captureText = TextFieldValue()
+        selectedSearchIndex = 0
+        when (result.kind) {
+            TaskSearch.Kind.PROJECT -> viewModel.openSearchProject(result.id)
+            TaskSearch.Kind.TASK -> editTarget = state.searchRows.firstOrNull { it.task.id == result.id }?.task
+            TaskSearch.Kind.LABEL -> viewModel.openLabel(result.id)
+        }
+    }
     val recent by viewModel.recentTasks.collectAsStateWithLifecycle()
     val subproject by viewModel.subproject.collectAsStateWithLifecycle()
     subproject?.let { draft ->
@@ -158,15 +210,25 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     if (labelPickerOpen) {
         val slot = labelPickerSlot
         if (slot == null) {
-            ContextLabelSettings(state.labels, state.contextLabelIds, onChoose = { labelPickerSlot = it }) {
+            ContextLabelSettings(state.labels, state.contextLabelIds, state.swipeDownLabelId, onChoose = { labelPickerSlot = it }) {
                 labelPickerOpen = false
             }
         } else {
-            ContextLabelPicker(state.labels, state.contextLabelIds.getOrNull(slot), onSelect = { id ->
-                viewModel.setContextLabel(slot, id)
+            ContextLabelPicker(state.labels, if (slot == 3) state.swipeDownLabelId else state.contextLabelIds.getOrNull(slot),
+                title = stringResource(R.string.menu_context_label), noneText = stringResource(R.string.context_disabled), onSelect = { id ->
+                if (slot == 3) viewModel.setSwipeDownLabel(id) else viewModel.setContextLabel(slot, id)
                 labelPickerSlot = null
             }) { labelPickerSlot = null }
         }
+    }
+
+    if (nextActionsPickerOpen) {
+        ContextLabelPicker(state.labels, state.nextActionsLabelId,
+            title = stringResource(R.string.next_actions_label), noneText = stringResource(R.string.next_actions_none),
+            onSelect = { id ->
+                nextActionsPickerOpen = false
+                viewModel.setNextActionsLabel(id) { appContext.container.refreshWidgets() }
+            }) { nextActionsPickerOpen = false }
     }
 
     // Leaving the screen (or the app) is a view change: rows completed here are gone when the user returns.
@@ -176,6 +238,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
 
     BackHandler(enabled = isContext || openLabel != null || currentProject != null) { viewModel.navigateUp() }
+    BackHandler(enabled = searchQuery != null) { captureText = TextFieldValue(); selectedSearchIndex = 0 }
 
     LaunchedEffect(focusCaptureRequests) {
         if (focusCaptureRequests > 0) {
@@ -209,6 +272,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
 
     fun capture() {
+        if (searchQuery != null) {
+            searchResults.getOrNull(selectedSearchIndex.coerceIn(0, (searchResults.size - 1).coerceAtLeast(0)))?.let(::openSearchResult)
+            return
+        }
         if (!captureSchedule.prepare(captureText)) return
         val text = captureText.text
         if (text.isBlank()) return
@@ -274,8 +341,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             )
         }) {
             val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else currentProject?.title
-            headerTitle?.let { ProjectHeader(if (currentProject != null && currentProject.id in state.shoppingProjects) "🛒 $it" else it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
-            state.doingTask?.let { row ->
+            if (searchQuery == null) headerTitle?.let { ProjectHeader(if (currentProject != null && currentProject.id in state.shoppingProjects) "🛒 $it" else it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
+            if (searchQuery == null) state.doingTask?.let { row ->
                 DoingTop(
                     row = row,
                     count = state.doingCount,
@@ -288,19 +355,38 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             CaptureBar(
                 hint = currentProject?.let { stringResource(R.string.capture_hint_project, it.title) }
                     ?: stringResource(R.string.capture_hint),
-                belowStatusBar = headerTitle == null && state.doingTask == null,
+                belowStatusBar = searchQuery != null || (headerTitle == null && state.doingTask == null),
                 text = captureText,
-                onTextChange = { captureText = it },
+                onTextChange = { value ->
+                    if (TaskSearch.query(value.text) != searchQuery) selectedSearchIndex = 0
+                    captureText = value
+                },
                 onScheduleKey = { captureSchedule.key(it, captureText) },
+                onSearchKey = { event ->
+                    if (searchQuery == null || event.type != KeyEventType.KeyDown) false else when (event.key) {
+                        Key.DirectionDown -> { selectedSearchIndex = (selectedSearchIndex + 1).coerceAtMost(searchResults.lastIndex.coerceAtLeast(0)); true }
+                        Key.DirectionUp -> { selectedSearchIndex = (selectedSearchIndex - 1).coerceAtLeast(0); true }
+                        Key.Escape -> { captureText = TextFieldValue(); selectedSearchIndex = 0; true }
+                        Key.Enter, Key.NumPadEnter -> { capture(); true }
+                        else -> false
+                    }
+                },
+                searchMode = searchQuery != null,
+                hasSearchResult = searchResults.isNotEmpty(),
                 onFocusChange = { captureFocused = it },
                 onSend = ::capture,
                 onSignOut = viewModel::requestSignOut,
                 onRecent = { viewModel.openRecentTasks(); recentOpen = true },
                 onConfigureContext = { labelPickerOpen = true },
+                onConfigureNextActions = { nextActionsPickerOpen = true },
+                showNextActionsOption = currentProject == null && openLabel == null,
                 showContextOption = currentProject == null && (openLabel == null || isContext),
                 onProjectColor = currentProject?.let { { colorOpen = true } },
                 onProjectSettings = currentProject?.let { { shoppingOpen = true } },
-                onCreateSubproject = currentProject?.let { viewModel::showCreateSubproject },
+                onCreateSubproject = currentProject
+                    ?.takeUnless { it.isInbox(state.defaultProjectId) }
+                    ?.let { viewModel::showCreateSubproject },
+                onArchiveProject = currentProject?.let { { archiveOpen = true } },
                 serverAddress = state.serverAddress,
                 status = state.status,
                 syncedOnce = state.syncedOnce,
@@ -308,23 +394,45 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 syncError = state.syncError,
                 focusRequester = captureFocus,
             )
-            ScheduleChips(captureSchedule, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
-            val suggestions = if (captureFocused && captureText.selection.collapsed) {
+            if (searchQuery == null) ScheduleChips(captureSchedule, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+            val suggestions = if (searchQuery == null && captureFocused && captureText.selection.collapsed) {
                 CaptureSyntax.suggestionsAt(captureText.text, captureText.selection.end, state.labels, state.projects)
             } else {
                 emptyList()
             }
-            Box(Modifier.fillMaxWidth().weight(1f)) {
+            val threshold = with(LocalDensity.current) { 80.dp.toPx() }
+            val downConnection = remember(state.swipeDownLabelId, state.labels, threshold) {
+                object : NestedScrollConnection {
+                    var pulled = 0f
+                    var opened = false
+                    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                        if (source == NestedScrollSource.UserInput && available.y > 0 && !opened &&
+                            state.labels.any { it.id == state.swipeDownLabelId }) {
+                            pulled += available.y
+                            if (pulled >= threshold) { opened = true; viewModel.openSwipeDownLabel() }
+                        }
+                        return Offset.Zero
+                    }
+                    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                        if (available.y < 0) pulled = 0f
+                        return Offset.Zero
+                    }
+                    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                        pulled = 0f
+                        opened = false
+                        return Velocity.Zero
+                    }
+                }
+            }
+            Box(Modifier.fillMaxWidth().weight(1f).nestedScroll(downConnection)) {
+                if (searchQuery != null) {
+                    SearchResults(searchQuery, searchResults, selectedSearchIndex.coerceAtMost(searchResults.lastIndex.coerceAtLeast(0)), ::openSearchResult)
+                } else {
                 Column(Modifier.fillMaxSize()) {
                     if (state.tokenRejected) TokenRejectedBanner(onEnterNewToken)
-                    StatusLine(state.status)
 
                     if (openLabel == null && currentProject == null) {
-                        PullToRefreshBox(
-                            isRefreshing = state.refreshing,
-                            onRefresh = viewModel::refresh,
-                            modifier = Modifier.fillMaxWidth().weight(1f),
-                        ) {
+                        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                             when {
                                 state.tiles.isNotEmpty() || state.labels.isNotEmpty() || (state.loaded && state.syncedOnce) -> ProjectTiles(
                                     state.tiles,
@@ -343,15 +451,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     } else {
                         // In a project, tasks take two thirds and subproject tiles the lower third.
                         val hasTiles = openLabel == null && state.tiles.isNotEmpty()
-                        PullToRefreshBox(
-                            isRefreshing = state.refreshing,
-                            onRefresh = viewModel::refresh,
-                            modifier = Modifier.fillMaxWidth().weight(if (hasTiles) 2f else 1f),
-                        ) {
+                        Box(modifier = Modifier.fillMaxWidth().weight(if (hasTiles) 2f else 1f)) {
                             when {
                                 state.rows.isNotEmpty() -> LazyColumn(
                                     state = listState,
-                                    contentPadding = if (hasTiles) {
+                                    contentPadding = if (hasTiles || state.status.isNotEmpty()) {
                                         PaddingValues()
                                     } else {
                                         WindowInsets.navigationBars.asPaddingValues()
@@ -423,12 +527,20 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 52.dp),
                     )
                 }
+                }
             }
-            if (captureFocused) {
+            if (searchQuery == null && state.status.isNotEmpty()) {
+                StatusLine(
+                    state.status,
+                    modifier = if (captureFocused) Modifier else Modifier.navigationBarsPadding(),
+                )
+            }
+            if (captureFocused && searchQuery == null) {
                 SyntaxKeyRow(
                     onInsert = { token -> captureText = SyntaxKeys.insert(captureText, token) },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     onPickDate = { captureText = SyntaxKeys.insert(captureText, "!") },
+                    includeSearch = true,
                 )
             }
         }
@@ -443,12 +555,21 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
 
     if (shoppingOpen && currentProject != null) {
+        val projectId = currentProject.id
+        var projectName by remember(projectId) { mutableStateOf(currentProject.title) }
         AlertDialog(
             onDismissRequest = { shoppingOpen = false },
             title = { Text(stringResource(R.string.project_settings)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(currentProject.title, style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = projectName,
+                        onValueChange = { projectName = it },
+                        label = { Text(stringResource(R.string.project_name)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.shopping_list), Modifier.weight(1f))
                         Switch(checked = currentProject.id in state.shoppingProjects, onCheckedChange = viewModel::setShoppingProject)
@@ -457,7 +578,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     Text(stringResource(R.string.shopping_quantity_hint))
                 }
             },
-            confirmButton = { TextButton(onClick = { shoppingOpen = false }) { Text(stringResource(R.string.ok)) } },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.renameOpenProject(projectName)
+                    shoppingOpen = false
+                }) { Text(stringResource(R.string.ok)) }
+            },
         )
     }
 
@@ -483,17 +609,49 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             locale = locale,
             onTitleChange = { viewModel.applyEditedTitle(task, it) },
             onScheduleChange = { rule, day -> viewModel.setRepeat(task, rule, day) },
+            onDescriptionChange = { viewModel.setDescription(task, it) },
             onDateChange = { viewModel.reschedule(task, it) },
             onProjectChange = { viewModel.move(task, it) },
+            onOpenProject = { id ->
+                editTarget = null
+                viewModel.openSearchProject(id)
+            },
+            attachments = pdfs,
+            onAddPdf = { pickPdf.launch(arrayOf("application/pdf")) },
+            onOpenPdf = { id ->
+                scope.launch {
+                    val file = viewModel.localPdf(id) ?: return@launch
+                    val uri = FileProvider.getUriForFile(appContext, appContext.packageName + ".fileprovider", file)
+                    val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf")
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    runCatching { appContext.startActivity(intent) }
+                }
+            },
+            onRemovePdf = { id -> viewModel.removePdf(id) },
             onDelete = {
                 viewModel.delete(task)
                 editTarget = null
             },
-            working = task.id in state.doingTaskIds,
-            onWork = if (state.doingLabel != null && !task.done) {
-                { viewModel.setDoing(task, task.id !in state.doingTaskIds) }
-            } else null,
+            onPromote = { title, description, projectId, onDone ->
+                viewModel.promoteToProject(task, title, description, projectId, onDone)
+            },
             onDismiss = { editTarget = null },
+        )
+    }
+
+    if (archiveOpen && currentProject != null) {
+        val title = currentProject.title
+        AlertDialog(
+            onDismissRequest = { archiveOpen = false },
+            title = { Text(stringResource(R.string.archive_title)) },
+            text = { Text(stringResource(R.string.archive_body, title)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    archiveOpen = false
+                    viewModel.archiveOpenProject()
+                }) { Text(stringResource(R.string.archive_confirm)) }
+            },
+            dismissButton = { TextButton(onClick = { archiveOpen = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 
@@ -538,6 +696,7 @@ private fun DoingTop(row: TaskRow, count: Int, onOpen: () -> Unit, modifier: Mod
 private fun ContextLabelSettings(
     labels: List<com.marinecircuits.doit.data.local.LabelEntity>,
     selected: List<Long?>,
+    swipeDown: Long?,
     onChoose: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -553,6 +712,11 @@ private fun ContextLabelSettings(
                         Text(stringResource(R.string.context_slot, slot + 1, name))
                     }
                 }
+                val downName = labels.firstOrNull { it.id == swipeDown }?.title
+                    ?: stringResource(R.string.context_not_configured)
+                TextButton(onClick = { onChoose(3) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.context_swipe_down, downName))
+                }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.ok)) } },
@@ -560,13 +724,14 @@ private fun ContextLabelSettings(
 }
 
 @Composable
-private fun ContextLabelPicker(labels: List<com.marinecircuits.doit.data.local.LabelEntity>, selected: Long?, onSelect: (Long?) -> Unit, onDismiss: () -> Unit) {
+private fun ContextLabelPicker(labels: List<com.marinecircuits.doit.data.local.LabelEntity>, selected: Long?,
+                               title: String, noneText: String, onSelect: (Long?) -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.menu_context_label)) },
+        title = { Text(title) },
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
-                item { TextButton(onClick = { onSelect(null) }) { Text(stringResource(R.string.context_disabled)) } }
+                item { TextButton(onClick = { onSelect(null) }) { Text(noneText) } }
                 items(labels, key = { it.id }) { label ->
                     TextButton(onClick = { onSelect(label.id) }, modifier = Modifier.fillMaxWidth()) {
                         Text((if (selected == label.id) "✓ " else "") + label.title)
@@ -585,15 +750,21 @@ private fun CaptureBar(
     belowStatusBar: Boolean,
     text: TextFieldValue,
     onTextChange: (TextFieldValue) -> Unit,
+    onSearchKey: (KeyEvent) -> Boolean,
+    searchMode: Boolean,
+    hasSearchResult: Boolean,
     onFocusChange: (Boolean) -> Unit,
     onSend: () -> Unit,
     onSignOut: () -> Unit,
     onRecent: () -> Unit,
     onConfigureContext: () -> Unit,
+    onConfigureNextActions: () -> Unit,
+    showNextActionsOption: Boolean,
     showContextOption: Boolean,
     onProjectColor: (() -> Unit)?,
     onProjectSettings: (() -> Unit)?,
     onCreateSubproject: (() -> Unit)?,
+    onArchiveProject: (() -> Unit)? = null,
     serverAddress: String?,
     status: List<StatusPart>,
     syncedOnce: Boolean,
@@ -620,15 +791,16 @@ private fun CaptureBar(
             onValueChange = onTextChange,
             placeholder = { Text(hint, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             singleLine = true,
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { onSend() }),
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = if (searchMode) ImeAction.Search else ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { onSend() }, onSearch = { onSend() }),
             trailingIcon = {
-                IconButton(onClick = onSend, enabled = text.text.isNotBlank()) {
-                    Icon(painterResource(R.drawable.ic_send), contentDescription = stringResource(R.string.capture_send))
+                IconButton(onClick = onSend, enabled = if (searchMode) hasSearchResult else text.text.isNotBlank()) {
+                    Icon(painterResource(R.drawable.ic_send), contentDescription = stringResource(if (searchMode) R.string.search_open else R.string.capture_send))
                 }
             },
             modifier = Modifier
                 .weight(1f)
+                .onPreviewKeyEvent(onSearchKey)
                 .focusRequester(focusRequester)
                 .onPreviewKeyEvent(onScheduleKey)
                 .onFocusChanged { onFocusChange(it.isFocused) },
@@ -642,6 +814,12 @@ private fun CaptureBar(
                     text = { Text(stringResource(R.string.recent_tasks)) },
                     onClick = { menuOpen = false; onRecent() },
                 )
+                if (showNextActionsOption) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.next_actions_label)) },
+                        onClick = { menuOpen = false; onConfigureNextActions() },
+                    )
+                }
                 if (showContextOption) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.menu_context_label)) },
@@ -663,6 +841,10 @@ private fun CaptureBar(
                             menuOpen = false
                             onProjectColor()
                         },
+                    )
+                    if (onArchiveProject != null) DropdownMenuItem(
+                        text = { Text(stringResource(R.string.archive_project)) },
+                        onClick = { menuOpen = false; onArchiveProject() },
                     )
                 } else {
                     DropdownMenuItem(
@@ -901,7 +1083,7 @@ private fun HomeLabelShortcuts(labels: List<LabelEntity>, onOpen: (Long) -> Unit
 }
 
 @Composable
-private fun StatusLine(parts: List<StatusPart>) {
+private fun StatusLine(parts: List<StatusPart>, modifier: Modifier = Modifier) {
     if (parts.isEmpty()) return
     val texts = parts.map { part ->
         when (part) {
@@ -915,7 +1097,7 @@ private fun StatusLine(parts: List<StatusPart>) {
         texts.joinToString(" · "),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        modifier = modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
     )
 }
 
@@ -986,6 +1168,9 @@ private fun TaskRowItem(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (row.description.isNotEmpty()) {
+                    TaskDescriptionText(row.description, Modifier.padding(top = 2.dp))
+                }
                 row.projectTitle?.let {
                     Text(it, style = MaterialTheme.typography.labelMedium, color = muted)
                 }
@@ -993,6 +1178,7 @@ private fun TaskRowItem(
                     LabelChips(row.labels, dimmed = row.completed, modifier = Modifier.padding(top = 4.dp))
                 }
             }
+            if (row.links.isNotEmpty()) TaskLinkIcons(row.links, Modifier.padding(start = 4.dp), stacked = true)
             row.quantity?.let { quantity ->
                 Text(quantity, modifier = Modifier.padding(start = 8.dp).width(90.dp)
                     .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp)).padding(6.dp), maxLines = 2,

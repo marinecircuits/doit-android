@@ -5,7 +5,9 @@ import com.marinecircuits.doit.data.local.DoitDatabase
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.PendingChangeEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
+import com.marinecircuits.doit.data.local.AttachmentEntity
 import com.marinecircuits.doit.data.local.TaskEntity
+import java.io.File
 import com.marinecircuits.doit.data.local.TaskHistoryEntity
 import com.marinecircuits.doit.data.local.TaskLabelEntity
 import com.marinecircuits.doit.data.remote.VikunjaDates
@@ -15,6 +17,8 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -50,12 +54,18 @@ class TaskRepository(
     private val settings: SettingsStore,
     private val idRemap: IdRemap,
     private val clock: Clock,
+    private val attachmentsDir: File = File(System.getProperty("java.io.tmpdir"), "doit-attachments"),
     private val onLocalChange: () -> Unit,
 ) {
     val openTasks: Flow<List<TaskEntity>> = db.tasks().observeOpen()
     val projects: Flow<List<ProjectEntity>> = db.projects().observeAll()
-    val pendingCount: Flow<Int> = combine(db.pendingChanges().observeCount(), settings.pendingProjectMarkers) { tasks, projects ->
-        tasks + projects.size
+    val pendingCount: Flow<Int> = combine(
+        db.pendingChanges().observeCount(),
+        settings.pendingProjectMarkers,
+        settings.pendingProjectArchives,
+        settings.pendingProjectTitles,
+    ) { tasks, projects, archives, titles ->
+        tasks + projects.size + archives.size + titles.size
     }
     val labels: Flow<List<LabelEntity>> = db.labels().observeAll()
     val taskLabels: Flow<List<TaskLabelEntity>> = db.taskLabels().observeAll()
@@ -92,14 +102,46 @@ class TaskRepository(
         return projects.firstOrNull { it.id == configured }?.id ?: projects.firstOrNull()?.id
     }
 
+    /** Main-screen and share captures land in Inbox, even when Vikunja's default project is something else. */
+    private suspend fun inboxOrDefault(): Long? {
+        val inbox = db.projects().all().firstOrNull { !it.archived && it.title.equals("Inbox", ignoreCase = true) }
+        return inbox?.id ?: defaultProjectId()
+    }
+
+    private data class PdfCapture(val filename: String, val bytes: ByteArray)
+
     /**
      * Creates a task in the `#project` named in [text], otherwise [projectId] or the default project.
      * Existing `@labels` become labels (see [CaptureSyntax]); the [description] is kept as it is.
      * Returns the task's (temporary) id, or null when nothing is left of the title.
      */
     suspend fun capture(text: String, description: String? = null, projectId: Long? = null, dueDate: LocalDate? = null,
-                        repeat: Recurrence.Rule = Recurrence.Rule()): Long? {
-        val fallback = projectId ?: defaultProjectId() ?: 0
+                        repeat: Recurrence.Rule = Recurrence.Rule()): Long? =
+        captureInternal(text, description, projectId, dueDate, repeat, null)
+
+    /**
+     * Capture a shared PDF atomically with its task and pending upload, so a background sync cannot
+     * remap the temporary task ID between task creation and attachment insertion.
+     * The file is staged before the database transaction and removed if the transaction fails.
+     */
+    suspend fun capturePdf(
+        text: String,
+        filename: String,
+        bytes: ByteArray,
+        description: String? = null,
+        dueDate: LocalDate? = null,
+        repeat: Recurrence.Rule = Recurrence.Rule(),
+    ): Long? = captureInternal(text, description, null, dueDate, repeat, PdfCapture(filename, bytes))
+
+    private suspend fun captureInternal(
+        text: String,
+        description: String?,
+        projectId: Long?,
+        dueDate: LocalDate?,
+        repeat: Recurrence.Rule,
+        pdf: PdfCapture?,
+    ): Long? {
+        val fallback = projectId?.takeIf { it > 0 } ?: inboxOrDefault() ?: 0
         val shopping = settings.shoppingProjects.first()
         val scheduled = Recurrence.parse(text)
         val rule = scheduled.rule ?: repeat
@@ -110,25 +152,57 @@ class TaskRepository(
         val labelNames = if (destination in shopping) parsedLabels.filterNot { it.equals("doing", ignoreCase = true) } else parsedLabels
         if (labelNames.size != parsedLabels.size) settings.addNotice("Added “$title” without @doing: this project is a shopping list")
         val dueAt = dueDate?.let { DueDates.withDate(null, it, clock.zone).toEpochMilli() }
-        val id = db.withTransaction {
-            val id = minOf(db.tasks().minId() ?: 0, 0) - 1
-            db.tasks().upsert(
-                TaskEntity(id, title, dueAt = dueAt, projectId = destination, done = false, createdAt = clock.millis(),
-                    repeatAfter = rule.after, repeatMode = rule.mode),
-            )
-            val fields = buildJsonObject {
-                put("title", title)
-                if (!description.isNullOrBlank()) put("description", description.trim())
-                if (destination > 0) put("project_id", destination)
-                if (dueAt != null) put(DUE_DATE, dueJson(dueAt))
-                if (rule.active) { put(REPEAT_AFTER, rule.after); put(REPEAT_MODE, rule.mode) }
-                if (labelNames.isNotEmpty()) put(LABELS, JsonArray(labelNames.map { JsonPrimitive(it) }))
+        val stagedFile = pdf?.let { attachment ->
+            withContext(Dispatchers.IO) {
+                attachmentsDir.mkdirs()
+                val file = File.createTempFile("shared-", ".pdf", attachmentsDir)
+                try {
+                    file.writeBytes(attachment.bytes)
+                    file
+                } catch (e: Throwable) {
+                    file.delete()
+                    throw e
+                }
             }
-            db.taskLabels().set(id, labelNames) // also clears what a dropped task with this id may have left
-            db.pendingChanges().insert(
-                PendingChangeEntity(taskId = id, kind = PendingChangeEntity.CREATE, fields = fields.toString()),
-            )
-            id
+        }
+        val id = try {
+            db.withTransaction {
+                val id = minOf(db.tasks().minId() ?: 0, 0) - 1
+                db.tasks().upsert(
+                    TaskEntity(
+                        id, title, dueAt = dueAt, projectId = destination, done = false, createdAt = clock.millis(),
+                        description = description?.trim().orEmpty(),
+                        repeatAfter = rule.after, repeatMode = rule.mode,
+                    ),
+                )
+                val fields = buildJsonObject {
+                    put("title", title)
+                    if (!description.isNullOrBlank()) put("description", description.trim())
+                    if (destination > 0) put("project_id", destination)
+                    if (dueAt != null) put(DUE_DATE, dueJson(dueAt))
+                    if (rule.active) { put(REPEAT_AFTER, rule.after); put(REPEAT_MODE, rule.mode) }
+                    if (labelNames.isNotEmpty()) put(LABELS, JsonArray(labelNames.map { JsonPrimitive(it) }))
+                }
+                db.taskLabels().set(id, labelNames)
+                db.pendingChanges().insert(
+                    PendingChangeEntity(taskId = id, kind = PendingChangeEntity.CREATE, fields = fields.toString()),
+                )
+                if (pdf != null && stagedFile != null) {
+                    db.attachments().insert(
+                        AttachmentEntity(
+                            taskId = id,
+                            filename = pdf.filename.replace('\\', '/').substringAfterLast('/').ifBlank { "document.pdf" },
+                            size = pdf.bytes.size.toLong(),
+                            localPath = stagedFile.absolutePath,
+                            pending = AttachmentEntity.UPLOAD,
+                        ),
+                    )
+                }
+                id
+            }
+        } catch (e: Throwable) {
+            stagedFile?.delete()
+            throw e
         }
         onLocalChange()
         return id
@@ -299,6 +373,14 @@ class TaskRepository(
         write(task.id, fields(TITLE to JsonPrimitive(trimmed))) { it.copy(title = trimmed) }
     }
 
+    /** Saves the task description. Blank clears it. The text is stored as typed. */
+    suspend fun setDescription(taskId: Long, description: String) {
+        val text = description.trim()
+        val task = db.tasks().get(idRemap.resolve(taskId)) ?: return
+        if (text == task.description) return
+        write(task.id, fields(DESCRIPTION to JsonPrimitive(text))) { it.copy(description = text) }
+    }
+
     /**
      * Saves a title typed in the edit sheet. Recognized `@labels` are added to the labels the task
      * already has, and a recognized `#project` moves it. The stored title is what remains; an edit
@@ -392,6 +474,26 @@ class TaskRepository(
         onLocalChange()
     }
 
+    /** Renames [projectId] immediately and queues the new title. A blank name is ignored. */
+    suspend fun renameProject(projectId: Long, title: String) {
+        val name = title.trim().replace(Regex("\\s+"), " ")
+        if (name.isEmpty()) return
+        val project = db.projects().all().find { it.id == projectId } ?: return
+        if (project.title == name || project.id <= 0) return
+        db.projects().setTitle(projectId, name)
+        settings.setPendingProjectTitle(projectId, name)
+        onLocalChange()
+    }
+
+    /** Hides [projectId] immediately and queues Vikunja's `is_archived` flag. Subprojects are left alone. */
+    suspend fun archiveProject(projectId: Long) {
+        val project = db.projects().all().find { it.id == projectId } ?: return
+        if (project.archived || project.id <= 0) return
+        db.projects().archive(projectId)
+        settings.addPendingProjectArchive(projectId)
+        onLocalChange()
+    }
+
     suspend fun move(taskId: Long, projectId: Long) {
         val task = db.tasks().get(idRemap.resolve(taskId)) ?: return
         if (projectId == task.projectId) return
@@ -409,6 +511,48 @@ class TaskRepository(
         }
         if (changed.isEmpty()) return
         write(task.id, changed) { it.copy(title = newTitle, dueAt = dueAt, projectId = projectId) }
+    }
+
+
+    fun observeAttachments(taskId: Long) = db.attachments().observeForTask(taskId)
+
+    /** Copies a PDF onto the device and queues it for upload. Works offline, including for unsent tasks. */
+    suspend fun addPdf(taskId: Long, filename: String, bytes: ByteArray): Long {
+        attachmentsDir.mkdirs()
+        val safe = filename.substringAfterLast('/').ifBlank { "document.pdf" }
+        val id = db.attachments().insert(
+            AttachmentEntity(taskId = taskId, filename = safe, size = bytes.size.toLong(), pending = AttachmentEntity.UPLOAD),
+        )
+        val file = File(attachmentsDir, "${id}_$safe")
+        file.writeBytes(bytes)
+        db.attachments().update(db.attachments().get(id)!!.copy(localPath = file.absolutePath))
+        onLocalChange()
+        return id
+    }
+
+    suspend fun removeAttachment(id: Long) {
+        val row = db.attachments().get(id) ?: return
+        if (row.remoteId != null) {
+            db.attachments().update(row.copy(pending = AttachmentEntity.DELETE))
+        } else {
+            row.localPath.takeIf { it.isNotBlank() }?.let { File(it).delete() }
+            db.attachments().delete(id)
+        }
+        onLocalChange()
+    }
+
+    /** Ensures the PDF is on disk, downloading it when only the server copy is known. */
+    suspend fun localPdf(id: Long, download: suspend (taskId: Long, remoteId: Long) -> ByteArray): File? {
+        val row = db.attachments().get(id) ?: return null
+        val existing = row.localPath.takeIf { it.isNotBlank() }?.let { File(it) }
+        if (existing != null && existing.exists()) return existing
+        val remote = row.remoteId ?: return null
+        val bytes = download(row.taskId, remote)
+        attachmentsDir.mkdirs()
+        val file = File(attachmentsDir, "${row.id}_${row.filename}")
+        file.writeBytes(bytes)
+        db.attachments().update(row.copy(localPath = file.absolutePath, size = bytes.size.toLong()))
+        return file
     }
 
     private fun normalizeHex(hexColor: String): String? {
@@ -437,6 +581,7 @@ class TaskRepository(
 
     companion object {
         const val TITLE = "title"
+        const val DESCRIPTION = "description"
         const val DONE = "done"
         const val DUE_DATE = "due_date"
         const val REPEAT_AFTER = "repeat_after"

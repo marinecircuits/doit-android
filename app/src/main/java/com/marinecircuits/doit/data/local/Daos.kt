@@ -67,6 +67,12 @@ interface ProjectDao {
     @Query("UPDATE projects SET hexColor = :hexColor WHERE id = :id")
     suspend fun setColor(id: Long, hexColor: String)
 
+    @Query("UPDATE projects SET title = :title WHERE id = :id")
+    suspend fun setTitle(id: Long, title: String)
+
+    @Query("UPDATE projects SET archived = 1 WHERE id = :id")
+    suspend fun archive(id: Long)
+
     @Query("UPDATE projects SET description = :description WHERE id = :id")
     suspend fun setDescription(id: Long, description: String)
 
@@ -179,4 +185,34 @@ interface TaskHistoryDao {
 
     @Query("DELETE FROM task_history WHERE id NOT IN (SELECT id FROM task_history WHERE kind = :kind ORDER BY happenedAt DESC, id DESC LIMIT 100) AND kind = :kind")
     suspend fun trim(kind: String)
+}
+
+@Dao
+interface AttachmentDao {
+    @Query("SELECT * FROM attachments WHERE taskId = :taskId AND pending != 'delete' ORDER BY id")
+    fun observeForTask(taskId: Long): Flow<List<AttachmentEntity>>
+
+    @Query("SELECT * FROM attachments WHERE taskId = :taskId ORDER BY id")
+    suspend fun forTask(taskId: Long): List<AttachmentEntity>
+
+    @Query("SELECT * FROM attachments WHERE pending != '' ORDER BY id")
+    suspend fun pending(): List<AttachmentEntity>
+
+    @Query("SELECT * FROM attachments WHERE id = :id")
+    suspend fun get(id: Long): AttachmentEntity?
+
+    @Insert
+    suspend fun insert(attachment: AttachmentEntity): Long
+
+    @Update
+    suspend fun update(attachment: AttachmentEntity)
+
+    @Query("DELETE FROM attachments WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("UPDATE attachments SET taskId = :newId WHERE taskId = :oldId")
+    suspend fun changeTaskId(oldId: Long, newId: Long)
+
+    @Query("DELETE FROM attachments WHERE taskId = :taskId")
+    suspend fun deleteForTask(taskId: Long)
 }

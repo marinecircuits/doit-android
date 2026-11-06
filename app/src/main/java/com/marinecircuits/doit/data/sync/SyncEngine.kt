@@ -8,12 +8,15 @@ import com.marinecircuits.doit.data.TaskRepository
 import com.marinecircuits.doit.data.Shopping
 import com.marinecircuits.doit.data.local.DoitDatabase
 import com.marinecircuits.doit.data.local.LabelEntity
+import com.marinecircuits.doit.data.local.AttachmentEntity
 import com.marinecircuits.doit.data.local.PendingChangeEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
+import com.marinecircuits.doit.data.local.isInbox
 import com.marinecircuits.doit.data.local.TaskEntity
 import com.marinecircuits.doit.data.remote.ApiException
 import com.marinecircuits.doit.data.remote.ProjectDto
 import com.marinecircuits.doit.data.remote.TaskDto
+import java.io.File
 import com.marinecircuits.doit.data.remote.VikunjaApi
 import com.marinecircuits.doit.data.remote.VikunjaDates
 import java.io.IOException
@@ -33,6 +36,9 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
+/** A project created from a task. [removeTask] is false when the task should be kept. */
+data class PromotedTask(val project: ProjectEntity, val removeTask: Boolean)
+
 sealed interface SyncResult {
     data object Synced : SyncResult
     data object NotConnected : SyncResult
@@ -51,6 +57,7 @@ class SyncEngine(
     private val settings: SettingsStore,
     private val idRemap: IdRemap,
     private val apiFor: (Credentials) -> VikunjaApi,
+    private val attachmentCache: File = File(System.getProperty("java.io.tmpdir"), "doit-attachments"),
     private val onSynced: () -> Unit,
 ) {
     private val mutex = Mutex()
@@ -73,13 +80,38 @@ class SyncEngine(
     suspend fun createSubproject(parentId: Long, title: String) = mutex.withLock {
         val name = title.trim()
         require(name.isNotEmpty()) { "A project needs a name" }
-        require(db.projects().all().any { it.id == parentId && !it.archived && it.id > 0 }) {
-            "The parent project is no longer available"
-        }
+        val parent = db.projects().all().find { it.id == parentId && !it.archived && it.id > 0 }
+        require(parent != null) { "The parent project is no longer available" }
+        require(!parent.isInbox(settings.defaultProjectId.first())) { "Inbox cannot contain a subproject" }
         val credentials = checkNotNull(settings.credentials()) { "Not connected" }
         val created = apiFor(credentials).createSubproject(parentId, name)
         check(created.id > 0 && created.parentProjectId == parentId) { "Unexpected project response" }
         db.projects().insertAll(listOf(created.toEntity()))
+    }
+
+    /**
+     * Creates a subproject from a task, online only. The task stays until [PromotedTask.removeTask] is true,
+     * which is only when the server echoes the name and description and the task did not change meanwhile.
+     */
+    suspend fun promoteTask(taskId: Long, title: String, description: String, projectId: Long): PromotedTask = mutex.withLock {
+        val name = title.trim()
+        require(name.isNotEmpty()) { "A project needs a name" }
+        val id = idRemap.resolve(taskId)
+        val task = db.tasks().get(id) ?: throw IllegalArgumentException("The task is no longer available")
+        require(!task.done) { "A completed task cannot become a project" }
+        val parent = db.projects().all().find { it.id == projectId && !it.archived && it.id > 0 }
+            ?: throw IllegalArgumentException("The task's project is unavailable")
+        val sent = description.trim()
+        val credentials = checkNotNull(settings.credentials()) { "Not connected" }
+        val created = apiFor(credentials).createProject(name, parent.id, sent)
+        check(created.id > 0 && created.parentProjectId == parent.id) { "Unexpected project response" }
+        val entity = created.toEntity()
+        db.projects().insertAll(listOf(entity))
+        val current = db.tasks().get(id)
+        val unchanged = current != null && !current.done && current.title == task.title &&
+            current.description == task.description && current.projectId == task.projectId
+        val echoed = created.title.trim() == name && created.description.trim() == sent
+        PromotedTask(entity, unchanged && echoed)
     }
 
     private suspend fun runSync(): SyncResult {
@@ -94,6 +126,8 @@ class SyncEngine(
             Shopping.enforce(db, settings)
             push(api)
             pull(api)
+            pushAttachments(api)
+            pullAttachments(api)
             if (Shopping.enforce(db, settings)) push(api)
             pushProjectMarkers(api)
             SyncResult.Synced
@@ -109,12 +143,11 @@ class SyncEngine(
     private suspend fun refreshProjects(api: VikunjaApi) {
         val projects = api.projects()
         val colors = settings.pendingProjectColors()
+        val archives = settings.pendingProjectArchives()
+        val titles = settings.pendingProjectTitles()
         db.withTransaction {
             db.projects().clear()
-            db.projects().insertAll(projects.filter { it.id > 0 }.map { dto ->
-                val entity = dto.toEntity()
-                colors[dto.id]?.let { entity.copy(hexColor = it) } ?: entity
-            })
+            db.projects().insertAll(projects.filter { it.id > 0 }.map { overlayProject(it, colors, archives, titles) })
         }
         settings.setSyncedShoppingProjects(projects.filter { Shopping.isProject(it.description) }.mapTo(HashSet()) { it.id })
     }
@@ -165,12 +198,53 @@ class SyncEngine(
     }
 
     private suspend fun push(api: VikunjaApi) {
+        pushProjectArchives(api)
+        pushProjectTitles(api)
         pushProjectColors(api)
         // A change kept because it was edited mid-flight is sent again on the next turn; the cap only guards
         // against a server that keeps accepting without the queue shrinking.
         repeat(MAX_PUSHES) {
             val change = db.pendingChanges().first() ?: return
             pushOne(api, change)
+        }
+    }
+
+    /** Sends archives chosen in the app. A refusal is reported and dropped; the next pull restores the project. */
+    private suspend fun pushProjectArchives(api: VikunjaApi) {
+        for (id in settings.pendingProjectArchives()) {
+            try {
+                api.updateProject(id, buildJsonObject { put("is_archived", true) })
+                settings.removePendingProjectArchive(id)
+                db.projects().archive(id)
+            } catch (e: ApiException) {
+                if (e.isUnauthorized || e.isTransient) throw e
+                settings.removePendingProjectArchive(id)
+                val title = db.projects().all().find { it.id == id }?.title ?: "project"
+                val reason = when {
+                    e.isNotFound -> "the project is no longer available"
+                    else -> e.problem ?: "the server refused the change (${e.status})"
+                }
+                settings.addNotice("Couldn't archive \u201c$title\u201d: $reason")
+            }
+        }
+    }
+
+    /** Sends renames chosen in the app. A refusal is reported and dropped; the next pull restores the server name. */
+    private suspend fun pushProjectTitles(api: VikunjaApi) {
+        for ((id, title) in settings.pendingProjectTitles()) {
+            try {
+                val updated = api.updateProject(id, buildJsonObject { put("title", title) })
+                settings.removePendingProjectTitle(id)
+                db.projects().setTitle(id, updated.title)
+            } catch (e: ApiException) {
+                if (e.isUnauthorized || e.isTransient) throw e
+                settings.removePendingProjectTitle(id)
+                val reason = when {
+                    e.isNotFound -> "the project is no longer available"
+                    else -> e.problem ?: "the server refused the change (${e.status})"
+                }
+                settings.addNotice("Couldn't rename \u201c$title\u201d: $reason")
+            }
         }
     }
 
@@ -395,6 +469,7 @@ class SyncEngine(
             db.tasks().changeId(temporaryId, created.id)
             db.taskLabels().changeTaskId(temporaryId, created.id)
             db.taskHistory().changeTaskId(temporaryId, created.id)
+            db.attachments().changeTaskId(temporaryId, created.id)
             db.pendingChanges().changeTaskId(temporaryId, created.id)
             val kept = db.tasks().get(created.id)
             when {
@@ -472,12 +547,11 @@ class SyncEngine(
         db.withTransaction {
             val generation = db.tasks().maxSyncGeneration() + 1
             val pendingColors = settings.pendingProjectColors()
+            val pendingArchives = settings.pendingProjectArchives()
+            val pendingTitles = settings.pendingProjectTitles()
             db.projects().clear()
             db.projects().insertAll(
-                projects.filter { it.id > 0 }.map { dto ->
-                    val entity = dto.toEntity()
-                    pendingColors[dto.id]?.let { entity.copy(hexColor = it) } ?: entity
-                },
+                projects.filter { it.id > 0 }.map { overlayProject(it, pendingColors, pendingArchives, pendingTitles) },
             )
             if (labels != null) replaceLabels(labels)
             val pending = db.pendingChanges().all().map { it.taskId }.toSet()
@@ -505,12 +579,91 @@ class SyncEngine(
             done = done,
             createdAt = VikunjaDates.parse(created)?.toEpochMilli() ?: fallbackCreatedAt ?: 0,
             syncGeneration = generation,
+            description = description,
             repeatAfter = repeatAfter,
             repeatMode = repeatMode,
         )
 
         fun ProjectDto.toEntity() = ProjectEntity(id, title, isArchived, position, parentProjectId, hexColor, description)
+
+        fun overlayProject(
+            dto: ProjectDto,
+            colors: Map<Long, String>,
+            archives: Set<Long>,
+            titles: Map<Long, String>,
+        ): ProjectEntity {
+            val entity = dto.toEntity()
+            return entity.copy(
+                title = titles[dto.id] ?: entity.title,
+                hexColor = colors[dto.id] ?: entity.hexColor,
+                archived = entity.archived || dto.id in archives,
+            )
+        }
     }
+
+    private suspend fun pushAttachments(api: VikunjaApi) {
+        for (row in db.attachments().pending()) {
+            try {
+                when {
+                    row.pending == AttachmentEntity.UPLOAD && row.taskId > 0 && row.localPath.isNotBlank() -> {
+                        val file = File(row.localPath)
+                        if (!file.exists()) continue
+                        val result = api.uploadAttachment(row.taskId, file, row.filename, row.mime)
+                        val remote = result.success.firstOrNull()
+                        if (remote != null) db.attachments().update(row.copy(remoteId = remote.id, pending = ""))
+                    }
+                    row.pending == AttachmentEntity.DELETE && row.remoteId != null && row.taskId > 0 -> {
+                        api.deleteAttachment(row.taskId, row.remoteId)
+                        row.localPath.takeIf { it.isNotBlank() }?.let { File(it).delete() }
+                        db.attachments().delete(row.id)
+                    }
+                }
+            } catch (_: Exception) {
+                // Leave the row pending; the next sync retries.
+            }
+        }
+    }
+
+    /** Downloads PDFs that are not already cached so they open offline. */
+    private suspend fun pullAttachments(api: VikunjaApi) {
+        attachmentCache.mkdirs()
+        val tasks = db.tasks().open().filter { it.id > 0 }
+        for (task in tasks) {
+            try {
+                val remote = api.attachments(task.id)
+                val local = db.attachments().forTask(task.id)
+                val byRemote = local.associateBy { it.remoteId }
+                for (item in remote) {
+                    if (item.file.mime != "application/pdf" && !item.file.name.endsWith(".pdf", ignoreCase = true)) continue
+                    val existing = byRemote[item.id]
+                    val cached = existing?.localPath?.takeIf { it.isNotBlank() }?.let { File(it) }
+                    if (cached != null && cached.exists()) continue
+                    val bytes = api.downloadAttachment(task.id, item.id)
+                    val name = item.file.name.ifBlank { "document.pdf" }
+                    val file = File(attachmentCache, "${item.id}_$name")
+                    file.writeBytes(bytes)
+                    if (existing == null) {
+                        db.attachments().insert(
+                            AttachmentEntity(
+                                taskId = task.id,
+                                filename = name,
+                                mime = item.file.mime.ifBlank { "application/pdf" },
+                                size = bytes.size.toLong(),
+                                remoteId = item.id,
+                                localPath = file.absolutePath,
+                            ),
+                        )
+                    } else {
+                        db.attachments().update(existing.copy(localPath = file.absolutePath, size = bytes.size.toLong()))
+                    }
+                }
+            } catch (_: Exception) {
+                // A task without attachment permission stays as it was.
+            }
+        }
+    }
+
 }
+
 
 private class ShoppingCleanupException(message: String) : Exception(message)

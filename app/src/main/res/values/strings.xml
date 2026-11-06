@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">doit</string>
+    <string name="shortcut_add_task">Add task</string>
 
     <!-- Setup -->
     <string name="setup_title">Connect to Vikunja</string>
@@ -25,6 +26,13 @@
     <!-- Task list -->
     <string name="capture_hint">Add a task…</string>
     <string name="capture_send">Add task</string>
+    <string name="search_hint">Type after / to search tasks, projects and labels</string>
+    <string name="search_empty">No matches</string>
+    <string name="search_project">Project</string>
+    <string name="search_task">Task</string>
+    <string name="search_label">Label</string>
+    <string name="search_open">Open selected result</string>
+    <string name="open_link">Open link</string>
     <string name="capture_hint_project">Add to %1$s…</string>
     <string name="back">Back</string>
     <string name="home">Home</string>
@@ -77,15 +85,23 @@
     <string name="when_none">No date</string>
     <string name="ok">OK</string>
     <string name="edit_title">Title</string>
+    <string name="edit_description">Details</string>
     <string name="insert_label">Insert @ for a label</string>
     <string name="insert_project">Insert # for a project</string>
     <string name="insert_date">Insert date or repeat shortcut</string>
+    <string name="insert_search">Search with /</string>
     <string name="capture_due_date">Due: %1$s</string>
     <string name="edit_due">Due</string>
     <string name="edit_no_date">No date</string>
     <string name="edit_clear_date">Clear</string>
     <string name="edit_project">Project</string>
     <string name="edit_delete">Delete task</string>
+    <string name="promote_task">Promote to project</string>
+    <string name="promote_title">Promote to project</string>
+    <string name="promote_name">Name</string>
+    <string name="promote_inside">Inside %1$s</string>
+    <string name="promote_body">The description is copied. After the project is created, the task is deleted, including its labels and due date. A connection is required.</string>
+    <string name="promote_confirm">Create</string>
     <string name="start_working">Start working</string>
     <string name="stop_working">Stop working</string>
     <string name="doing_warning">%1$d tasks marked @doing</string>
@@ -104,12 +120,17 @@
     <string name="share_add">Add</string>
     <string name="share_not_connected">Connect doit to your Vikunja server first.</string>
     <string name="share_open_app">Open doit</string>
+    <string name="share_pdf_name">PDF: %1$s</string>
+    <string name="share_pdf_too_large">This PDF is larger than 25 MB. Share a smaller file.</string>
+    <string name="share_failed">Could not add the task or attachment. Check the file and try again.</string>
 
     <!-- Widget -->
     <string name="widget_description">Open tasks with tap-to-complete</string>
     <string name="widget_not_connected">Open doit to connect</string>
     <string name="widget_add">Add a task</string>
     <string name="menu_context_label">Label screens</string>
+    <string name="next_actions_label">Next actions label</string>
+    <string name="next_actions_none">None</string>
     <string name="context_title">Context</string>
     <string name="context_disabled">Disable this screen</string>
     <string name="context_not_configured">Not configured</string>
@@ -134,10 +155,19 @@
     <string name="recent_reopen_details">Move this task back to your open tasks?</string>
     <string name="recent_undo_failed">Could not restore this task. Please try again.</string>
     <string name="create_subproject">Create subproject</string>
+    <string name="archive_project">Archive project</string>
+    <string name="archive_title">Archive this project?</string>
+    <string name="archive_body">%1$s disappears from doit and is archived in Vikunja. Its tasks stay on the server. Subprojects stay. Restore it in Vikunja if you change your mind.</string>
+    <string name="archive_confirm">Archive</string>
     <string name="project_name">Project name</string>
     <string name="subproject_parent">In %1$s</string>
     <string name="subproject_creating">Creating…</string>
     <string name="subproject_connection_error">Could not confirm creation. Check your connection and sync before retrying to avoid a duplicate.</string>
     <string name="subproject_permission_error">Check your token and its permission to create projects, and your access to this parent project.</string>
     <string name="subproject_create_error">Could not confirm creation. Sync to check whether the project was created before trying again.</string>
+    <string name="context_swipe_down">Swipe down: %1$s</string>
+    <string name="add_pdf">Add PDF</string>
+    <string name="pdfs">PDFs</string>
+    <string name="remove_pdf">Remove</string>
+    <string name="open_pdf">Open PDF</string>
 </resources>

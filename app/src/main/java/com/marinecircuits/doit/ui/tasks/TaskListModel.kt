@@ -27,6 +27,10 @@ data class TaskRow(
     val labels: List<LabelChip> = emptyList(),
     val displayTitle: String = task.title,
     val quantity: String? = null,
+    /** Description with markup removed. Empty when there is nothing to show. */
+    val description: String = "",
+    /** One address per icon. The description text is not a link. */
+    val links: List<String> = emptyList(),
 )
 
 /** A label on a row; [hexColor] is empty for a label without a colour or one the app doesn't know. */
@@ -47,19 +51,28 @@ object TaskListModel {
         taskLabels: Map<Long, List<String>> = emptyMap(),
         labels: List<LabelEntity> = emptyList(),
         shoppingProjects: Set<Long> = Shopping.projectIds(projects),
+        nextActionsLabel: String? = null,
     ): List<TaskRow> {
         val titles = projects.associate { it.id to it.title }
         val colors = labels.reversed().associate { it.title.lowercase() to it.hexColor } // the first of equal names wins
         val (dated, undated) = tasks.partition { it.dueAt != null }
         val ordered = dated.sortedWith(compareBy<TaskEntity> { it.dueAt }.thenBy { it.id }) +
             undated.sortedWith(compareByDescending<TaskEntity> { it.createdAt }.thenBy { it.id })
-        return ordered.map { task ->
+        val sorted = if (nextActionsLabel == null) ordered else {
+            val (next, rest) = ordered.partition { task ->
+                taskLabels[task.id].orEmpty().any { it.equals(nextActionsLabel, ignoreCase = true) }
+            }
+            next + rest
+        }
+        return sorted.map { task ->
             val dueDate = task.dueAt?.let { DueDates.localDate(it, zone) }
             val (title, quantity) = if (task.projectId in shoppingProjects) Shopping.item(task.title) else task.title to null
             TaskRow(
                 task = task,
                 displayTitle = title,
                 quantity = quantity,
+                description = TaskDescriptions.plain(task.description),
+                links = TaskDescriptions.links(task.description),
                 dueDate = dueDate,
                 overdue = !task.done && dueDate != null && dueDate < today,
                 projectTitle = titles[task.projectId]?.takeIf { task.projectId != defaultProjectId },

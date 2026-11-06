@@ -19,6 +19,8 @@ data class TaskEntity(
     val createdAt: Long,
     /** The sync that last saw this task on the server; used to sweep tasks the server no longer lists. */
     val syncGeneration: Long = 0,
+    /** Vikunja description, including any markup. Empty when the task has none. */
+    @ColumnInfo(defaultValue = "") val description: String = "",
     @ColumnInfo(defaultValue = "0") val repeatAfter: Long = 0,
     @ColumnInfo(defaultValue = "0") val repeatMode: Int = 0,
 )
@@ -35,6 +37,10 @@ data class ProjectEntity(
     @ColumnInfo(defaultValue = "") val hexColor: String = "",
     @ColumnInfo(defaultValue = "") val description: String = "",
 )
+
+/** The Vikunja inbox is the default project. A project still titled Inbox counts too. */
+fun ProjectEntity.isInbox(defaultProjectId: Long?): Boolean =
+    id == defaultProjectId || title.equals("Inbox", ignoreCase = true)
 
 /**
  * The unsent local changes of one task. Later changes are merged into the same row, so there is at most one row
@@ -96,5 +102,29 @@ data class TaskHistoryEntity(
     companion object {
         const val COMPLETED = "completed"
         const val DELETED = "deleted"
+    }
+}
+
+
+/**
+ * A PDF attached to a task. Offline tasks keep a local file until the task exists on the server.
+ * [pending] is empty when idle, "upload" until the file is sent, or "delete" until the server copy is removed.
+ */
+@Entity(tableName = "attachments", indices = [Index("taskId")])
+data class AttachmentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val taskId: Long,
+    val filename: String,
+    @ColumnInfo(defaultValue = "'application/pdf'") val mime: String = "application/pdf",
+    @ColumnInfo(defaultValue = "0") val size: Long = 0,
+    /** Server attachment id, null until uploaded. */
+    val remoteId: Long? = null,
+    /** Absolute path to the local file. Empty when only metadata is known. */
+    @ColumnInfo(defaultValue = "''") val localPath: String = "",
+    @ColumnInfo(defaultValue = "''") val pending: String = "",
+) {
+    companion object {
+        const val UPLOAD = "upload"
+        const val DELETE = "delete"
     }
 }

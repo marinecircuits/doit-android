@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -43,6 +44,7 @@ import com.marinecircuits.doit.data.Shopping
 import com.marinecircuits.doit.data.DueDates
 import com.marinecircuits.doit.data.local.LabelEntity
 import com.marinecircuits.doit.data.local.ProjectEntity
+import com.marinecircuits.doit.data.local.AttachmentEntity
 import com.marinecircuits.doit.data.local.TaskEntity
 import java.time.Instant
 import java.time.LocalDate
@@ -84,11 +86,16 @@ fun EditSheet(
     locale: Locale,
     onTitleChange: (String) -> Unit,
     onScheduleChange: (Recurrence.Rule, LocalDate?) -> Unit,
+    onDescriptionChange: (String) -> Unit,
     onDateChange: (LocalDate?) -> Unit,
     onProjectChange: (Long) -> Unit,
+    onOpenProject: (Long) -> Unit,
+    attachments: List<AttachmentEntity> = emptyList(),
+    onAddPdf: () -> Unit = {},
+    onOpenPdf: (Long) -> Unit = {},
+    onRemovePdf: (Long) -> Unit = {},
     onDelete: () -> Unit,
-    working: Boolean,
-    onWork: (() -> Unit)?,
+    onPromote: (title: String, description: String, projectId: Long, onDone: (SubprojectError?) -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val zone = ZoneId.systemDefault()
@@ -98,10 +105,17 @@ fun EditSheet(
     val schedule = remember(task.id) { ScheduleState(task.dueAt?.let { DueDates.localDate(it, zone) }, Recurrence.Rule(task.repeatAfter, task.repeatMode)) }
     schedule.changeText = { title = it }
     schedule.onChange = { rule, day -> if (day == null && !rule.active) onDateChange(null) else onScheduleChange(rule, day) }
+    var details by remember(task.id) { mutableStateOf(TaskDescriptions.plain(task.description)) }
+    var savedDetails by remember(task.id) { mutableStateOf(details) }
+    var detailsFocused by remember(task.id) { mutableStateOf(false) }
     var projectId by remember(task.id) { mutableStateOf(task.projectId) }
     var projectMenuOpen by remember { mutableStateOf(false) }
     val projectPickerItems = remember(projects) { ProjectTree.pickerItems(projects) }
     var confirmingDelete by remember(task.id) { mutableStateOf(false) }
+    var confirmingPromote by remember(task.id) { mutableStateOf(false) }
+    var promoteName by remember(task.id) { mutableStateOf(task.title) }
+    var promoting by remember(task.id) { mutableStateOf(false) }
+    var promoteError by remember(task.id) { mutableStateOf<SubprojectError?>(null) }
 
     fun commitTitle(): Boolean {
         if (!schedule.prepare(title, preview = false)) return false
@@ -120,8 +134,17 @@ fun EditSheet(
         return true
     }
 
+    fun commitDetails() {
+        if (details == savedDetails) return
+        savedDetails = details
+        onDescriptionChange(details)
+    }
+
     fun dismiss() {
-        if (commitTitle()) onDismiss()
+        if (commitTitle()) {
+            commitDetails()
+            onDismiss()
+        }
     }
 
     ModalBottomSheet(onDismissRequest = ::dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
@@ -141,6 +164,19 @@ fun EditSheet(
                     titleFocused = focus.isFocused
                 },
             )
+            OutlinedTextField(
+                value = details,
+                onValueChange = { details = it },
+                label = { Text(stringResource(R.string.edit_description)) },
+                minLines = 2,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp).onFocusChanged { focus ->
+                    if (detailsFocused && !focus.isFocused) commitDetails()
+                    detailsFocused = focus.isFocused
+                },
+            )
+            val links = TaskDescriptions.links(details)
+            if (links.isNotEmpty()) TaskLinkIcons(links)
             if (titleFocused) {
                 SyntaxKeyRow(onInsert = { token -> title = SyntaxKeys.insert(title, token) }, onPickDate = { title = SyntaxKeys.insert(title, "!") })
                 ScheduleSuggestions(schedule, title, Modifier.fillMaxWidth())
@@ -165,9 +201,17 @@ fun EditSheet(
             if (schedule.day == null) TextButton(onClick = { schedule.picker = "date" }) { Text("Set due date…") }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.edit_project), Modifier.weight(1f))
+                TextButton(onClick = {
+                    if (commitTitle()) {
+                        commitDetails()
+                        onOpenProject(projectId)
+                    }
+                }) {
+                    Text(projects.firstOrNull { it.id == projectId }?.title ?: "—")
+                }
                 Box {
                     TextButton(onClick = { projectMenuOpen = true }) {
-                        Text(projects.firstOrNull { it.id == projectId }?.title ?: "—")
+                        Text("▾")
                     }
                     DropdownMenu(expanded = projectMenuOpen, onDismissRequest = { projectMenuOpen = false }) {
                         projectPickerItems.forEach { item ->
@@ -186,15 +230,93 @@ fun EditSheet(
                     }
                 }
             }
-            if (onWork != null && projectId !in shoppingProjects) {
-                TextButton(onClick = onWork) {
-                    Text(stringResource(if (working) R.string.stop_working else R.string.start_working))
+            Text(stringResource(R.string.pdfs), style = MaterialTheme.typography.titleSmall)
+            attachments.forEach { pdf ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { onOpenPdf(pdf.id) }, modifier = Modifier.weight(1f)) {
+                        Text(pdf.filename)
+                    }
+                    TextButton(onClick = { onRemovePdf(pdf.id) }) {
+                        Text(stringResource(R.string.remove_pdf))
+                    }
                 }
             }
-            TextButton(onClick = { confirmingDelete = true }, modifier = Modifier.align(Alignment.End)) {
+            TextButton(onClick = onAddPdf) { Text(stringResource(R.string.add_pdf)) }
+            if (!task.done) {
+                TextButton(
+                    onClick = {
+                        if (!commitTitle()) return@TextButton
+                        commitDetails()
+                        promoteName = savedTitle
+                        if (promoteName.isNotBlank()) confirmingPromote = true
+                    },
+                    enabled = !promoting,
+                    modifier = Modifier.align(Alignment.End),
+                ) { Text(stringResource(R.string.promote_task)) }
+            }
+            TextButton(
+                onClick = { confirmingDelete = true },
+                enabled = !promoting,
+                modifier = Modifier.align(Alignment.End),
+            ) {
                 Text(stringResource(R.string.edit_delete), color = MaterialTheme.colorScheme.error)
             }
         }
+    }
+
+    if (confirmingPromote) {
+        AlertDialog(
+            onDismissRequest = { if (!promoting) confirmingPromote = false },
+            title = { Text(stringResource(R.string.promote_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = promoteName,
+                        onValueChange = { promoteName = it },
+                        label = { Text(stringResource(R.string.promote_name)) },
+                        singleLine = true,
+                        enabled = !promoting,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(stringResource(R.string.promote_inside, projects.firstOrNull { it.id == projectId }?.title ?: "—"))
+                    Text(stringResource(R.string.promote_body))
+                    promoteError?.let { error ->
+                        Text(
+                            stringResource(when (error) {
+                                SubprojectError.CONNECTION -> R.string.subproject_connection_error
+                                SubprojectError.PERMISSION -> R.string.subproject_permission_error
+                                SubprojectError.OTHER -> R.string.subproject_create_error
+                            }),
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !promoting && promoteName.isNotBlank(),
+                    onClick = {
+                        promoting = true
+                        promoteError = null
+                        onPromote(promoteName, savedDetails, projectId) { error ->
+                            promoting = false
+                            if (error == null) {
+                                confirmingPromote = false
+                                onDismiss()
+                            } else {
+                                promoteError = error
+                            }
+                        }
+                    },
+                ) { Text(stringResource(if (promoting) R.string.subproject_creating else R.string.promote_confirm)) }
+            },
+            dismissButton = {
+                TextButton(enabled = !promoting, onClick = { confirmingPromote = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 
     if (confirmingDelete) {

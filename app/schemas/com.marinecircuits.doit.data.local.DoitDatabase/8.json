@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 8,
-    "identityHash": "e153d230dbce7a3714e482de7ad1b6d0",
+    "identityHash": "e06b16c0823e824d099a1a2c3e242a66",
     "entities": [
       {
         "tableName": "tasks",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `title` TEXT NOT NULL, `dueAt` INTEGER, `projectId` INTEGER NOT NULL, `done` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `syncGeneration` INTEGER NOT NULL, `repeatAfter` INTEGER NOT NULL DEFAULT 0, `repeatMode` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `title` TEXT NOT NULL, `dueAt` INTEGER, `projectId` INTEGER NOT NULL, `done` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `syncGeneration` INTEGER NOT NULL, `description` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`id`))",
         "fields": [
           {
             "fieldPath": "id",
@@ -50,18 +50,11 @@
             "notNull": true
           },
           {
-            "fieldPath": "repeatAfter",
-            "columnName": "repeatAfter",
-            "affinity": "INTEGER",
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
             "notNull": true,
-            "defaultValue": "0"
-          },
-          {
-            "fieldPath": "repeatMode",
-            "columnName": "repeatMode",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
+            "defaultValue": "''"
           }
         ],
         "primaryKey": {
@@ -255,7 +248,7 @@
       },
       {
         "tableName": "task_history",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `taskId` INTEGER NOT NULL, `title` TEXT NOT NULL, `projectId` INTEGER NOT NULL, `kind` TEXT NOT NULL, `happenedAt` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL DEFAULT 0, `dueAt` INTEGER, `labelsJson` TEXT NOT NULL DEFAULT '[]', `pendingJson` TEXT NOT NULL DEFAULT '{}', `repeatAfter` INTEGER NOT NULL DEFAULT 0, `repeatMode` INTEGER NOT NULL DEFAULT 0)",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `taskId` INTEGER NOT NULL, `title` TEXT NOT NULL, `projectId` INTEGER NOT NULL, `kind` TEXT NOT NULL, `happenedAt` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL DEFAULT 0, `dueAt` INTEGER, `labelsJson` TEXT NOT NULL DEFAULT '[]', `pendingJson` TEXT NOT NULL DEFAULT '{}')",
         "fields": [
           {
             "fieldPath": "id",
@@ -318,20 +311,6 @@
             "affinity": "TEXT",
             "notNull": true,
             "defaultValue": "'{}'"
-          },
-          {
-            "fieldPath": "repeatAfter",
-            "columnName": "repeatAfter",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
-          },
-          {
-            "fieldPath": "repeatMode",
-            "columnName": "repeatMode",
-            "affinity": "INTEGER",
-            "notNull": true,
-            "defaultValue": "0"
           }
         ],
         "primaryKey": {
@@ -355,7 +334,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e153d230dbce7a3714e482de7ad1b6d0')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e06b16c0823e824d099a1a2c3e242a66')"
     ]
   }
 }
