@@ -126,5 +126,6 @@ data class AttachmentEntity(
     companion object {
         const val UPLOAD = "upload"
         const val DELETE = "delete"
+        const val CANCEL = "cancel"
     }
 }

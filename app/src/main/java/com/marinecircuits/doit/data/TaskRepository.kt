@@ -545,28 +545,30 @@ class TaskRepository(
     fun observeAttachments(taskId: Long) = db.attachments().observeForTask(taskId)
 
     /** Copies a PDF onto the device and queues it for upload. Works offline, including for unsent tasks. */
-    suspend fun addPdf(taskId: Long, filename: String, bytes: ByteArray): Long {
+    suspend fun addPdf(taskId: Long, filename: String, bytes: ByteArray, mime: String = "application/pdf"): Long {
         attachmentsDir.mkdirs()
-        val safe = filename.substringAfterLast('/').ifBlank { "document.pdf" }
-        val id = db.attachments().insert(
-            AttachmentEntity(taskId = taskId, filename = safe, size = bytes.size.toLong(), pending = AttachmentEntity.UPLOAD),
-        )
-        val file = File(attachmentsDir, "${id}_$safe")
-        file.writeBytes(bytes)
-        db.attachments().update(db.attachments().get(id)!!.copy(localPath = file.absolutePath))
+        val safe = filename.replace('\\', '/').substringAfterLast('/').ifBlank { "attachment" }
+        val file = File.createTempFile("attachment-", ".cache", attachmentsDir)
+        val id = try {
+            file.writeBytes(bytes)
+            db.attachments().insert(AttachmentEntity(taskId = idRemap.resolve(taskId), filename = safe,
+                mime = mime.ifBlank { "application/octet-stream" }, size = bytes.size.toLong(),
+                localPath = file.absolutePath, pending = AttachmentEntity.UPLOAD))
+        } catch (e: Throwable) {
+            file.delete()
+            throw e
+        }
         onLocalChange()
         return id
     }
 
     suspend fun removeAttachment(id: Long) {
-        val row = db.attachments().get(id) ?: return
-        if (row.remoteId != null) {
-            db.attachments().update(row.copy(pending = AttachmentEntity.DELETE))
-        } else {
-            row.localPath.takeIf { it.isNotBlank() }?.let { File(it).delete() }
-            db.attachments().delete(id)
+        val changed = db.withTransaction {
+            val row = db.attachments().get(id) ?: return@withTransaction false
+            db.attachments().update(row.copy(pending = if (row.remoteId != null) AttachmentEntity.DELETE else AttachmentEntity.CANCEL))
+            true
         }
-        onLocalChange()
+        if (changed) onLocalChange()
     }
 
     /** Ensures the PDF is on disk, downloading it when only the server copy is known. */

@@ -652,8 +652,8 @@ class TasksViewModel(
         viewModelScope.launch { repository.removeTaskLabel(taskId, name) }
     }
 
-    fun addPdf(taskId: Long, filename: String, bytes: ByteArray) {
-        viewModelScope.launch { repository.addPdf(taskId, filename, bytes) }
+    fun addPdf(taskId: Long, filename: String, bytes: ByteArray, mime: String = "application/pdf") {
+        viewModelScope.launch { repository.addPdf(taskId, filename, bytes, mime) }
     }
 
     fun removePdf(id: Long) {
