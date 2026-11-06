@@ -279,6 +279,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         if (!captureSchedule.prepare(captureText)) return
         val text = captureText.text
         if (text.isBlank()) return
+        if (TaskSearch.filter(text) != null) {
+            captureText = TextFieldValue("/$text", TextRange(text.length + 1))
+            selectedSearchIndex = 0
+            return
+        }
         val dueDate = captureSchedule.day
         val repeat = captureSchedule.rule
         captureText = TextFieldValue()

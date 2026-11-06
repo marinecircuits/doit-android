@@ -8,6 +8,22 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class TaskSearchTest {
+    @Test fun filtersRequireEveryLabelAndIncludeDescendants() {
+        val rows = listOf(row(10, "Root", 1, false, "wait", "next"), row(11, "Child", 2, false, "wait", "next"),
+            row(12, "Missing label", 2, false, "wait"), row(13, "Elsewhere", 4, false, "wait", "next"),
+            row(14, "Done", 1, true, "wait", "next"))
+        val labels = listOf(LabelEntity(8, "wait"), LabelEntity(9, "next"))
+        assertEquals(listOf(10L, 11L), TaskSearch.matches("@WAIT @next #Work", rows, listOf(work, firmware), labels).map { it.id })
+        assertEquals(emptyList<TaskSearch.Result>(), TaskSearch.matches("@missing #Work", rows, listOf(work), labels))
+        assertEquals(emptyList<TaskSearch.Result>(), TaskSearch.matches("@wait #missing", rows, listOf(work), labels))
+    }
+
+    @Test fun filtersSupportQuotedNamesAndRejectOrdinaryCaptureText() {
+        assertEquals(TaskSearch.Filter("home office", setOf("on hold")), TaskSearch.filter("@\"on hold\" #\"Home office\""))
+        for (text in listOf("Call @wait #Work", "@wait", "#Work", "@wait #Work #Other", "@wait#Work", "@\"wait #Work"))
+            assertNull(TaskSearch.filter(text))
+    }
+
     private val work = ProjectEntity(1, "Work", false, 0.0)
     private val firmware = ProjectEntity(2, "Firmware", false, 1.0, parentProjectId = 1)
     private val archived = ProjectEntity(3, "Old", true, 2.0)
