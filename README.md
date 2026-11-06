@@ -30,6 +30,7 @@ Configure up to three **Label screens** from the home menu, plus a separate labe
 
 ## Using it
 
+- Submit a combination such as `@errand #Home` to filter open tasks by both label and project, including subprojects. Multiple labels require all of them, for example `@errand @next #Home`. Quoted names work too. Prefix the expression with `/` to see results while typing; ordinary task text still creates a task.
 - Long-press the app icon and choose **Add task** to open the home capture box. New tasks go to **Inbox** unless you specify a `#project`.
 - If an older pinned **Add task** icon says “App isn't installed”, remove it, open the updated app once, then long-press its app icon and drag a new **Add task** shortcut onto the home screen.
 - Share text or a link from another app and choose **Add to doit** to review and save it as a task. A shared page title becomes the task title, and its link becomes the description.
