@@ -26,6 +26,7 @@ class ProjectDeletionTest {
     private var deleteStatus = 204
     private var projectPage: String? = null
     private var taskPage: String? = null
+    private val taskPages = mutableMapOf<String, String>()
     private val projects = mutableListOf(
         """{"id":1,"title":"Home"}""",
         """{"id":2,"title":"Archive","parent_project_id":1,"is_archived":true}""",
@@ -51,7 +52,8 @@ class ProjectDeletionTest {
                     }
                     url.encodedPath.endsWith("/tasks") -> {
                         assertNull(url.queryParameter("filter")) // completed tasks must be counted too
-                        taskPage ?: page(tasks[url.pathSegments[3].toLong()].orEmpty())
+                        taskPage ?: taskPages["${url.pathSegments[3]}:${url.queryParameter("page")}"]
+                            ?: page(tasks[url.pathSegments[3].toLong()].orEmpty())
                     }
                     else -> return MockResponse().setResponseCode(404)
                 }
@@ -99,6 +101,13 @@ class ProjectDeletionTest {
         assertEquals(3,(changed as ProjectDeletion.Changed).preview.tasks.size)
         assertEquals(0,deletes)
         assertNotNull(db.tasks().get(10))
+    }
+
+    @Test fun previewReadsEveryTaskPage() = runTest {
+        taskPages["1:1"] = """{"items":[{"id":10,"title":"First","project_id":1}],"total":2,"page":1,"total_pages":2}"""
+        taskPages["1:2"] = """{"items":[{"id":12,"title":"Second","project_id":1}],"total":2,"page":2,"total_pages":2}"""
+        assertEquals(listOf(10L,12L,20L),deletion.preview(1).tasks.map { it.id })
+        assertEquals(0,deletes)
     }
 
     @Test fun pendingTaskAttachmentAndProjectChangesBlockDeletion() = runTest {
@@ -161,6 +170,7 @@ class ProjectDeletionTest {
         deletion.delete(deletion.preview(1))
         val repository = TaskRepository(db,settings,IdRemap(),testClock) {}
         assertTrue(failure { repository.capture("Late capture",projectId=1) } is ProjectUnavailable)
+        assertTrue(failure { repository.addPdf(10,"late.png",byteArrayOf(1),"image/png") } is TaskUnavailable)
         repository.move(30,1)
         assertEquals(3L,db.tasks().get(30)!!.projectId)
         assertTrue(db.pendingChanges().all().isEmpty())

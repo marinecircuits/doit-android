@@ -1,9 +1,12 @@
 package com.marinecircuits.doit.ui.tasks
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import com.marinecircuits.doit.data.ProjectDeletion
 import com.marinecircuits.doit.data.sync.SyncEngine
 import kotlinx.coroutines.CancellationException
@@ -34,7 +37,7 @@ fun DeleteProjectDialog(id: Long, engine: SyncEngine, onDeleted: () -> Unit, onD
                 preview?.let { append("${it.title}\n${it.counts}\n\nThis permanently deletes the project, its subprojects, and their tasks. This cannot be undone.\n\n") }
                 error?.let { append("$it\n\n") }
                 append("Requires a connection, project administrator access, and permission to read projects and tasks and delete projects. If a request fails, sync before retrying.")
-            })
+            }, modifier = Modifier.verticalScroll(rememberScrollState()))
         },
         confirmButton = {
             TextButton(enabled = !busy, onClick = {

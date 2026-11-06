@@ -553,9 +553,13 @@ class TaskRepository(
         val file = File.createTempFile("attachment-", ".cache", attachmentsDir)
         val id = try {
             file.writeBytes(bytes)
-            db.attachments().insert(AttachmentEntity(taskId = idRemap.resolve(taskId), filename = safe,
-                mime = mime.ifBlank { "application/octet-stream" }, size = bytes.size.toLong(),
-                localPath = file.absolutePath, pending = AttachmentEntity.UPLOAD))
+            db.withTransaction {
+                val target = idRemap.resolve(taskId)
+                if (db.tasks().get(target) == null || db.pendingChanges().forTask(target)?.kind == PendingChangeEntity.DELETE) throw TaskUnavailable()
+                db.attachments().insert(AttachmentEntity(taskId = target, filename = safe,
+                    mime = mime.ifBlank { "application/octet-stream" }, size = bytes.size.toLong(),
+                    localPath = file.absolutePath, pending = AttachmentEntity.UPLOAD))
+            }
         } catch (e: Throwable) {
             file.delete()
             throw e

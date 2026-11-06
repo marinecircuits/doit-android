@@ -6,6 +6,7 @@ import com.marinecircuits.doit.data.remote.VikunjaApi
 import kotlinx.coroutines.flow.first
 
 class ProjectUnavailable : IllegalStateException("The destination project is no longer available")
+class TaskUnavailable : IllegalStateException("The task is no longer available")
 
 /** Called under SyncEngine's mutex. No deletion is queued or retried automatically. */
 class ProjectDeletion(private val db: DoitDatabase, private val settings: SettingsStore,
