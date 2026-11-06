@@ -28,6 +28,25 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class SyncEngineTest {
     @Test
+    fun syncDownloadsNonPdfAttachments() = runTest {
+        fake.tasks[901] = FakeVikunja.Task(901, "Sketch")
+        fake.intercept = { request ->
+            when (request.requestUrl!!.encodedPath) {
+                "/api/v2/tasks/901/attachments" -> FakeVikunja.json(200,
+                    """{"items":[{"id":77,"task_id":901,"file":{"id":77,"name":"plan.png","mime":"image/png","size":3}}],"total":1,"page":1,"per_page":50,"total_pages":1}""")
+                "/api/v2/tasks/901/attachments/77" -> okhttp3.mockwebserver.MockResponse().setResponseCode(200).setBody("png")
+                else -> null
+            }
+        }
+        assertEquals(SyncResult.Synced, engine.sync())
+        val file = db.attachments().forTask(901).single()
+        assertEquals("plan.png", file.filename)
+        assertEquals("image/png", file.mime)
+        assertEquals("png", java.io.File(file.localPath).readText())
+        java.io.File(file.localPath).delete()
+    }
+
+    @Test
     fun recurrenceSurvivesCreatePullChangesAndRemoval() = runTest {
         engine.sync()
         val id = repository.capture("Pay !monthly", dueDate = java.time.LocalDate.of(2027, 1, 31))!!

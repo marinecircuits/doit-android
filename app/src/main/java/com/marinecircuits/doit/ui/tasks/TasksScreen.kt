@@ -175,9 +175,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         val task = editTarget ?: return@rememberLauncherForActivityResult
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            val name = uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { null } ?: "document.pdf"
+            val name = appContext.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                val column = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (column >= 0 && cursor.moveToFirst()) cursor.getString(column) else null
+            }?.ifBlank { null } ?: "attachment"
             val bytes = appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@launch
-            viewModel.addPdf(task.id, if (name.endsWith(".pdf", true)) name else "$name.pdf", bytes)
+            viewModel.addPdf(task.id, name, bytes, appContext.contentResolver.getType(uri) ?: "application/octet-stream")
         }
     }
     val pdfs by produceState(emptyList<AttachmentEntity>(), editTarget?.id) {
@@ -617,12 +620,13 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 viewModel.openSearchProject(id)
             },
             attachments = pdfs,
-            onAddPdf = { pickPdf.launch(arrayOf("application/pdf")) },
+            onAddPdf = { pickPdf.launch(arrayOf("*/*")) },
             onOpenPdf = { id ->
                 scope.launch {
                     val file = viewModel.localPdf(id) ?: return@launch
                     val uri = FileProvider.getUriForFile(appContext, appContext.packageName + ".fileprovider", file)
-                    val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/pdf")
+                    val mime = pdfs.firstOrNull { it.id == id }?.mime ?: "application/octet-stream"
+                    val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, mime)
                         .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     runCatching { appContext.startActivity(intent) }
                 }
