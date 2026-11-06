@@ -91,6 +91,8 @@ fun EditSheet(
     onProjectChange: (Long) -> Unit,
     onOpenProject: (Long) -> Unit,
     attachments: List<AttachmentEntity> = emptyList(),
+    taskLabels: List<String> = emptyList(),
+    onRemoveLabel: (String) -> Unit = {},
     onAddPdf: () -> Unit = {},
     onOpenPdf: (Long) -> Unit = {},
     onRemovePdf: (Long) -> Unit = {},
@@ -196,6 +198,9 @@ fun EditSheet(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+            }
+            taskLabels.forEach { name ->
+                TextButton(onClick = { onRemoveLabel(name) }) { Text("Remove @$name") }
             }
             ScheduleChips(schedule, Modifier.fillMaxWidth(), showEmptyRepeat = true)
             if (schedule.day == null) TextButton(onClick = { schedule.picker = "date" }) { Text("Set due date…") }

@@ -602,6 +602,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
 
     editTarget?.let { task ->
+        val taskLabels by remember(task.id) { viewModel.taskLabels(task.id) }.collectAsStateWithLifecycle(initialValue = emptyList())
         EditSheet(
             task = task,
             projects = state.projects,
@@ -620,6 +621,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 viewModel.openSearchProject(id)
             },
             attachments = pdfs,
+            taskLabels = taskLabels,
+            onRemoveLabel = { viewModel.removeTaskLabel(task.id, it) },
             onAddPdf = { pickPdf.launch(arrayOf("*/*")) },
             onOpenPdf = { id ->
                 scope.launch {
