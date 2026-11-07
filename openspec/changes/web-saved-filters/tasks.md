@@ -1,0 +1,4 @@
+- [x] Verify the API v2 saved-filter representation and add paginated reads.
+- [x] Add native filter and result pages with swipe/back navigation.
+- [x] Verify request cancellation, pagination, pending edits, filter ordering, and navigation with tests (313 tests passed).
+- [x] Build and install the signed preview, then verify the compact cards, right swipe, and web saved-filter list in the Android simulator.

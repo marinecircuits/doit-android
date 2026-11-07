@@ -45,10 +45,6 @@
     <string name="capture_hint_project">Add to %1$s…</string>
     <string name="back">Back</string>
     <string name="home">Home</string>
-    <plurals name="tile_open_count">
-        <item quantity="one">%d open</item>
-        <item quantity="other">%d open</item>
-    </plurals>
     <string name="menu">More options</string>
     <string name="app_info">About &amp; server</string>
     <string name="app_info_issue">About &amp; server • sync issue</string>
@@ -60,6 +56,18 @@
     <string name="server_info_error_detail">Details: %1$s</string>
     <string name="no_projects">No projects yet</string>
     <string name="home_labels">Labels</string>
+    <string name="saved_filters">Saved filters</string>
+    <string name="saved_filters_hint">Your filters from Vikunja</string>
+    <string name="saved_filters_empty">No saved filters yet</string>
+    <string name="saved_filters_empty_hint">Create a saved filter in Vikunja, then refresh this page.</string>
+    <string name="saved_filter_empty">No matching tasks</string>
+    <string name="saved_filters_refresh">Refresh</string>
+    <string name="saved_filters_retry">Retry</string>
+    <string name="saved_filters_connection">Could not connect to Vikunja. Check your connection and try again.</string>
+    <string name="saved_filters_permission">Could not read these filters. Check your API token’s read permissions in Vikunja.</string>
+    <string name="saved_filter_removed">This saved filter is no longer available. Go back and refresh your filters.</string>
+    <string name="saved_filters_error">Could not load saved filters. Try again.</string>
+    <string name="saved_filters_cached">Showing the last loaded items.</string>
     <string name="no_labels">No labels yet</string>
     <string name="menu_sign_out">Sign out</string>
     <string name="menu_color">Color</string>

@@ -1,0 +1,4 @@
+- Reduce home tile minimum height from 152 dp to 92 dp and subproject tile minimum height from 84 dp to 60 dp.
+- Use 12 dp padding, 10 dp grid gaps, 18 dp corners, and a smaller home icon badge.
+- Show the project title without a task-count subtitle. Keep two-line wrapping and minimum rather than fixed heights so enlarged text can grow the tile.
+- Keep the full card clickable and retain the existing dark and light palettes.
