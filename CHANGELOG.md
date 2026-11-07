@@ -2,7 +2,8 @@
 
 ### Feat
 
-- refine Android interface with graphite and lime styling
+- polish the Android interface with ink-black surfaces, silver text, and cool blue accents
+- refine quick capture, project cards, task details, search, and connection setup
 
 ## 0.34.1 (2026-11-07)
 
