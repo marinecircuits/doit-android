@@ -30,6 +30,42 @@ class VikunjaApiTest {
         MockResponse().setResponseCode(code).setHeader("Content-Type", "application/json").setBody(body)
 
     @Test
+    fun savedFiltersFollowProjectPagesAndExcludeFavoritesAndRealProjects() = runTest {
+        server.enqueue(json("""{"items":[{"id":8,"title":"Work"},{"id":-1,"title":"Favorites"},{"id":-2,"title":"Today"}],"page":1,"total_pages":2}"""))
+        server.enqueue(json("""{"items":[{"id":-4,"title":"Waiting"}],"page":2,"total_pages":2}"""))
+        assertEquals(listOf(-2L, -4L), api.savedFilters().map { it.id })
+        assertEquals("/api/v2/projects", server.takeRequest().requestUrl!!.encodedPath)
+        assertEquals("2", server.takeRequest().requestUrl!!.queryParameter("page"))
+    }
+
+    @Test
+    fun savedFilterTasksKeepServerOrderCompletedMatchesAndSavedQuery() = runTest {
+        server.enqueue(json("""{"items":[{"id":9,"title":"Finished","done":true,"project_id":8}],"page":1,"total_pages":2}"""))
+        server.enqueue(json("""{"items":[{"id":2,"title":"Open","project_id":4}],"page":2,"total_pages":2}"""))
+        val tasks = api.savedFilterTasks(-4)
+        assertEquals(listOf(9L, 2L), tasks.map { it.id })
+        assertTrue(tasks.first().done)
+        repeat(2) { page ->
+            val request = server.takeRequest()
+            assertEquals("/api/v2/projects/-4/tasks", request.requestUrl!!.encodedPath)
+            assertEquals(setOf("page"), request.requestUrl!!.queryParameterNames)
+            assertEquals((page + 1).toString(), request.requestUrl!!.queryParameter("page"))
+            assertEquals("Bearer tk_test", request.getHeader("Authorization"))
+        }
+    }
+
+    @Test
+    fun ordinaryProjectAndFavoritesCannotBeUsedAsSavedFilters() = runTest {
+        listOf(-1L, 0L, 8L).forEach { id ->
+            try {
+                api.savedFilterTasks(id)
+                fail("Expected a saved-filter ID check")
+            } catch (_: IllegalArgumentException) { }
+        }
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test
     fun openTasksFollowsPagesAndFiltersDone() = runTest {
         server.enqueue(json("""{"items":[{"id":1,"title":"a"}],"total":2,"page":1,"per_page":1,"total_pages":2}"""))
         server.enqueue(json("""{"items":[{"id":2,"title":"b"}],"total":2,"page":2,"per_page":1,"total_pages":2}"""))

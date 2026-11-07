@@ -60,6 +60,8 @@ class TaskRepository(
     private val onLocalChange: () -> Unit,
 ) {
     val openTasks: Flow<List<TaskEntity>> = db.tasks().observeOpen()
+    val cachedTasks: Flow<List<TaskEntity>> = db.tasks().observeAll()
+    val deletedTaskIds: Flow<List<Long>> = db.pendingChanges().observeDeletedTaskIds()
     val projects: Flow<List<ProjectEntity>> = db.projects().observeAll()
     val pendingCount: Flow<Int> = combine(
         db.pendingChanges().observeCount(),
@@ -74,6 +76,44 @@ class TaskRepository(
     val taskHistory: Flow<List<TaskHistoryEntity>> = db.taskHistory().observeAll()
 
     suspend fun openTasks(): List<TaskEntity> = db.tasks().open()
+
+    suspend fun savedFilters() = savedFiltersApi().savedFilters()
+
+    /** Cache results for the normal task actions, without replacing unsent local edits or deletions. */
+    suspend fun savedFilterTasks(projectId: Long): List<SavedFilterTask> {
+        val remote = savedFiltersApi().savedFilterTasks(projectId).filter { it.id > 0 }.distinctBy { it.id }
+        return db.withTransaction {
+            val generation = db.tasks().maxSyncGeneration()
+            val knownLabels = db.labels().all().associateBy { it.title.lowercase() }
+            remote.mapNotNull { dto ->
+                val pending = db.pendingChanges().forTask(dto.id)
+                if (pending?.kind == PendingChangeEntity.DELETE) return@mapNotNull null
+                val cached = db.tasks().get(dto.id)
+                if (pending != null) {
+                    return@mapNotNull cached?.let { task ->
+                        SavedFilterTask(task, db.taskLabels().forTask(task.id).map { name ->
+                            knownLabels[name.lowercase()] ?: LabelEntity(0, name)
+                        })
+                    }
+                }
+                val task = TaskEntity(
+                    id = dto.id, title = dto.title, projectId = dto.projectId, done = dto.done,
+                    dueAt = VikunjaDates.parse(dto.dueDate)?.toEpochMilli(),
+                    createdAt = VikunjaDates.parse(dto.created)?.toEpochMilli() ?: cached?.createdAt ?: 0,
+                    syncGeneration = generation, description = dto.description,
+                    repeatAfter = dto.repeatAfter, repeatMode = dto.repeatMode,
+                )
+                db.tasks().upsert(task)
+                db.taskLabels().set(task.id, dto.labels.map { it.title })
+                SavedFilterTask(task, dto.labels.map { LabelEntity(it.id, it.title, it.hexColor) })
+            }
+        }
+    }
+
+    private suspend fun savedFiltersApi(): VikunjaApi {
+        val credentials = settings.credentials() ?: throw java.io.IOException("No server connection")
+        return VikunjaApi(credentials.apiBase, credentials.token)
+    }
 
     /** Resolve a task captured offline after the server assigned its permanent ID. */
     fun resolveTaskId(id: Long): Long = idRemap.resolve(id)

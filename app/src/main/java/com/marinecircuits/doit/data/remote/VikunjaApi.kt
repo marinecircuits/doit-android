@@ -58,6 +58,15 @@ class VikunjaApi(
 
     suspend fun projects(): List<ProjectDto> = getAllPages(url("projects"), ProjectDto.serializer())
 
+    /** Saved filters are pseudo-projects below -1; -1 is the built-in Favorites view. */
+    suspend fun savedFilters(): List<ProjectDto> = projects().filter { it.id < -1 }.distinctBy { it.id }
+
+    /** Let Vikunja apply the saved query, date math, and ordering without overriding them. */
+    suspend fun savedFilterTasks(projectId: Long): List<TaskDto> {
+        require(projectId < -1) { "Expected a saved filter project ID" }
+        return getAllPages(url("projects/$projectId/tasks"), TaskDto.serializer())
+    }
+
     suspend fun projectsForDeletion(): List<ProjectDto> = getAllPages(
         url("projects").newBuilder().addQueryParameter("is_archived", "true").build(), ProjectDto.serializer(), strict = true)
 

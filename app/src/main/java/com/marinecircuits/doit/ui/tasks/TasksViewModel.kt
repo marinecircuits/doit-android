@@ -407,6 +407,65 @@ class TasksViewModel(
             .combine(settings.swipeDownLabelId) { state, id -> state.copy(swipeDownLabelId = id) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, TasksUiState(today = today.value))
 
+    private val savedFiltersController = SavedFiltersController(
+        viewModelScope, repository::savedFilters, repository::savedFilterTasks,
+    )
+    val savedFilters = savedFiltersController.state
+    val savedFilterRows: StateFlow<List<TaskRow>> = combine(
+        savedFilters, repository.cachedTasks, repository.deletedTaskIds, repository.taskLabels, state,
+    ) { filters, cached, deleted, taskLabels, current ->
+        val byId = cached.associateBy { it.id }
+        val labelsByTask = taskLabels.groupBy({ it.taskId }, { it.title })
+        val snapshots = filters.tasks.filterNot { it.task.id in deleted }
+        val tasks = snapshots.map { byId[it.task.id] ?: it.task }
+        val names = snapshots.associate { snapshot ->
+            snapshot.task.id to if (snapshot.task.id in byId) labelsByTask[snapshot.task.id].orEmpty()
+                else snapshot.labels.map { it.title }
+        }
+        val rows = TaskListModel.rows(tasks, current.projects, current.defaultProjectId, current.today, clock.zone,
+            names, current.labels + snapshots.flatMap { it.labels }, current.shoppingProjects).associateBy { it.task.id }
+        // The saved filter owns ordering; do not replace it with the app's usual due-date order.
+        snapshots.mapNotNull { rows[it.task.id] }
+    }.combine(completedHere) { rows, completed ->
+        rows.map { row -> if (row.task.id in completed) row.copy(task = row.task.copy(done = true), completed = true) else row }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    fun openSavedFilters() {
+        navigateHome()
+        onLeave()
+        savedFiltersController.open()
+    }
+
+    fun openSavedFilter(id: Long) {
+        onLeave()
+        savedFiltersController.select(id)
+    }
+
+    fun refreshSavedFilters() = savedFiltersController.refresh()
+
+    /** Home → saved filters → configured label screens. Project/direct-label views do not page. */
+    fun swipeRight() {
+        val current = state.value
+        if (savedFilters.value.open) {
+            if (savedFilters.value.selected == null && current.contextLabelIds.any { id -> current.labels.any { it.id == id } }) {
+                savedFiltersController.close()
+                nextContext()
+            }
+        } else if (current.contextScreen) nextContext()
+        else if (current.path.isEmpty() && current.openLabel == null) openSavedFilters()
+    }
+
+    fun swipeLeft() {
+        if (savedFilters.value.open) {
+            navigateUp()
+            return
+        }
+        val current = state.value
+        val index = current.contextIndex ?: return
+        val hasPrevious = (0 until index).any { slot -> current.labels.any { it.id == current.contextLabelIds[slot] } }
+        if (hasPrevious) previousContext() else openSavedFilters()
+    }
+
     /** The user left the view: tasks completed here leave the list. */
     fun onLeave() {
         completedHere.value = emptyMap()
@@ -421,6 +480,7 @@ class TasksViewModel(
 
     /** Opens a project shown as a tile in the current view. */
     fun openProject(projectId: Long) {
+        savedFiltersController.close()
         viewChanged()
         contextIndex.value = null
         onLeave()
@@ -432,6 +492,7 @@ class TasksViewModel(
     fun openSearchProject(projectId: Long) {
         val path = ProjectTree.pathTo(projectId, state.value.projects)
         if (path.isEmpty()) return
+        savedFiltersController.close()
         viewChanged()
         contextIndex.value = null
         onLeave()
@@ -441,6 +502,11 @@ class TasksViewModel(
 
     /** Back from a label or project screen: closes the label, or returns to the parent project or the main view. */
     fun navigateUp() {
+        if (savedFilters.value.open) {
+            onLeave()
+            savedFiltersController.back()
+            return
+        }
         if (state.value.contextScreen) {
             viewChanged()
             onLeave()
@@ -460,6 +526,7 @@ class TasksViewModel(
     }
 
     fun navigateHome() {
+        savedFiltersController.close()
         if (openPath.isEmpty() && openLabelId.value == null && contextIndex.value == null) return
         viewChanged()
         contextIndex.value = null
@@ -515,6 +582,7 @@ class TasksViewModel(
     /** Open a cached label's cross-project task list without creating a task. */
     fun openLabel(labelId: Long) {
         if (state.value.labels.none { it.id == labelId }) return
+        savedFiltersController.close()
         if (state.value.openLabel?.id != labelId || state.value.contextScreen) viewChanged()
         contextIndex.value = null
         onLeave()
@@ -526,6 +594,7 @@ class TasksViewModel(
     fun onForeground() {
         today.value = LocalDate.now(clock)
         viewModelScope.launch { sync() }
+        if (savedFilters.value.open) refreshSavedFilters()
     }
 
     /** Pull to refresh shows the refresh indicator while its sync is running. */
@@ -595,7 +664,7 @@ class TasksViewModel(
 
     fun complete(task: TaskEntity) {
         val current = state.value
-        val names = current.rows.firstOrNull { it.task.id == task.id }?.labels?.map { it.title }.orEmpty()
+        val names = (savedFilterRows.value + current.rows).firstOrNull { it.task.id == task.id }?.labels?.map { it.title }.orEmpty()
         val doingId = current.doingLabel?.takeIf { Doing.contains(names, it) }?.id
         completedHere.update { it + (task.id to CompletedSnapshot(task, names, doingId)) }
         viewModelScope.launch { repository.complete(task.id) }
@@ -603,7 +672,8 @@ class TasksViewModel(
 
     /** Unchecking a struck-through row restores the task as it was before it was completed. */
     fun uncomplete(task: TaskEntity) {
-        val original = completedHere.value[task.id] ?: CompletedSnapshot(task.copy(done = false), emptyList(), null)
+        val names = savedFilterRows.value.firstOrNull { it.task.id == task.id }?.labels?.map { it.title }.orEmpty()
+        val original = completedHere.value[task.id] ?: CompletedSnapshot(task.copy(done = false), names, null)
         viewModelScope.launch {
             repository.undoComplete(original.task, original.labels, original.doingLabelId)
             // Dropped only now: the reopened task is in the open list, so the row never flickers out.
@@ -623,6 +693,7 @@ class TasksViewModel(
     /** Open the cross-project list of tasks bearing the doing label. */
     fun reviewDoing() {
         val label = state.value.doingLabel ?: return
+        savedFiltersController.close()
         if (state.value.openLabel?.id != label.id || state.value.contextScreen) viewChanged()
         onLeave()
         contextIndex.value = null
@@ -678,6 +749,7 @@ class TasksViewModel(
     }
 
     fun delete(task: TaskEntity) {
+        savedFiltersController.forgetTask(task.id)
         completedHere.update { it - task.id }
         viewModelScope.launch { repository.delete(task.id) }
     }
@@ -702,8 +774,10 @@ class TasksViewModel(
                 val created = promoteTask(task.id, title.trim(), description.trim(), projectId)
                 if (created.removeTask) {
                     repository.delete(task.id)
+                    savedFiltersController.forgetTask(task.id)
                     completedHere.update { it - task.id }
                 }
+                savedFiltersController.close()
                 viewChanged()
                 onLeave()
                 contextIndex.value = null

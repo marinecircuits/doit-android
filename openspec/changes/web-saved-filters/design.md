@@ -1,0 +1,6 @@
+- Read saved filters through the paginated API v2 projects response. Vikunja represents filter N as pseudo-project -N-1; exclude Favorites (-1) and ordinary projects.
+- Fetch `/api/v2/projects/{negative-id}/tasks` without overriding the query or sort options. The server owns date math, null handling, and membership; the app does not reimplement filter expressions.
+- Use a dedicated list page and native task rows. Cache returned tasks for existing task actions, preserving queued local changes and deletions. Keep server ordering and completed matches.
+- Keep the last loaded result in memory during refresh failures, with explicit connection/permission errors and a retry action. Reopening reloads from the server. Cancel obsolete requests when changing filters or leaving the page.
+- A right swipe from Home opens Saved filters; a further right swipe from its list continues through configured label screens. Left returns through those pages. Back from results returns to the filter list, then Home.
+- Reference: https://vikunja.io/docs/api-v2/ and https://github.com/go-vikunja/vikunja/blob/main/pkg/models/saved_filters.go. The public API v2 schema confirms the paginated project-task endpoint; `/filters` does not offer a list operation.

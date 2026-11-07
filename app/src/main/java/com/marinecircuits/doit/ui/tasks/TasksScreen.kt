@@ -105,6 +105,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -151,6 +152,8 @@ import java.util.Locale
 @Composable
 fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNewToken: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val savedFilters by viewModel.savedFilters.collectAsStateWithLifecycle()
+    val savedFilterRows by viewModel.savedFilterRows.collectAsStateWithLifecycle()
     val appContext = LocalContext.current
     val locale = LocalLocale.current.platformLocale
     val words = DueWords(
@@ -171,6 +174,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     val listState = key(Triple(currentProject?.id, openLabel?.id, state.contextIndex)) { rememberLazyListState() }
     val captureFocus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
     var captureText by remember { mutableStateOf(TextFieldValue()) }
     var captureFocused by remember { mutableStateOf(false) }
@@ -249,8 +253,15 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         onStopOrDispose { viewModel.onLeave() }
     }
 
-    BackHandler(enabled = isContext || openLabel != null || currentProject != null) { viewModel.navigateUp() }
+    BackHandler(enabled = savedFilters.open || isContext || openLabel != null || currentProject != null) { viewModel.navigateUp() }
     BackHandler(enabled = searchQuery != null) { captureText = TextFieldValue(); selectedSearchIndex = 0 }
+
+    LaunchedEffect(savedFilters.open) {
+        if (savedFilters.open) {
+            focusManager.clearFocus()
+            keyboard?.hide()
+        }
+    }
 
     LaunchedEffect(focusCaptureRequests) {
         if (focusCaptureRequests > 0) {
@@ -336,29 +347,49 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
 
     // Home/project headers handle the status bar; search gives that space to the capture field.
     // Dark project pages use a quieter tint so their task cards remain distinct.
+    val swipeThreshold = with(LocalDensity.current) { 64.dp.toPx() }
+    val canPage = savedFilters.open || (searchQuery == null && !captureFocused &&
+        (isContext || (currentProject == null && openLabel == null)))
     MaterialTheme(colorScheme = colorScheme, typography = typography, shapes = shapes) {
     Scaffold(
         containerColor = colorScheme.background,
         contentWindowInsets = WindowInsets(0),
         snackbarHost = { SnackbarHost(snackbarHostState, Modifier.navigationBarsPadding().imePadding()) },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).imePadding().pointerInput(isContext, state.contextLabelIds, currentProject, openLabel) {
+        Column(Modifier.fillMaxSize().padding(padding).imePadding().pointerInput(canPage, savedFilters.open,
+            savedFilters.selected?.id, state.contextIndex, swipeThreshold) {
+            if (!canPage) return@pointerInput
             var drag = 0f
             detectHorizontalDragGestures(
                 onDragStart = { drag = 0f },
                 onDragEnd = {
-                    if (drag > 100f) viewModel.nextContext()
-                    if (drag < -100f && isContext) viewModel.previousContext()
+                    if (drag > swipeThreshold) viewModel.swipeRight()
+                    if (drag < -swipeThreshold) viewModel.swipeLeft()
                     drag = 0f
                 },
+                onDragCancel = { drag = 0f },
                 onHorizontalDrag = { change, amount ->
                     drag += amount
-                    if ((isContext || (currentProject == null && openLabel == null)) && kotlin.math.abs(drag) > 12f) change.consume()
+                    change.consume()
                 },
             )
         }) {
+            if (savedFilters.open) {
+                SavedFiltersPage(savedFilters, savedFilterRows, viewModel::openSavedFilter, viewModel::refreshSavedFilters,
+                    viewModel::navigateUp, viewModel::navigateHome) { row ->
+                    TaskRowItem(row = row,
+                        dueLabel = row.dueDate?.let { DueLabels.label(it, state.today, words, locale) },
+                        onCheckedChange = { checked -> if (checked) viewModel.complete(row.task) else viewModel.uncomplete(row.task) },
+                        onOpen = { editTarget = row.task },
+                        working = row.task.id in state.doingTaskIds,
+                        onWork = if (state.doingLabel != null && !row.completed && row.task.projectId !in state.shoppingProjects) {
+                            { viewModel.setDoing(row.task, row.task.id !in state.doingTaskIds) }
+                        } else null,
+                    )
+                }
+            } else {
             val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else currentProject?.title
-            if (searchQuery == null && headerTitle == null) HomeHeader(state.today, locale)
+            if (searchQuery == null && headerTitle == null) HomeHeader(state.today, locale, viewModel::openSavedFilters)
             if (searchQuery == null) headerTitle?.let { ProjectHeader(if (currentProject != null && currentProject.id in state.shoppingProjects) "🛒 $it" else it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
             if (searchQuery == null) state.doingTask?.let { row ->
                 DoingTop(
@@ -571,6 +602,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     includeSearch = true,
                 )
             }
+            }
         }
     }
     }
@@ -704,18 +736,24 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
 }
 
 @Composable
-private fun HomeHeader(today: LocalDate, locale: Locale) {
+private fun HomeHeader(today: LocalDate, locale: Locale, onOpenFilters: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         DoitWordmark()
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Column(horizontalAlignment = Alignment.End) {
             Text(today.format(DateTimeFormatter.ofPattern("EEE, d MMM", locale)),
                 style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
             Text(stringResource(R.string.home_tagline), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        IconButton(onClick = onOpenFilters) {
+            Icon(painterResource(R.drawable.ic_filter), contentDescription = stringResource(R.string.saved_filters),
+                tint = MaterialTheme.colorScheme.primary)
+        }
         }
     }
 }
@@ -1034,7 +1072,7 @@ private fun ColorSwatch(hex: String, selected: Boolean, onClick: () -> Unit) {
 
 /** Title row of a project screen; the back arrow goes to the parent project or the main view. */
 @Composable
-private fun ProjectHeader(title: String, onBack: () -> Unit, onHome: () -> Unit) {
+internal fun ProjectHeader(title: String, onBack: () -> Unit, onHome: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(start = 4.dp, end = 16.dp, top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1069,8 +1107,8 @@ private fun ProjectTiles(
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 152.dp),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 20.dp + navigationBar),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = modifier,
     ) {
         item(key = "projects-heading", span = { GridItemSpan(maxLineSpan) }) {
@@ -1095,7 +1133,7 @@ private fun ProjectTiles(
             val accent = projectAccent(tile.project.hexColor)
             OutlinedCard(
                 onClick = { onOpen(tile.project.id) },
-                shape = MaterialTheme.shapes.large,
+                shape = MaterialTheme.shapes.medium,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 colors = CardDefaults.outlinedCardColors(
                     containerColor = colors?.let { Color(it.container) } ?: MaterialTheme.colorScheme.surfaceContainerLow,
@@ -1103,20 +1141,20 @@ private fun ProjectTiles(
                 ),
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().heightIn(min = if (largeTiles) 152.dp else 84.dp).padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = if (largeTiles) 92.dp else 60.dp).padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
                 ) {
                     if (largeTiles) {
-                        Row(Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        Row(Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween) {
                             Icon(painterResource(if (tile.project.id in shoppingProjects) R.drawable.ic_shopping_bag else R.drawable.ic_folder),
                                 contentDescription = if (tile.project.id in shoppingProjects) stringResource(R.string.shopping_list) else null,
                                 tint = accent,
-                                modifier = Modifier.size(36.dp).background(accent.copy(alpha = 0.08f), RoundedCornerShape(10.dp)).padding(8.dp))
+                                modifier = Modifier.size(28.dp).background(accent.copy(alpha = 0.08f), RoundedCornerShape(8.dp)).padding(5.dp))
                             Icon(painterResource(R.drawable.ic_arrow_up_right), contentDescription = null,
                                 tint = colors?.let { Color(it.content).copy(alpha = 0.55f) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp))
+                                modifier = Modifier.size(16.dp))
                         }
                     }
                     Text(
@@ -1124,12 +1162,6 @@ private fun ProjectTiles(
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        pluralStringResource(R.plurals.tile_open_count, tile.openCount, tile.openCount),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors?.let { Color(it.content).copy(alpha = 0.82f) }
-                            ?: MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

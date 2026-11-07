@@ -1,0 +1,2 @@
+- [x] Reduce home and subproject card dimensions and remove the task-count subtitle.
+- [x] Build the app and inspect the compact home grid in the simulator.
