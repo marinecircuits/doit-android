@@ -35,21 +35,21 @@ object ProjectColors {
     /** The tile colours for a project colour, or null for an empty or unreadable one. */
     fun tile(hexColor: String, dark: Boolean = false): TileColors? {
         val color = parse(hexColor) ?: return null
-        if (dark) return TileColors(blend(0xFF1B1E23.toInt(), color, 0.24f), 0xFFF1F2ED.toInt())
+        if (dark) return TileColors(blend(0xFF171B23.toInt(), color, 0.045f), 0xFFEFF2F9.toInt())
         val container = lighten(color)
         val content = if (contrast(container, DARK_TEXT) >= contrast(container, LIGHT_TEXT)) DARK_TEXT else LIGHT_TEXT
         return TileColors(container, content)
     }
 
-    /** A quieter tint across the page keeps task cards distinct from their background. */
+    /** Project pages remain almost neutral; the icon and label dots carry the recognizable hue. */
     fun page(hexColor: String, dark: Boolean = false): TileColors? {
         if (!dark) return tile(hexColor)
         val color = parse(hexColor) ?: return null
-        return TileColors(blend(0xFF101215.toInt(), color, 0.07f), 0xFFF1F2ED.toInt())
+        return TileColors(blend(0xFF0B0D12.toInt(), color, 0.012f), 0xFFEFF2F9.toInt())
     }
 
     fun accent(hexColor: String, dark: Boolean): Int? = parse(hexColor)?.let {
-        if (dark) lighten(it) else it
+        if (dark) blend(it, 0xFFDCE5F8.toInt(), 0.58f) else it
     }
 
     private fun blend(base: Int, tint: Int, amount: Float): Int {

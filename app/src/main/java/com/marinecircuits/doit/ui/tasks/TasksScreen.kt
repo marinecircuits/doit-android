@@ -1052,7 +1052,7 @@ private fun ProjectHeader(title: String, onBack: () -> Unit, onHome: () -> Unit)
 }
 
 /**
- * Project tiles keep their server colour as a rich tint in dark mode and a lighter fill in light mode.
+ * Project tiles use nearly neutral dark surfaces and colored icon accents, with lighter fills in light mode.
  * The grid and label shortcuts scroll together, independently of a project's task list.
  */
 @Composable
@@ -1096,7 +1096,7 @@ private fun ProjectTiles(
             OutlinedCard(
                 onClick = { onOpen(tile.project.id) },
                 shape = MaterialTheme.shapes.large,
-                border = BorderStroke(1.dp, accent.copy(alpha = 0.22f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 colors = CardDefaults.outlinedCardColors(
                     containerColor = colors?.let { Color(it.container) } ?: MaterialTheme.colorScheme.surfaceContainerLow,
                     contentColor = colors?.let { Color(it.content) } ?: MaterialTheme.colorScheme.onSurface,
@@ -1113,7 +1113,7 @@ private fun ProjectTiles(
                             Icon(painterResource(if (tile.project.id in shoppingProjects) R.drawable.ic_shopping_bag else R.drawable.ic_folder),
                                 contentDescription = if (tile.project.id in shoppingProjects) stringResource(R.string.shopping_list) else null,
                                 tint = accent,
-                                modifier = Modifier.size(36.dp).background(accent.copy(alpha = 0.12f), RoundedCornerShape(10.dp)).padding(8.dp))
+                                modifier = Modifier.size(36.dp).background(accent.copy(alpha = 0.08f), RoundedCornerShape(10.dp)).padding(8.dp))
                             Icon(painterResource(R.drawable.ic_arrow_up_right), contentDescription = null,
                                 tint = colors?.let { Color(it.content).copy(alpha = 0.55f) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(18.dp))
@@ -1163,7 +1163,7 @@ private fun HomeLabelShortcuts(labels: List<LabelEntity>, onOpen: (Long) -> Unit
                 shape = RoundedCornerShape(14.dp),
                 color = colors?.let { Color(it.container) } ?: MaterialTheme.colorScheme.surfaceContainerLow,
                 contentColor = colors?.let { Color(it.content) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
-                border = BorderStroke(1.dp, accent.copy(alpha = 0.18f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.heightIn(min = 48.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically,

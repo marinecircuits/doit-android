@@ -1,4 +1,4 @@
-- [x] Define graphite/lime themes, typography, shapes, wordmark, and matching launcher colors.
+- [x] Define ink/silver/blue themes, typography, shapes, wordmark, and matching launcher colors.
 - [x] Restyle home/project navigation, capture, labels, task cards, search, setup, and editing sheets.
 - [x] Keep project colors recognizable and verify readable title/count contrast at color extremes.
 - [x] Run all 302 unit tests successfully and build the signed release APK.

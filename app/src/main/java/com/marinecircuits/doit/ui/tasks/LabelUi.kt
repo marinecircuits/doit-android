@@ -46,13 +46,19 @@ fun LabelChips(labels: List<LabelChip>, dimmed: Boolean, modifier: Modifier = Mo
                 color = colors?.let { Color(it.container) } ?: MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = colors?.let { Color(it.content) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
             ) {
-                Text(
-                    label.title,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                )
+                Row(
+                    Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Box(Modifier.size(5.dp).background(projectAccent(label.hexColor), CircleShape))
+                    Text(
+                        label.title,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
