@@ -1,3 +1,9 @@
+## 0.35.0 (2026-11-07)
+
+### Feat
+
+- refine Android interface with graphite and lime styling
+
 ## 0.34.1 (2026-11-07)
 
 ### Fix
