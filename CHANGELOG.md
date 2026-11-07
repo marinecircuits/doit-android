@@ -1,3 +1,9 @@
+## 0.34.1 (2026-11-07)
+
+### Fix
+
+- keep project colours from washing out
+
 ## 0.34.0 (2026-11-06)
 
 ### Feat
