@@ -402,8 +402,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 )
             }
             CaptureBar(
-                hint = currentProject?.let { stringResource(R.string.capture_hint_project, it.title) }
-                    ?: stringResource(R.string.capture_hint),
+                hint = stringResource(R.string.capture_hint),
                 belowStatusBar = searchQuery != null,
                 text = captureText,
                 onTextChange = { value ->

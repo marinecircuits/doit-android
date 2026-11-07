@@ -19,6 +19,7 @@ object ProjectTree {
         val visible = projects.filterNot { it.archived }
         val ids = visible.mapTo(HashSet()) { it.id }
         return visible.filter { it.parentProjectId == 0L || it.parentProjectId == it.id || it.parentProjectId !in ids }
+            .sortedBy { !it.title.equals("Inbox", ignoreCase = true) }
     }
 
     fun children(projects: List<ProjectEntity>, parentId: Long): List<ProjectEntity> =
