@@ -1,3 +1,9 @@
+## 0.37.0 (2026-11-07)
+
+### Feat
+
+- prioritize inbox for project navigation and capture
+
 ## 0.36.0 (2026-11-07)
 
 ### Feat
