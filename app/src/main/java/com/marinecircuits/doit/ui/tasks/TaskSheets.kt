@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DatePicker
@@ -19,6 +21,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -149,17 +152,21 @@ fun EditSheet(
         }
     }
 
-    ModalBottomSheet(onDismissRequest = ::dismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
+    ModalBottomSheet(onDismissRequest = ::dismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
         confirmValueChange = { it != androidx.compose.material3.SheetValue.Hidden || commitTitle() })) {
         Column(
-            modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            Text(stringResource(R.string.task_details), style = MaterialTheme.typography.headlineSmall)
             OutlinedTextField(
                 value = title,
                 onValueChange = { title = it },
                 label = { Text(stringResource(R.string.edit_title)) },
                 singleLine = true,
+                shape = MaterialTheme.shapes.small,
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { schedule.key(it, title) }.onFocusChanged { focus ->
                     if (titleFocused && !focus.isFocused) commitTitle()
@@ -171,6 +178,8 @@ fun EditSheet(
                 onValueChange = { details = it },
                 label = { Text(stringResource(R.string.edit_description)) },
                 minLines = 2,
+                shape = MaterialTheme.shapes.small,
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                 modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp).onFocusChanged { focus ->
                     if (detailsFocused && !focus.isFocused) commitDetails()
