@@ -24,10 +24,10 @@ object ProjectColors {
     )
 
     /**
-     * How far each channel moves towards white. 0.75 is about twice as bright as 0.55:
-     * a black project becomes grey 191 instead of 140.
+     * How far each channel moves towards white. 0.55 keeps the hue visible:
+     * a black project becomes grey 140. 0.75 washed the same project to grey 191.
      */
-    const val LIGHTEN = 0.75f
+    const val LIGHTEN = 0.55f
     const val DARK_TEXT = 0xFF1D1B20.toInt()
     const val LIGHT_TEXT = 0xFFFFFFFF.toInt()
     private const val HEX_DIGITS = "0123456789abcdefABCDEF"
