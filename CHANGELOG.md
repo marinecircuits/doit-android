@@ -1,3 +1,9 @@
+## 0.36.0 (2026-11-07)
+
+### Feat
+
+- add web saved filters and compact project cards
+
 ## 0.35.0 (2026-11-07)
 
 ### Feat
