@@ -612,7 +612,7 @@ class TasksViewModel(
 
     /**
      * A capture that is only `#project` or `@label` opens that view.
-     * Anything else is captured into a named `#project`, otherwise the open project or the default on the main view.
+     * Anything else is captured into a named `#project`, otherwise Inbox.
      */
     fun capture(text: String, dueDate: LocalDate? = null, repeat: Recurrence.Rule = Recurrence.Rule(), onCreated: (Long) -> Unit) {
         val current = state.value
@@ -629,9 +629,8 @@ class TasksViewModel(
                 openLabel(destination.id)
             }
             null -> {
-                val projectId = current.path.lastOrNull()?.id
                 viewModelScope.launch {
-                    try { repository.capture(text, projectId = projectId, dueDate = dueDate, repeat = repeat)?.let(onCreated) }
+                    try { repository.capture(text, dueDate = dueDate, repeat = repeat)?.let(onCreated) }
                     catch (e: com.marinecircuits.doit.data.ProjectUnavailable) {
                         settings.addNotice("Could not save “$text”: ${e.message}. Choose another project and try again.")
                     }

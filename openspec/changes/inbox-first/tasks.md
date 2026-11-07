@@ -1,0 +1,2 @@
+- [x] Put Inbox first and route unqualified captures there from all screens.
+- [x] Verify ordering, explicit project overrides, and captures from project screens.

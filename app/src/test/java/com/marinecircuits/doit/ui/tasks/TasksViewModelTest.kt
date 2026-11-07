@@ -278,7 +278,7 @@ class TasksViewModelTest {
     }
 
     @Test
-    fun captureGoesToTheOpenProject() {
+    fun captureWithoutNamedProjectGoesToInboxEvenInsideAProject() {
         seedProjects()
         waitUntil { tiles().size == 2 }
         viewModel.openProject(2)
@@ -288,8 +288,8 @@ class TasksViewModelTest {
 
         var created: Long? = null
         viewModel.capture("Order capacitors") { created = it }
-        waitUntil { created != null && titles().contains("Order capacitors") }
-        assertEquals(3L, runBlocking { db.tasks().get(created!!) }!!.projectId)
+        waitUntil { created != null }
+        assertEquals(1L, runBlocking { db.tasks().get(created!!) }!!.projectId)
     }
 
     @Test

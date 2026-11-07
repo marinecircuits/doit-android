@@ -6,6 +6,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ProjectTreeTest {
+    @Test
+    fun inboxComesFirstWithoutReorderingOtherProjects() {
+        val projects = listOf(ProjectEntity(2, "Work", false, 0.0), ProjectEntity(1, "inbox", false, 1.0),
+            ProjectEntity(3, "Home", false, 2.0))
+        assertEquals(listOf("inbox", "Work", "Home"), ProjectTree.topLevel(projects).map { it.title })
+    }
     private val work = ProjectEntity(1, "Work", archived = false, position = 0.0)
     private val firmware = ProjectEntity(2, "Firmware", archived = false, position = 1.0, parentProjectId = 1)
     private val drivers = ProjectEntity(3, "Drivers", archived = false, position = 2.0, parentProjectId = 2)
