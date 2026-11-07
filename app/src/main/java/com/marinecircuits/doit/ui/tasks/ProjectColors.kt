@@ -33,10 +33,32 @@ object ProjectColors {
     private const val HEX_DIGITS = "0123456789abcdefABCDEF"
 
     /** The tile colours for a project colour, or null for an empty or unreadable one. */
-    fun tile(hexColor: String): TileColors? {
-        val container = lighten(parse(hexColor) ?: return null)
+    fun tile(hexColor: String, dark: Boolean = false): TileColors? {
+        val color = parse(hexColor) ?: return null
+        if (dark) return TileColors(blend(0xFF171B23.toInt(), color, 0.045f), 0xFFEFF2F9.toInt())
+        val container = lighten(color)
         val content = if (contrast(container, DARK_TEXT) >= contrast(container, LIGHT_TEXT)) DARK_TEXT else LIGHT_TEXT
         return TileColors(container, content)
+    }
+
+    /** Project pages remain almost neutral; the icon and label dots carry the recognizable hue. */
+    fun page(hexColor: String, dark: Boolean = false): TileColors? {
+        if (!dark) return tile(hexColor)
+        val color = parse(hexColor) ?: return null
+        return TileColors(blend(0xFF0B0D12.toInt(), color, 0.012f), 0xFFEFF2F9.toInt())
+    }
+
+    fun accent(hexColor: String, dark: Boolean): Int? = parse(hexColor)?.let {
+        if (dark) blend(it, 0xFFDCE5F8.toInt(), 0.58f) else it
+    }
+
+    private fun blend(base: Int, tint: Int, amount: Float): Int {
+        fun channel(shift: Int): Int {
+            val a = base shr shift and 0xFF
+            val b = tint shr shift and 0xFF
+            return (a + (b - a) * amount).roundToInt() shl shift
+        }
+        return 0xFF000000.toInt() or channel(16) or channel(8) or channel(0)
     }
 
     /** Six or three hex digits, with or without a leading #, as opaque ARGB. */

@@ -5,6 +5,15 @@
 
     <!-- Setup -->
     <string name="setup_title">Connect to Vikunja</string>
+    <string name="setup_tagline">A little less on your mind.</string>
+    <string name="setup_intro">Your tasks. Your server. A clearer space to focus.</string>
+    <string name="setup_token_help">How to create your token</string>
+    <string name="setup_hide_token_help">Hide token instructions</string>
+    <string name="home_tagline">One thing at a time.</string>
+    <string name="your_projects">Your projects</string>
+    <string name="subprojects_heading">Subprojects</string>
+    <string name="task_details">Task details</string>
+    <string name="empty_list_hint">Take a breath. You’re all caught up here.</string>
     <string name="setup_reconnect_title">Enter a new token</string>
     <string name="setup_reconnect_body">The server no longer accepts the saved token. Your tasks and unsent changes are kept and will sync once a working token is saved.</string>
     <string name="setup_server">Server address</string>

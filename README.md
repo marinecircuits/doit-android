@@ -30,6 +30,8 @@ Configure up to three **Label screens** from the home menu, plus a separate labe
 
 ## Using it
 
+Doit follows the device's light or dark setting. Dark mode uses ink-black surfaces, silver text, and blue actions. Project colors appear as subtle surface tints and small icon or label accents. Light mode keeps lighter project fills. The home screen groups projects and labels, while rounded task cards and a scrollable details sheet keep tasks easy to read and edit.
+
 - To permanently delete the open project and its contents, choose **Menu → Delete project**. The app reads the server's full project tree, including archived subprojects and completed tasks, and shows their counts. Nonempty projects require a second confirmation. Deletion needs a connection, project administrator access, and `projects → delete`, `projects → read_all`, and `tasks → read_all` token permissions. Sync unsent changes first. If the contents change before deletion, review and confirm the new preview. Deletion cannot be undone.
 - Submit a combination such as `@errand #Home` to filter open tasks by both label and project, including subprojects. Multiple labels require all of them, for example `@errand @next #Home`. Quoted names work too. Prefix the expression with `/` to see results while typing; ordinary task text still creates a task.
 - Long-press the app icon and choose **Add task** to open the home capture box. New tasks go to **Inbox** unless you specify a `#project`.

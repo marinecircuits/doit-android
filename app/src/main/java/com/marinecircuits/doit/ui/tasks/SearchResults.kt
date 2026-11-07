@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,10 +33,13 @@ fun SearchResults(query: String, results: List<TaskSearch.Result>, selected: Int
     when {
         query.isBlank() -> Box(Modifier.fillMaxSize(), Alignment.Center) { Text(stringResource(R.string.search_hint)) }
         results.isEmpty() -> Box(Modifier.fillMaxSize(), Alignment.Center) { Text(stringResource(R.string.search_empty)) }
-        else -> LazyColumn(Modifier.fillMaxSize(), state = listState) {
+        else -> LazyColumn(Modifier.fillMaxSize(), state = listState,
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
             itemsIndexed(results, key = { _, result -> "${result.kind}:${result.id}" }) { index, result ->
                 Surface(
-                    color = if (index == selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                    shape = MaterialTheme.shapes.medium,
+                    color = if (index == selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
                     modifier = Modifier.fillMaxWidth().clickable { onOpen(result) },
                 ) {
                     Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -48,7 +52,7 @@ fun SearchResults(query: String, results: List<TaskSearch.Result>, selected: Int
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
-                        Column {
+                        Column(Modifier.weight(1f)) {
                             Text(result.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (result.context.isNotBlank()) Text(result.context, style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)

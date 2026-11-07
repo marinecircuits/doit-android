@@ -55,4 +55,27 @@ class ProjectColorsTest {
         assertEquals(21.0, ProjectColors.contrast(argb(0x000000), argb(0xFFFFFF)), 0.01)
         assertEquals(1.0, ProjectColors.contrast(argb(0x1973FF), argb(0x1973FF)), 0.0)
     }
+
+    @Test
+    fun darkTilesAndPagesKeepReadableTextEvenAtColourExtremes() {
+        (ProjectColors.PALETTE + listOf("000000", "ffffff", "00ff00", "0000ff", "ffff00")).forEach { hex ->
+            val tile = ProjectColors.tile(hex, dark = true)!!
+            val page = ProjectColors.page(hex, dark = true)!!
+            assertTrue("Tile text on $hex", ProjectColors.contrast(tile.container, tile.content) >= 4.5)
+            assertTrue("Muted tile count on $hex", ProjectColors.contrast(tile.container, muted(tile.content, tile.container)) >= 4.5)
+            assertTrue("Page text on $hex", ProjectColors.contrast(page.container, page.content) >= 4.5)
+            assertTrue("Page is darker than its tile", ProjectColors.contrast(page.container, 0xFFFFFFFF.toInt()) >
+                ProjectColors.contrast(tile.container, 0xFFFFFFFF.toInt()))
+        }
+        assertEquals(ProjectColors.PALETTE.size,
+            ProjectColors.PALETTE.map { ProjectColors.tile(it, dark = true)!!.container }.distinct().size)
+        assertNull(ProjectColors.tile("invalid", dark = true))
+        assertNull(ProjectColors.page("", dark = true))
+    }
+
+    private fun muted(foreground: Int, background: Int): Int {
+        fun channel(shift: Int) = (((foreground shr shift and 0xFF) * 0.82f +
+            (background shr shift and 0xFF) * 0.18f).toInt() shl shift)
+        return argb(channel(16) or channel(8) or channel(0))
+    }
 }

@@ -30,7 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.marinecircuits.doit.data.CaptureSyntax.Suggestion
 
-/** A task's labels as small chips, in their colours made lighter like project tiles, or plain without one. */
+/** A task's labels share the theme-aware project tints. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun LabelChips(labels: List<LabelChip>, dimmed: Boolean, modifier: Modifier = Modifier) {
@@ -40,19 +40,25 @@ fun LabelChips(labels: List<LabelChip>, dimmed: Boolean, modifier: Modifier = Mo
         modifier = modifier.then(if (dimmed) Modifier.alpha(0.6f) else Modifier),
     ) {
         labels.forEach { label ->
-            val colors = ProjectColors.tile(label.hexColor)
+            val colors = projectTileColors(label.hexColor)
             Surface(
                 shape = CircleShape,
                 color = colors?.let { Color(it.container) } ?: MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = colors?.let { Color(it.content) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
             ) {
-                Text(
-                    label.title,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                )
+                Row(
+                    Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    Box(Modifier.size(5.dp).background(projectAccent(label.hexColor), CircleShape))
+                    Text(
+                        label.title,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
@@ -101,10 +107,10 @@ fun CaptureSuggestions(suggestions: List<Suggestion>, onPick: (Suggestion) -> Un
 
 @Composable
 private fun SuggestionDot(hexColor: String) {
-    val colors = ProjectColors.tile(hexColor)
+    val colors = projectTileColors(hexColor)
     val dot = Modifier.size(12.dp)
     if (colors != null) {
-        Box(dot.background(Color(colors.container), CircleShape))
+        Box(dot.background(projectAccent(hexColor), CircleShape))
     } else {
         Box(dot.border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape))
     }

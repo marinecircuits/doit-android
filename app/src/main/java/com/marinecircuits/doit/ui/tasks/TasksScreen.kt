@@ -11,8 +11,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -57,9 +58,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -85,6 +89,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.input.key.Key
@@ -110,6 +115,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
@@ -121,6 +127,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.marinecircuits.doit.R
+import com.marinecircuits.doit.ui.theme.DoitWordmark
 import com.marinecircuits.doit.data.Recurrence
 import com.marinecircuits.doit.container
 import com.marinecircuits.doit.data.CaptureSyntax
@@ -132,6 +139,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.produceState
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
@@ -297,8 +305,9 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
 
     val typography = MaterialTheme.typography
     val shapes = MaterialTheme.shapes
-    val page = openLabel?.let { ProjectColors.tile(it.hexColor) }
-        ?: currentProject?.let { ProjectColors.tile(it.hexColor) }
+    val darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val page = openLabel?.let { ProjectColors.page(it.hexColor, darkTheme) }
+        ?: currentProject?.let { ProjectColors.page(it.hexColor, darkTheme) }
     val colorScheme = if (page == null) {
         MaterialTheme.colorScheme
     } else {
@@ -307,16 +316,15 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         MaterialTheme.colorScheme.copy(
             background = container,
             surface = container,
-            surfaceVariant = container,
+            surfaceVariant = if (darkTheme) MaterialTheme.colorScheme.surfaceVariant else container,
             onBackground = content,
             onSurface = content,
-            onSurfaceVariant = content.copy(alpha = 0.75f),
-            outline = content.copy(alpha = 0.55f),
-            outlineVariant = content.copy(alpha = 0.28f),
+            onSurfaceVariant = if (darkTheme) MaterialTheme.colorScheme.onSurfaceVariant else content.copy(alpha = 0.75f),
+            outline = if (darkTheme) MaterialTheme.colorScheme.outline else content.copy(alpha = 0.55f),
+            outlineVariant = if (darkTheme) MaterialTheme.colorScheme.outlineVariant else content.copy(alpha = 0.28f),
         )
     }
     val view = LocalView.current
-    val darkTheme = isSystemInDarkTheme()
     SideEffect {
         if (view.isInEditMode) return@SideEffect
         val window = (view.context as Activity).window
@@ -326,8 +334,8 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         controller.isAppearanceLightNavigationBars = lightBackground
     }
 
-    // The capture bar handles the status bar itself; the list stays above the keyboard and navigation bar.
-    // An open project fills the page with the same lightened colour as its tile.
+    // Home/project headers handle the status bar; search gives that space to the capture field.
+    // Dark project pages use a quieter tint so their task cards remain distinct.
     MaterialTheme(colorScheme = colorScheme, typography = typography, shapes = shapes) {
     Scaffold(
         containerColor = colorScheme.background,
@@ -350,6 +358,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             )
         }) {
             val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else currentProject?.title
+            if (searchQuery == null && headerTitle == null) HomeHeader(state.today, locale)
             if (searchQuery == null) headerTitle?.let { ProjectHeader(if (currentProject != null && currentProject.id in state.shoppingProjects) "🛒 $it" else it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
             if (searchQuery == null) state.doingTask?.let { row ->
                 DoingTop(
@@ -358,13 +367,13 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     onOpen = {
                         if (state.doingCount > 1) viewModel.reviewDoing() else editTarget = row.task
                     },
-                    modifier = if (headerTitle == null) Modifier.statusBarsPadding() else Modifier,
+                    modifier = Modifier,
                 )
             }
             CaptureBar(
                 hint = currentProject?.let { stringResource(R.string.capture_hint_project, it.title) }
                     ?: stringResource(R.string.capture_hint),
-                belowStatusBar = searchQuery != null || (headerTitle == null && state.doingTask == null),
+                belowStatusBar = searchQuery != null,
                 text = captureText,
                 onTextChange = { value ->
                     if (TaskSearch.query(value.text) != searchQuery) selectedSearchIndex = 0
@@ -466,10 +475,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                 state.rows.isNotEmpty() -> LazyColumn(
                                     state = listState,
                                     contentPadding = if (hasTiles || state.status.isNotEmpty()) {
-                                        PaddingValues()
+                                        PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                                     } else {
-                                        WindowInsets.navigationBars.asPaddingValues()
+                                        PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp,
+                                            bottom = 8.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
                                     },
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
                                     modifier = Modifier.fillMaxSize(),
                                 ) {
                                     items(state.rows, key = { it.task.id }) { row ->
@@ -501,11 +512,18 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                 }
                                 else -> LazyColumn(Modifier.fillMaxSize()) {
                                     item {
-                                        Box(Modifier.fillMaxWidth().padding(top = 48.dp), Alignment.Center) {
+                                        Column(Modifier.fillMaxWidth().padding(top = 48.dp, start = 24.dp, end = 24.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                            Icon(painterResource(R.drawable.ic_check), contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(56.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape).padding(14.dp))
                                             Text(
                                                 stringResource(R.string.empty_list),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                style = MaterialTheme.typography.titleLarge,
                                             )
+                                            Text(stringResource(R.string.empty_list_hint), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                style = MaterialTheme.typography.bodyMedium)
                                         }
                                     }
                                 }
@@ -685,6 +703,23 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
 }
 
+@Composable
+private fun HomeHeader(today: LocalDate, locale: Locale) {
+    Row(
+        Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        DoitWordmark()
+        Column(horizontalAlignment = Alignment.End) {
+            Text(today.format(DateTimeFormatter.ofPattern("EEE, d MMM", locale)),
+                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+            Text(stringResource(R.string.home_tagline), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 /** A persistent shortcut to the current working task or the complete doing list. */
 @Composable
 private fun DoingTop(row: TaskRow, count: Int, onOpen: () -> Unit, modifier: Modifier = Modifier) {
@@ -694,6 +729,7 @@ private fun DoingTop(row: TaskRow, count: Int, onOpen: () -> Unit, modifier: Mod
         shape = MaterialTheme.shapes.medium,
         color = MaterialTheme.colorScheme.primaryContainer,
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)),
     ) {
         Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(painterResource(R.drawable.ic_start_work), contentDescription = null, modifier = Modifier.size(20.dp))
@@ -803,19 +839,31 @@ private fun CaptureBar(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (belowStatusBar) Modifier.statusBarsPadding() else Modifier)
-            .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
+            .padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         OutlinedTextField(
             value = text,
             onValueChange = onTextChange,
             placeholder = { Text(hint, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            shape = MaterialTheme.shapes.medium,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+            ),
             singleLine = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = if (searchMode) ImeAction.Search else ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { onSend() }, onSearch = { onSend() }),
             trailingIcon = {
-                IconButton(onClick = onSend, enabled = if (searchMode) hasSearchResult else text.text.isNotBlank()) {
-                    Icon(painterResource(R.drawable.ic_send), contentDescription = stringResource(if (searchMode) R.string.search_open else R.string.capture_send))
+                FilledIconButton(onClick = onSend, enabled = if (searchMode) hasSearchResult else text.text.isNotBlank(),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.padding(end = 4.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )) {
+                    Icon(painterResource(if (searchMode) R.drawable.ic_arrow_up_right else R.drawable.ic_add), contentDescription = stringResource(if (searchMode) R.string.search_open else R.string.capture_send))
                 }
             },
             modifier = Modifier
@@ -998,14 +1046,14 @@ private fun ProjectHeader(title: String, onBack: () -> Unit, onHome: () -> Unit)
                 modifier = Modifier.size(30.dp),
             )
         }
-        Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         TextButton(onClick = onHome) { Text(stringResource(R.string.home)) }
     }
 }
 
 /**
- * Project tiles: title and the number of open tasks directly in the project, filled with the project's colour made
- * lighter, or plain without one. Scrolls on its own.
+ * Project tiles use nearly neutral dark surfaces and colored icon accents, with lighter fills in light mode.
+ * The grid and label shortcuts scroll together, independently of a project's task list.
  */
 @Composable
 private fun ProjectTiles(
@@ -1019,12 +1067,22 @@ private fun ProjectTiles(
 ) {
     val navigationBar = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 140.dp),
-        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 12.dp + navigationBar),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        columns = GridCells.Adaptive(minSize = 152.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 20.dp + navigationBar),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = modifier,
     ) {
+        item(key = "projects-heading", span = { GridItemSpan(maxLineSpan) }) {
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(stringResource(if (largeTiles) R.string.your_projects else R.string.subprojects_heading),
+                    style = MaterialTheme.typography.titleMedium)
+                Text(tiles.size.toString(), style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
         if (homeLabels != null && tiles.isEmpty()) {
             item(key = "no-projects", span = { GridItemSpan(maxLineSpan) }) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), Alignment.Center) {
@@ -1033,34 +1091,44 @@ private fun ProjectTiles(
             }
         }
         items(tiles, key = { it.project.id }) { tile ->
-            val colors = ProjectColors.tile(tile.project.hexColor)
+            val colors = projectTileColors(tile.project.hexColor)
+            val accent = projectAccent(tile.project.hexColor)
             OutlinedCard(
                 onClick = { onOpen(tile.project.id) },
-                colors = if (colors == null) {
-                    CardDefaults.outlinedCardColors()
-                } else {
-                    CardDefaults.outlinedCardColors(
-                        containerColor = Color(colors.container),
-                        contentColor = Color(colors.content),
-                    )
-                },
+                shape = MaterialTheme.shapes.large,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.outlinedCardColors(
+                    containerColor = colors?.let { Color(it.container) } ?: MaterialTheme.colorScheme.surfaceContainerLow,
+                    contentColor = colors?.let { Color(it.content) } ?: MaterialTheme.colorScheme.onSurface,
+                ),
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().then(
-                        if (largeTiles) Modifier.heightIn(min = 104.dp) else Modifier
-                    ).padding(12.dp),
-                    verticalArrangement = if (largeTiles) Arrangement.Center else Arrangement.Top,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = if (largeTiles) 152.dp else 84.dp).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
+                    if (largeTiles) {
+                        Row(Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween) {
+                            Icon(painterResource(if (tile.project.id in shoppingProjects) R.drawable.ic_shopping_bag else R.drawable.ic_folder),
+                                contentDescription = if (tile.project.id in shoppingProjects) stringResource(R.string.shopping_list) else null,
+                                tint = accent,
+                                modifier = Modifier.size(36.dp).background(accent.copy(alpha = 0.08f), RoundedCornerShape(10.dp)).padding(8.dp))
+                            Icon(painterResource(R.drawable.ic_arrow_up_right), contentDescription = null,
+                                tint = colors?.let { Color(it.content).copy(alpha = 0.55f) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp))
+                        }
+                    }
                     Text(
-                        if (tile.project.id in shoppingProjects) "🛒 ${tile.project.title}" else tile.project.title,
-                        style = MaterialTheme.typography.titleSmall,
+                        if (!largeTiles && tile.project.id in shoppingProjects) "🛒 ${tile.project.title}" else tile.project.title,
+                        style = MaterialTheme.typography.titleMedium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         pluralStringResource(R.plurals.tile_open_count, tile.openCount, tile.openCount),
                         style = MaterialTheme.typography.labelMedium,
-                        color = colors?.let { Color(it.content).copy(alpha = 0.8f) }
+                        color = colors?.let { Color(it.content).copy(alpha = 0.82f) }
                             ?: MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -1068,10 +1136,8 @@ private fun ProjectTiles(
         }
         if (homeLabels != null) {
             item(key = "labels-heading", span = { GridItemSpan(maxLineSpan) }) {
-                Column {
-                    HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 16.dp))
-                    Text(stringResource(R.string.home_labels), style = MaterialTheme.typography.titleSmall)
-                }
+                Text(stringResource(R.string.home_labels), style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 4.dp))
             }
             item(key = "labels", span = { GridItemSpan(maxLineSpan) }) {
                 if (homeLabels.isEmpty()) {
@@ -1090,15 +1156,19 @@ private fun ProjectTiles(
 private fun HomeLabelShortcuts(labels: List<LabelEntity>, onOpen: (Long) -> Unit) {
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         labels.sortedWith(compareBy<LabelEntity> { it.title.lowercase() }.thenBy { it.id }).forEach { label ->
-            val colors = ProjectColors.tile(label.hexColor)
+            val colors = projectTileColors(label.hexColor)
+            val accent = projectAccent(label.hexColor)
             Surface(
                 onClick = { onOpen(label.id) },
-                shape = CircleShape,
-                color = colors?.let { Color(it.container) } ?: MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(14.dp),
+                color = colors?.let { Color(it.container) } ?: MaterialTheme.colorScheme.surfaceContainerLow,
                 contentColor = colors?.let { Color(it.content) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.heightIn(min = 48.dp),
             ) {
-                Box(contentAlignment = Alignment.CenterStart, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Box(Modifier.size(6.dp).background(accent, CircleShape))
                     Text("@${label.title}", style = MaterialTheme.typography.labelLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
             }
@@ -1140,6 +1210,7 @@ private fun TokenRejectedBanner(onEnterNewToken: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TaskRowItem(
     row: TaskRow,
@@ -1151,7 +1222,10 @@ private fun TaskRowItem(
 ) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val repeat = Recurrence.Rule(row.task.repeatAfter, row.task.repeatMode)
-    Column(Modifier.background(MaterialTheme.colorScheme.surface)) {
+    Column(Modifier.clip(MaterialTheme.shapes.medium)
+        .background(if (working) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
+        .border(1.dp, if (working) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f), MaterialTheme.shapes.medium)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1179,13 +1253,14 @@ private fun TaskRowItem(
                         )
                     }
                 } else {
-                    Box(Modifier.size(22.dp).border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
+                    Box(Modifier.size(24.dp).border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape))
                 }
             }
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
                 Text(
                     row.displayTitle,
                     style = MaterialTheme.typography.bodyLarge.copy(
+                        fontWeight = FontWeight.Medium,
                         textDecoration = if (row.completed) TextDecoration.LineThrough else null,
                     ),
                     color = if (row.completed) muted else MaterialTheme.colorScheme.onSurface,
@@ -1198,37 +1273,46 @@ private fun TaskRowItem(
                 row.projectTitle?.let {
                     Text(it, style = MaterialTheme.typography.labelMedium, color = muted)
                 }
+                if (row.quantity != null || repeat.active || dueLabel != null) {
+                    FlowRow(modifier = Modifier.padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        row.quantity?.let { quantity ->
+                            Text(quantity, modifier = Modifier.widthIn(max = 140.dp)
+                                .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp)).padding(6.dp), maxLines = 2,
+                                overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary)
+                        }
+                        if (repeat.active || dueLabel != null) {
+                            Row(
+                                Modifier
+                                    .background(if (row.overdue) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainer,
+                                        RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                val scheduleColor = if (row.overdue) MaterialTheme.colorScheme.error else muted
+                                if (repeat.active) {
+                                    Icon(
+                                        painterResource(R.drawable.ic_repeat),
+                                        contentDescription = repeat.summary,
+                                        tint = scheduleColor,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                                dueLabel?.let {
+                                    Text(it, style = MaterialTheme.typography.labelLarge, color = scheduleColor,
+                                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                }
+                            }
+                        }
+                    }
+                }
                 if (row.labels.isNotEmpty()) {
                     LabelChips(row.labels, dimmed = row.completed, modifier = Modifier.padding(top = 4.dp))
                 }
             }
             if (row.links.isNotEmpty()) TaskLinkIcons(row.links, Modifier.padding(start = 4.dp), stacked = true)
-            row.quantity?.let { quantity ->
-                Text(quantity, modifier = Modifier.padding(start = 8.dp).width(90.dp)
-                    .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp)).padding(6.dp), maxLines = 2,
-                    overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary)
-            }
-            if (repeat.active || dueLabel != null) {
-                Row(
-                    Modifier.padding(start = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    val scheduleColor = if (row.overdue) MaterialTheme.colorScheme.error else muted
-                    if (repeat.active) {
-                        Icon(
-                            painterResource(R.drawable.ic_repeat),
-                            contentDescription = repeat.summary,
-                            tint = scheduleColor,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                    dueLabel?.let {
-                        Text(it, style = MaterialTheme.typography.labelLarge, color = scheduleColor)
-                    }
-                }
-            }
             if (onWork != null) {
                 IconButton(onClick = onWork) {
                     Icon(
@@ -1239,7 +1323,6 @@ private fun TaskRowItem(
                 }
             }
         }
-        HorizontalDivider(Modifier.padding(start = 56.dp), color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
