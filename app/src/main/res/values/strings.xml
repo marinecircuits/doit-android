@@ -187,4 +187,8 @@
     <string name="pdfs">Attachments</string>
     <string name="remove_pdf">Remove</string>
     <string name="open_pdf">Open PDF</string>
+    <string name="bulk_selected">%1$d selected</string>
+    <string name="bulk_edit">Edit</string>
+    <string name="bulk_move_title">Move %1$d tasks to project</string>
+    <string name="bulk_move_confirm">Move tasks</string>
 </resources>

@@ -564,6 +564,12 @@ class TaskRepository(
         onLocalChange()
     }
 
+    /** Batch project changes locally before scheduling sync, including while offline. */
+    suspend fun moveTasks(taskIds: List<Long>, projectId: Long) {
+        if (projectId <= 0 || db.projects().all().none { it.id == projectId && !it.archived }) return
+        taskIds.distinct().forEach { move(it, projectId) }
+    }
+
     suspend fun move(taskId: Long, projectId: Long) {
         val task = db.tasks().get(idRemap.resolve(taskId)) ?: return
         if (projectId == task.projectId) return
