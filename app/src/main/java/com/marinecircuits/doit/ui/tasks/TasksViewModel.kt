@@ -743,6 +743,10 @@ class TasksViewModel(
     /** Opens the cached PDF, downloading it into the cache if this device does not have it yet. */
     suspend fun localPdf(id: Long) = repository.localPdf(id) { taskId, remoteId -> downloadPdf(taskId, remoteId) }
 
+    fun moveTasks(taskIds: List<Long>, projectId: Long) {
+        viewModelScope.launch { repository.moveTasks(taskIds, projectId) }
+    }
+
     fun move(task: TaskEntity, projectId: Long) {
         viewModelScope.launch { repository.move(task.id, projectId) }
     }

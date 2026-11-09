@@ -13,6 +13,8 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -182,6 +184,11 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     captureSchedule.changeText = { captureText = it }
     var scrollToTaskId by remember { mutableStateOf<Long?>(null) }
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
+    var selectedTaskIds by remember { mutableStateOf(setOf<Long>()) }
+    var bulkMoveOpen by remember { mutableStateOf(false) }
+    fun toggleSelection(id: Long) {
+        selectedTaskIds = if (id in selectedTaskIds) selectedTaskIds - id else selectedTaskIds + id
+    }
     val scope = rememberCoroutineScope()
     val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         val task = editTarget ?: return@rememberLauncherForActivityResult
@@ -253,7 +260,20 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
         onStopOrDispose { viewModel.onLeave() }
     }
 
-    BackHandler(enabled = savedFilters.open || isContext || openLabel != null || currentProject != null) { viewModel.navigateUp() }
+    BackHandler(enabled = selectedTaskIds.isNotEmpty()) {
+        selectedTaskIds = emptySet()
+        bulkMoveOpen = false
+    }
+    BackHandler(enabled = selectedTaskIds.isEmpty() && (savedFilters.open || isContext || openLabel != null || currentProject != null)) {
+        viewModel.navigateUp()
+    }
+    LaunchedEffect(currentProject?.id, openLabel?.id, isContext, savedFilters.open) {
+        selectedTaskIds = emptySet()
+        bulkMoveOpen = false
+    }
+    LaunchedEffect(state.rows) {
+        selectedTaskIds = selectedTaskIds.intersect(state.rows.map { it.task.id }.toSet())
+    }
     BackHandler(enabled = searchQuery != null) { captureText = TextFieldValue(); selectedSearchIndex = 0 }
 
     LaunchedEffect(savedFilters.open) {
@@ -350,6 +370,18 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     val swipeThreshold = with(LocalDensity.current) { 64.dp.toPx() }
     val canPage = savedFilters.open || (searchQuery == null && !captureFocused &&
         (isContext || (currentProject == null && openLabel == null)))
+    if (bulkMoveOpen && selectedTaskIds.isNotEmpty()) {
+        BulkMoveDialog(
+            count = selectedTaskIds.size,
+            projects = state.projects,
+            onDismiss = { bulkMoveOpen = false },
+            onMove = { projectId ->
+                viewModel.moveTasks(selectedTaskIds.toList(), projectId)
+                selectedTaskIds = emptySet()
+                bulkMoveOpen = false
+            },
+        )
+    }
     MaterialTheme(colorScheme = colorScheme, typography = typography, shapes = shapes) {
     Scaffold(
         containerColor = colorScheme.background,
@@ -391,7 +423,18 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
             val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else currentProject?.title
             if (searchQuery == null && headerTitle == null) HomeHeader(state.today, locale, viewModel::openSavedFilters)
             if (searchQuery == null) headerTitle?.let { ProjectHeader(if (currentProject != null && currentProject.id in state.shoppingProjects) "🛒 $it" else it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
-            if (searchQuery == null) state.doingTask?.let { row ->
+            if (searchQuery == null && selectedTaskIds.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(stringResource(R.string.bulk_selected, selectedTaskIds.size), Modifier.weight(1f))
+                    TextButton(onClick = { selectedTaskIds = emptySet() }) { Text(stringResource(R.string.cancel)) }
+                    TextButton(onClick = { bulkMoveOpen = true }) { Text(stringResource(R.string.bulk_edit)) }
+                }
+            }
+            if (searchQuery == null && selectedTaskIds.isEmpty()) state.doingTask?.let { row ->
                 DoingTop(
                     row = row,
                     count = state.doingCount,
@@ -527,7 +570,13 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                                         viewModel.uncomplete(row.task)
                                                     }
                                                 },
-                                                onOpen = { editTarget = row.task },
+                                                onOpen = {
+                                                    if (selectedTaskIds.isNotEmpty()) toggleSelection(row.task.id)
+                                                    else editTarget = row.task
+                                                },
+                                                onLongPress = { toggleSelection(row.task.id) },
+                                                selected = row.task.id in selectedTaskIds,
+                                                selecting = selectedTaskIds.isNotEmpty(),
                                                 working = row.task.id in state.doingTaskIds,
                                                 onWork = if (state.doingLabel != null && !row.completed && row.task.projectId !in state.shoppingProjects) {
                                                     { viewModel.setDoing(row.task, row.task.id !in state.doingTaskIds) }
@@ -1208,6 +1257,40 @@ private fun HomeLabelShortcuts(labels: List<LabelEntity>, onOpen: (Long) -> Unit
 }
 
 @Composable
+private fun BulkMoveDialog(
+    count: Int,
+    projects: List<com.marinecircuits.doit.data.local.ProjectEntity>,
+    onDismiss: () -> Unit,
+    onMove: (Long) -> Unit,
+) {
+    var destination by remember { mutableStateOf<Long?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.bulk_move_title, count)) },
+        text = {
+            LazyColumn(Modifier.heightIn(max = 360.dp)) {
+                items(projects.filter { !it.archived && it.id > 0 }, key = { it.id }) { project ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable { destination = project.id }
+                            .padding(vertical = 12.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(project.title, Modifier.weight(1f))
+                        if (destination == project.id) Text("✓", color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { destination?.let(onMove) }, enabled = destination != null) {
+                Text(stringResource(R.string.bulk_move_confirm))
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+@Composable
 private fun StatusLine(parts: List<StatusPart>, modifier: Modifier = Modifier) {
     if (parts.isEmpty()) return
     val texts = parts.map { part ->
@@ -1241,37 +1324,41 @@ private fun TokenRejectedBanner(onEnterNewToken: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun TaskRowItem(
     row: TaskRow,
     dueLabel: String?,
     onCheckedChange: (Boolean) -> Unit,
     onOpen: () -> Unit,
+    onLongPress: () -> Unit = {},
+    selected: Boolean = false,
+    selecting: Boolean = false,
     working: Boolean,
     onWork: (() -> Unit)?,
 ) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val repeat = Recurrence.Rule(row.task.repeatAfter, row.task.repeatMode)
     Column(Modifier.clip(MaterialTheme.shapes.medium)
-        .background(if (working) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
+        .background(if (selected || working) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow)
         .border(1.dp, if (working) MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
             else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f), MaterialTheme.shapes.medium)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = !row.completed, onClick = onOpen)
+                .combinedClickable(enabled = selecting || !row.completed, onClick = onOpen, onLongClick = onLongPress)
                 .padding(end = 16.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
                     .size(56.dp)
-                    .toggleable(value = row.completed, role = Role.Checkbox, onValueChange = onCheckedChange)
+                    .toggleable(value = if (selecting) selected else row.completed, role = Role.Checkbox,
+                        onValueChange = { if (selecting) onOpen() else onCheckedChange(it) })
                     .semantics { contentDescription = row.task.title },
                 contentAlignment = Alignment.Center,
             ) {
-                if (row.completed) {
+                if (if (selecting) selected else row.completed) {
                     Box(
                         Modifier.size(22.dp).background(MaterialTheme.colorScheme.primary, CircleShape),
                         contentAlignment = Alignment.Center,
