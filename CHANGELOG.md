@@ -1,3 +1,9 @@
+## 0.38.0 (2026-11-09)
+
+### Feat
+
+- select and move tasks between projects in bulk
+
 ## 0.37.0 (2026-11-07)
 
 ### Feat
