@@ -127,7 +127,8 @@ class TasksViewModelTest {
         runBlocking { settings.saveCredentials(Credentials("https://user:password@example.com/vikunja/api/v2/".toHttpUrl(), "tk_secret")) }
         waitUntil { viewModel.state.value.serverAddress == "https://example.com/vikunja/" }
         runBlocking { settings.clear() }
-        waitUntil { viewModel.state.value.serverAddress == null }
+        waitUntil { viewModel.state.value.serverAddress == "https://example.com/vikunja/" }
+        runBlocking { assertEquals(null, settings.credentials()) }
     }
 
     @Test

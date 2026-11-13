@@ -9,6 +9,7 @@ import com.marinecircuits.doit.data.Credentials
 import com.marinecircuits.doit.data.ServerUrl
 import com.marinecircuits.doit.data.SettingsStore
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import okhttp3.HttpUrl
 
 sealed interface SetupError {
@@ -37,6 +38,14 @@ class SetupViewModel(
         private set
     var error by mutableStateOf<SetupError?>(null)
         private set
+
+    init {
+        if (fixedApiBase == null) viewModelScope.launch {
+            val saved = settings.serverAddress.first()
+            // Never overwrite an address already typed while the preference was loading.
+            if (url.isEmpty() && !busy) url = saved.orEmpty()
+        }
+    }
 
     fun connect() {
         if (busy) return
