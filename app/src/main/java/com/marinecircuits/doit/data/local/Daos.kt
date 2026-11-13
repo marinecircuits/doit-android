@@ -170,6 +170,14 @@ interface TaskLabelDao {
         insertAll(titles.distinct().mapIndexed { position, title -> TaskLabelEntity(taskId, title, position) })
     }
 
+    /** Server order is not a user reorder: retain surviving chips and append new names. */
+    @Transaction
+    suspend fun setFromServer(taskId: Long, titles: List<String>) {
+        val incoming = titles.distinct()
+        val surviving = forTask(taskId).filter { it in incoming }
+        set(taskId, surviving + incoming.filterNot { it in surviving })
+    }
+
     @Query("UPDATE task_labels SET taskId = :newId WHERE taskId = :oldId")
     suspend fun changeTaskId(oldId: Long, newId: Long)
 

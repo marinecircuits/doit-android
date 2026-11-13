@@ -606,4 +606,25 @@ class TaskRepositoryTest {
         assertNull(db.tasks().get(id))
         assertEquals(0, db.pendingChanges().count())
     }
+    @Test
+    fun nextToWaitPreservesOtherLabelsAndPendingFields() = runTest {
+        db.labels().insertAll(listOf(LabelEntity(91, "next"), LabelEntity(92, "wait"), LabelEntity(93, "home")))
+        val id = repository.capture("Buy @next @home")!!
+        repository.nextToWait(id)
+        assertEquals(listOf("wait", "home"), db.taskLabels().forTask(id))
+        assertEquals(JsonPrimitive("Buy"), pendingFields(id)[TaskRepository.TITLE])
+        assertEquals(JsonArray(listOf(JsonPrimitive("home"), JsonPrimitive("wait"))), pendingFields(id)[TaskRepository.LABELS])
+        assertEquals(JsonArray(listOf(JsonPrimitive(91))), pendingFields(id)[TaskRepository.LABEL_REMOVALS])
+        repository.nextToWait(id) // idempotent
+        assertEquals(listOf("wait", "home"), db.taskLabels().forTask(id))
+    }
+
+    @Test
+    fun nextToWaitDoesNotCreateAMissingWaitLabel() = runTest {
+        db.labels().insertAll(listOf(LabelEntity(91, "next")))
+        val id = repository.capture("Buy @next")!!
+        repository.nextToWait(id)
+        assertEquals(listOf("next"), db.taskLabels().forTask(id))
+    }
+
 }

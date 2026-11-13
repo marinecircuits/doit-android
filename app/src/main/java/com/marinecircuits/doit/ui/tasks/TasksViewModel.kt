@@ -614,7 +614,7 @@ class TasksViewModel(
 
     /**
      * A capture that is only `#project` or `@label` opens that view.
-     * Anything else is captured into a named `#project`, otherwise Inbox.
+     * Anything else is captured into a named `#project`, otherwise the open project (Inbox on home and label screens).
      */
     fun capture(text: String, dueDate: LocalDate? = null, repeat: Recurrence.Rule = Recurrence.Rule(), onCreated: (Long) -> Unit) {
         val current = state.value
@@ -632,7 +632,7 @@ class TasksViewModel(
             }
             null -> {
                 viewModelScope.launch {
-                    try { repository.capture(text, dueDate = dueDate, repeat = repeat)?.let(onCreated) }
+                    try { repository.capture(text, projectId = current.path.lastOrNull()?.id, dueDate = dueDate, repeat = repeat)?.let(onCreated) }
                     catch (e: com.marinecircuits.doit.data.ProjectUnavailable) {
                         settings.addNotice("Could not save “$text”: ${e.message}. Choose another project and try again.")
                     }
@@ -682,9 +682,22 @@ class TasksViewModel(
         }
     }
 
+    /** Only the items shown when confirmation was opened; never include newly arriving tasks. */
+    fun completeShoppingItems(projectId: Long, taskIds: List<Long>) {
+        val current = state.value
+        if (current.path.lastOrNull()?.id != projectId || projectId !in current.shoppingProjects) return
+        current.rows.filter { row ->
+            row.task.projectId == projectId && row.task.id in taskIds && !row.completed && row.task.id !in completedHere.value
+        }.forEach { complete(it.task) }
+    }
+
     fun setShoppingProject(active: Boolean) {
         val project = state.value.path.lastOrNull() ?: return
         viewModelScope.launch { repository.setShoppingProject(project.id, active) }
+    }
+
+    fun nextToWait(task: TaskEntity) {
+        viewModelScope.launch { repository.nextToWait(task.id) }
     }
 
     suspend fun saveManagedLabel(id: Long?, title: String, color: String) {
