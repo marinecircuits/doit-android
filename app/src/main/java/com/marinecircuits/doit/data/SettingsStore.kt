@@ -169,7 +169,12 @@ class SettingsStore(
     }
 
     suspend fun clear() {
-        dataStore.edit { it.clear() }
+        dataStore.edit { prefs ->
+            val address = prefs[API_BASE]
+            prefs.clear()
+            // Remember only the non-secret address. Account preferences and token are removed.
+            if (address != null) prefs[API_BASE] = address
+        }
     }
 
     /** Project colours chosen locally and not yet accepted by the server. An empty value clears the colour. */
