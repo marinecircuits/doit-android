@@ -24,7 +24,7 @@ object TaskSearch {
     }
     enum class Kind { PROJECT, TASK, LABEL }
 
-    data class Result(val kind: Kind, val id: Long, val title: String, val context: String)
+    data class Result(val kind: Kind, val id: Long, val title: String, val context: String, val hasAttachments: Boolean = false)
 
     fun query(text: String): String? = text.trimStart().takeIf { it.startsWith('/') }?.drop(1)?.trim()
 
@@ -47,7 +47,7 @@ object TaskSearch {
                     row.labels.map { it.title.lowercase() }.containsAll(filter.labels)
             }.map { row ->
                 Result(Kind.TASK, row.task.id, row.task.title,
-                    listOf(path(row.task.projectId), row.labels.joinToString(" ") { "@${it.title}" }).filter { it.isNotEmpty() }.joinToString(" · "))
+                    listOf(path(row.task.projectId), row.labels.joinToString(" ") { "@${it.title}" }).filter { it.isNotEmpty() }.joinToString(" · "), row.hasAttachments)
             }
         }
 
@@ -55,7 +55,7 @@ object TaskSearch {
         val taskResults = rows.filterNot { it.task.done || it.completed }.map { row ->
             val context = listOf(path(row.task.projectId), row.labels.joinToString(" ") { "@${it.title}" })
                 .filter { it.isNotEmpty() }.joinToString(" · ")
-            Result(Kind.TASK, row.task.id, row.task.title, context)
+            Result(Kind.TASK, row.task.id, row.task.title, context, row.hasAttachments)
         }
         val labelResults = labels.map { Result(Kind.LABEL, it.id, "@${it.title}", "Label") }
         return (projectResults + taskResults + labelResults).filter { result ->

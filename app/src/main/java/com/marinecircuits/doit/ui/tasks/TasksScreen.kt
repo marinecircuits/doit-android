@@ -825,6 +825,7 @@ private fun DoingTop(row: TaskRow, count: Int, onOpen: () -> Unit, modifier: Mod
                 Text(row.task.title, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 row.projectTitle?.let { Text(it, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             }
+            if (row.hasAttachments) AttachmentIndicator()
             if (count > 1) {
                 Spacer(Modifier.width(8.dp))
                 Text(pluralStringResource(R.plurals.doing_more, count - 1, count - 1), style = MaterialTheme.typography.labelMedium)
@@ -1430,6 +1431,7 @@ private fun TaskRowItem(
                     LabelChips(row.labels, dimmed = row.completed, modifier = Modifier.padding(top = 4.dp))
                 }
             }
+            if (row.hasAttachments) AttachmentIndicator()
             if (row.links.isNotEmpty()) TaskLinkIcons(row.links, Modifier.padding(start = 4.dp), stacked = true)
             if (onWork != null) {
                 IconButton(onClick = onWork) {

@@ -401,6 +401,12 @@ class TasksViewModel(
                 notices = notices,
             )
         }
+            .combine(repository.attachmentTaskIds) { state, ids ->
+                val attached = ids.toSet()
+                state.copy(rows = state.rows.map { it.copy(hasAttachments = it.task.id in attached) },
+                    searchRows = state.searchRows.map { it.copy(hasAttachments = it.task.id in attached) },
+                    doingTask = state.doingTask?.let { it.copy(hasAttachments = it.task.id in attached) })
+            }
             .combine(refreshing) { state, refreshing -> state.copy(refreshing = refreshing) }
             .combine(signOutConfirmation) { state, pending -> state.copy(signOutConfirmation = pending) }
             .combine(settings.serverAddress) { state, address -> state.copy(serverAddress = address) }
@@ -426,6 +432,9 @@ class TasksViewModel(
             names, current.labels + snapshots.flatMap { it.labels }, current.shoppingProjects).associateBy { it.task.id }
         // The saved filter owns ordering; do not replace it with the app's usual due-date order.
         snapshots.mapNotNull { rows[it.task.id] }
+    }.combine(repository.attachmentTaskIds) { rows, ids ->
+        val attached = ids.toSet()
+        rows.map { it.copy(hasAttachments = it.task.id in attached) }
     }.combine(completedHere) { rows, completed ->
         rows.map { row -> if (row.task.id in completed) row.copy(task = row.task.copy(done = true), completed = true) else row }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
