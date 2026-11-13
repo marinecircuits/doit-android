@@ -126,6 +126,8 @@ class TasksViewModel(
     private val promoteTask: suspend (Long, String, String, Long) -> PromotedTask,
     private val signOut: suspend () -> Unit,
     private val downloadPdf: suspend (Long, Long) -> ByteArray = { _, _ -> ByteArray(0) },
+    private val saveLabel: suspend (Long?, String, String) -> Unit = { _, _, _ -> error("Label management unavailable") },
+    private val deleteLabel: suspend (Long) -> Unit = { error("Label management unavailable") },
     private val clock: Clock,
 ) : ViewModel() {
     private val _subproject = MutableStateFlow<CreateSubprojectState?>(null)
@@ -683,6 +685,22 @@ class TasksViewModel(
     fun setShoppingProject(active: Boolean) {
         val project = state.value.path.lastOrNull() ?: return
         viewModelScope.launch { repository.setShoppingProject(project.id, active) }
+    }
+
+    suspend fun saveManagedLabel(id: Long?, title: String, color: String) {
+        val old = state.value.labels.firstOrNull { it.id == id }?.title
+        saveLabel(id, title, color)
+        if (old != null) completedHere.update { entries -> entries.mapValues { (_, snapshot) ->
+            snapshot.copy(labels = snapshot.labels.map { if (it == old) title.trim() else it })
+        } }
+    }
+
+    suspend fun deleteManagedLabel(id: Long) {
+        val old = state.value.labels.firstOrNull { it.id == id }?.title
+        deleteLabel(id)
+        completedHere.update { entries -> entries.mapValues { (_, snapshot) ->
+            snapshot.copy(labels = snapshot.labels.filterNot { it == old }, doingLabelId = snapshot.doingLabelId?.takeUnless { it == id })
+        } }
     }
 
     fun setDoing(task: TaskEntity, active: Boolean) {

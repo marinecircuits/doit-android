@@ -88,6 +88,8 @@ private fun DoitRoot(container: AppContainer, focusCaptureRequests: Int) {
                     settings = container.settings,
                     syncResults = container.syncEngine.lastResult,
                     sync = container.syncEngine::sync,
+                    saveLabel = { id, title, color -> container.syncEngine.saveLabel(id, title, color); Unit },
+                    deleteLabel = container.syncEngine::deleteLabel,
                     createSubproject = container.syncEngine::createSubproject,
                     promoteTask = container.syncEngine::promoteTask,
                     signOut = container::signOut,
