@@ -588,7 +588,7 @@ class SyncEngine(
             db.tasks().upsertAll(
                 pulled.map { it.toEntity(fallbackCreatedAt = db.tasks().get(it.id)?.createdAt, generation = generation) },
             )
-            pulled.forEach { task -> db.taskLabels().set(task.id, task.labels.map { it.title }) }
+            pulled.forEach { task -> db.taskLabels().setFromServer(task.id, task.labels.map { it.title }) }
             db.tasks().deleteNotSeenIn(generation)
             db.taskLabels().deleteOrphans()
         }

@@ -104,7 +104,7 @@ class TaskRepository(
                     repeatAfter = dto.repeatAfter, repeatMode = dto.repeatMode,
                 )
                 db.tasks().upsert(task)
-                db.taskLabels().set(task.id, dto.labels.map { it.title })
+                db.taskLabels().setFromServer(task.id, dto.labels.map { it.title })
                 SavedFilterTask(task, dto.labels.map { LabelEntity(it.id, it.title, it.hexColor) })
             }
         }
