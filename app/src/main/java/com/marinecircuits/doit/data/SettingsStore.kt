@@ -170,7 +170,8 @@ class SettingsStore(
 
     suspend fun clear() {
         dataStore.edit { prefs ->
-            val address = prefs[API_BASE]
+            val address = prefs[API_BASE]?.toHttpUrlOrNull()?.newBuilder()
+                ?.username("")?.password("")?.query(null)?.fragment(null)?.build()?.toString()
             prefs.clear()
             // Remember only the non-secret address. Account preferences and token are removed.
             if (address != null) prefs[API_BASE] = address

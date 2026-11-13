@@ -51,14 +51,14 @@ class SetupViewModelTest {
         assertNull(settings.credentials())
         assertNull(settings.defaultProjectId.first())
         assertFalse(settings.tokenRejected.first())
-        assertEquals("https://todo.example.com", settings.serverAddress.first())
+        assertEquals("https://todo.example.com/", settings.serverAddress.first())
         val viewModel = SetupViewModel(checker, settings, null)
         val deadline = System.currentTimeMillis() + 5_000
         while (viewModel.url.isEmpty() && System.currentTimeMillis() < deadline) {
             shadowOf(Looper.getMainLooper()).idle()
             Thread.sleep(10)
         }
-        assertEquals("https://todo.example.com", viewModel.url)
+        assertEquals("https://todo.example.com/", viewModel.url)
         assertEquals("", viewModel.token)
     }
 
