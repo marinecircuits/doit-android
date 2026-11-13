@@ -685,6 +685,10 @@ class TasksViewModel(
         viewModelScope.launch { repository.setShoppingProject(project.id, active) }
     }
 
+    fun nextToWait(task: TaskEntity) {
+        viewModelScope.launch { repository.nextToWait(task.id) }
+    }
+
     fun setDoing(task: TaskEntity, active: Boolean) {
         viewModelScope.launch { repository.setDoing(task.id, active) }
     }
