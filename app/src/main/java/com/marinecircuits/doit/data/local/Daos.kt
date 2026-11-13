@@ -130,6 +130,12 @@ interface PendingChangeDao {
 
 @Dao
 interface LabelDao {
+    @Upsert
+    suspend fun upsert(label: LabelEntity)
+
+    @Query("DELETE FROM labels WHERE id = :id")
+    suspend fun delete(id: Long)
+
     @Query("SELECT * FROM labels ORDER BY title COLLATE NOCASE")
     fun observeAll(): Flow<List<LabelEntity>>
 
@@ -182,6 +188,9 @@ interface TaskLabelDao {
 
 @Dao
 interface TaskHistoryDao {
+    @Update
+    suspend fun update(entry: TaskHistoryEntity)
+
     @Query("DELETE FROM task_history WHERE projectId IN (:ids)")
     suspend fun deleteInProjects(ids: List<Long>)
     @Query("SELECT * FROM task_history WHERE id = :id")

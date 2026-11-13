@@ -168,6 +168,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     val doingReview = stringResource(R.string.doing_review)
     val openLabel = state.openLabel
     val isContext = state.contextScreen
+    var labelManagerOpen by remember { mutableStateOf(false) }
     var labelPickerOpen by remember { mutableStateOf(false) }
     var nextActionsPickerOpen by remember { mutableStateOf(false) }
     var labelPickerSlot by remember { mutableStateOf<Int?>(null) }
@@ -230,6 +231,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     subproject?.let { draft ->
         CreateSubprojectDialog(draft, viewModel::setSubprojectTitle, viewModel::submitSubproject, viewModel::dismissCreateSubproject)
     }
+
+    if (labelManagerOpen) LabelManagerDialog(state.labels,
+        onSave = viewModel::saveManagedLabel, onDelete = viewModel::deleteManagedLabel,
+        onDismiss = { labelManagerOpen = false })
 
     if (labelPickerOpen) {
         val slot = labelPickerSlot
@@ -470,6 +475,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onSend = ::capture,
                 onSignOut = viewModel::requestSignOut,
                 onRecent = { viewModel.openRecentTasks(); recentOpen = true },
+                onManageLabels = { labelManagerOpen = true },
                 onConfigureContext = { labelPickerOpen = true },
                 onConfigureNextActions = { nextActionsPickerOpen = true },
                 showNextActionsOption = currentProject == null && openLabel == null,
@@ -921,6 +927,7 @@ private fun CaptureBar(
     onSend: () -> Unit,
     onSignOut: () -> Unit,
     onRecent: () -> Unit,
+    onManageLabels: () -> Unit,
     onConfigureContext: () -> Unit,
     onConfigureNextActions: () -> Unit,
     showNextActionsOption: Boolean,
@@ -991,6 +998,7 @@ private fun CaptureBar(
                     text = { Text(stringResource(R.string.recent_tasks)) },
                     onClick = { menuOpen = false; onRecent() },
                 )
+                DropdownMenuItem(text = { Text("Manage labels…") }, onClick = { menuOpen = false; onManageLabels() })
                 if (showNextActionsOption) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.next_actions_label)) },

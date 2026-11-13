@@ -44,6 +44,14 @@ class SettingsStore(
         NextActionsChoice(value != null, value?.takeIf { it > 0 })
     }
 
+    suspend fun forgetLabel(id: Long) {
+        dataStore.edit { prefs ->
+            for (key in CONTEXT_LABELS + listOf(NEXT_ACTIONS_LABEL, SWIPE_DOWN_LABEL)) {
+                if (prefs[key] == id) prefs.remove(key)
+            }
+        }
+    }
+
     suspend fun setNextActionsLabel(id: Long?) {
         dataStore.edit { it[NEXT_ACTIONS_LABEL] = id ?: 0L }
     }
