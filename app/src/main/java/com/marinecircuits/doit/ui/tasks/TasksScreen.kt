@@ -411,6 +411,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 SavedFiltersPage(savedFilters, savedFilterRows, viewModel::openSavedFilter, viewModel::refreshSavedFilters,
                     viewModel::navigateUp, viewModel::navigateHome) { row ->
                     TaskRowItem(row = row,
+                        onNextHold = if (state.labels.any { it.title.equals("wait", true) }) ({ viewModel.nextToWait(row.task) }) else null,
                         dueLabel = row.dueDate?.let { DueLabels.label(it, state.today, words, locale) },
                         onCheckedChange = { checked -> if (checked) viewModel.complete(row.task) else viewModel.uncomplete(row.task) },
                         onOpen = { editTarget = row.task },
@@ -561,6 +562,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                         Box(Modifier.animateItem()) {
                                             TaskRowItem(
                                                 row = row,
+                                                onNextHold = if (state.labels.any { it.title.equals("wait", true) }) ({ viewModel.nextToWait(row.task) }) else null,
                                                 dueLabel = row.dueDate?.let {
                                                     DueLabels.label(it, state.today, words, locale)
                                                 },
@@ -1353,6 +1355,7 @@ private fun TaskRowItem(
     onCheckedChange: (Boolean) -> Unit,
     onOpen: () -> Unit,
     onLongPress: () -> Unit = {},
+    onNextHold: (() -> Unit)? = null,
     selected: Boolean = false,
     selecting: Boolean = false,
     working: Boolean,
@@ -1448,7 +1451,8 @@ private fun TaskRowItem(
                     }
                 }
                 if (row.labels.isNotEmpty()) {
-                    LabelChips(row.labels, dimmed = row.completed, modifier = Modifier.padding(top = 4.dp))
+                    LabelChips(row.labels, dimmed = row.completed, modifier = Modifier.padding(top = 4.dp),
+                        onNextHold = onNextHold?.takeUnless { selecting || row.completed }, onClick = onOpen)
                 }
             }
             if (row.links.isNotEmpty()) TaskLinkIcons(row.links, Modifier.padding(start = 4.dp), stacked = true)

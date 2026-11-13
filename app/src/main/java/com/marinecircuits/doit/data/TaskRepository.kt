@@ -376,6 +376,30 @@ class TaskRepository(
         if (changed) onLocalChange()
     }
 
+    /** Replace the existing next label with the existing wait label, as one offline-safe edit. */
+    suspend fun nextToWait(taskId: Long) {
+        val id = idRemap.resolve(taskId)
+        val changed = db.withTransaction {
+            val task = db.tasks().get(id) ?: return@withTransaction false
+            if (task.done || db.pendingChanges().forTask(id)?.kind == PendingChangeEntity.DELETE) return@withTransaction false
+            val labels = db.labels().all()
+            val next = labels.firstOrNull { it.title.equals("next", true) } ?: return@withTransaction false
+            val wait = labels.firstOrNull { it.title.equals("wait", true) } ?: return@withTransaction false
+            val names = db.taskLabels().forTask(id)
+            if (names.none { it.equals(next.title, true) }) return@withTransaction false
+            val old = db.pendingChanges().forTask(id)?.let { PendingChanges.decode(it.fields) }.orEmpty()
+            val additions = old[LABELS]?.jsonArray.orEmpty().filterNot { it.jsonPrimitive.contentOrNull?.equals(next.title, true) == true }
+            val removals = old[LABEL_REMOVALS]?.jsonArray.orEmpty() + JsonPrimitive(next.id)
+            db.taskLabels().set(id, names.map { if (it.equals(next.title, true)) wait.title else it }.distinct())
+            record(id, buildJsonObject {
+                put(LABELS, JsonArray((additions + JsonPrimitive(wait.title)).distinct()))
+                put(LABEL_REMOVALS, JsonArray(removals.distinct()))
+            })
+            true
+        }
+        if (changed) onLocalChange()
+    }
+
     /** Changes only the existing doing label, storing the latest desired membership with the task. */
     suspend fun setDoing(taskId: Long, active: Boolean) {
         val id = idRemap.resolve(taskId)
