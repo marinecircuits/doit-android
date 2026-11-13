@@ -680,6 +680,15 @@ class TasksViewModel(
         }
     }
 
+    /** Only the items shown when confirmation was opened; never include newly arriving tasks. */
+    fun completeShoppingItems(projectId: Long, taskIds: List<Long>) {
+        val current = state.value
+        if (current.path.lastOrNull()?.id != projectId || projectId !in current.shoppingProjects) return
+        current.rows.filter { row ->
+            row.task.projectId == projectId && row.task.id in taskIds && !row.completed && row.task.id !in completedHere.value
+        }.forEach { complete(it.task) }
+    }
+
     fun setShoppingProject(active: Boolean) {
         val project = state.value.path.lastOrNull() ?: return
         viewModelScope.launch { repository.setShoppingProject(project.id, active) }
