@@ -220,6 +220,9 @@ interface TaskHistoryDao {
 
 @Dao
 interface AttachmentDao {
+    @Query("SELECT DISTINCT taskId FROM attachments WHERE pending NOT IN ('delete', 'cancel')")
+    fun observeTaskIds(): Flow<List<Long>>
+
     @Query("SELECT * FROM attachments WHERE taskId = :taskId AND pending NOT IN ('delete', 'cancel') ORDER BY id")
     fun observeForTask(taskId: Long): Flow<List<AttachmentEntity>>
 

@@ -73,6 +73,7 @@ class TaskRepository(
     }
     val labels: Flow<List<LabelEntity>> = db.labels().observeAll()
     val taskLabels: Flow<List<TaskLabelEntity>> = db.taskLabels().observeAll()
+    val attachmentTaskIds: Flow<List<Long>> = db.attachments().observeTaskIds()
     val taskHistory: Flow<List<TaskHistoryEntity>> = db.taskHistory().observeAll()
 
     suspend fun openTasks(): List<TaskEntity> = db.tasks().open()

@@ -52,6 +52,7 @@ fun SearchResults(query: String, results: List<TaskSearch.Result>, selected: Int
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                         )
+                        if (result.hasAttachments) AttachmentIndicator()
                         Column(Modifier.weight(1f)) {
                             Text(result.title, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (result.context.isNotBlank()) Text(result.context, style = MaterialTheme.typography.bodySmall,
