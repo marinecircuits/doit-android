@@ -63,6 +63,17 @@ class DaoTest {
         assertEquals(42L, db.tasks().minId())
     }
     @Test
+    fun serverLabelsKeepSurvivorsInOrderAndAppendNewLabels() = runTest {
+        db.taskLabels().set(1, listOf("next", "work", "old"))
+        db.taskLabels().setFromServer(1, listOf("new", "work", "next", "new"))
+        assertEquals(listOf("next", "work", "new"), db.taskLabels().forTask(1))
+        db.taskLabels().setFromServer(1, listOf("new", "next"))
+        assertEquals(listOf("next", "new"), db.taskLabels().forTask(1))
+        db.taskLabels().setFromServer(1, emptyList())
+        assertEquals(emptyList<String>(), db.taskLabels().forTask(1))
+    }
+
+    @Test
     fun attachmentPresenceIncludesUploadsButExcludesPendingRemoval() = runTest {
         db.attachments().insert(AttachmentEntity(taskId = 1, filename = "a", pending = "upload"))
         db.attachments().insert(AttachmentEntity(taskId = 1, filename = "b"))

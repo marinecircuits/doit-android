@@ -1,5 +1,10 @@
 package com.marinecircuits.doit.ui.tasks
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,9 +36,14 @@ import androidx.compose.ui.unit.dp
 import com.marinecircuits.doit.data.CaptureSyntax.Suggestion
 
 /** A task's labels share the theme-aware project tints. */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
-fun LabelChips(labels: List<LabelChip>, dimmed: Boolean, modifier: Modifier = Modifier) {
+fun LabelChips(labels: List<LabelChip>, dimmed: Boolean, modifier: Modifier = Modifier,
+               onNextHold: (() -> Unit)? = null, onClick: () -> Unit = {}) {
+    val configuration = LocalViewConfiguration.current
+    CompositionLocalProvider(LocalViewConfiguration provides object : ViewConfiguration by configuration {
+        override val longPressTimeoutMillis: Long = 1_000L
+    }) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -42,6 +52,9 @@ fun LabelChips(labels: List<LabelChip>, dimmed: Boolean, modifier: Modifier = Mo
         labels.forEach { label ->
             val colors = projectTileColors(label.hexColor)
             Surface(
+                modifier = if (!dimmed && label.title.equals("next", true) && onNextHold != null)
+                    Modifier.combinedClickable(onClick = onClick, onLongClick = onNextHold, onLongClickLabel = "Change next to wait")
+                    else Modifier,
                 shape = CircleShape,
                 color = colors?.let { Color(it.container) } ?: MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = colors?.let { Color(it.content) } ?: MaterialTheme.colorScheme.onSurfaceVariant,
@@ -62,6 +75,8 @@ fun LabelChips(labels: List<LabelChip>, dimmed: Boolean, modifier: Modifier = Mo
             }
         }
     }
+}
+
 }
 
 /**

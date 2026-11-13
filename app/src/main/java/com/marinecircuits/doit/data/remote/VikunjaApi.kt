@@ -140,6 +140,22 @@ class VikunjaApi(
 
     suspend fun labels(): List<LabelDto> = getAllPages(url("labels"), LabelDto.serializer())
 
+    suspend fun createLabel(title: String, color: String): LabelDto {
+        val body = buildJsonObject { put("title", title); put("hex_color", color) }
+        return execute(authorized(url("labels")).post(body.toString().toRequestBody(JSON)).build(), LabelDto.serializer())
+    }
+
+    suspend fun updateLabel(id: Long, title: String, color: String): LabelDto {
+        val body = buildJsonObject { put("title", title); put("hex_color", color) }
+        return execute(authorized(url("labels/$id")).patch(body.toString().toRequestBody(MERGE_PATCH)).build(), LabelDto.serializer())
+    }
+
+    suspend fun deleteLabel(id: Long) = withContext(Dispatchers.IO) {
+        client.newCall(authorized(url("labels/$id")).delete().build()).execute().use { response ->
+            if (!response.isSuccessful && response.code != 404) throw ApiException(response.code, problemText(response.body?.string().orEmpty()))
+        }
+    }
+
     /** Vikunja answers with a 4xx (400) when the label is on the task already. */
     suspend fun addLabel(taskId: Long, labelId: Long) {
         val body = buildJsonObject { put("label_id", labelId) }.toString().toRequestBody(JSON)

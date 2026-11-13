@@ -168,6 +168,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     val doingReview = stringResource(R.string.doing_review)
     val openLabel = state.openLabel
     val isContext = state.contextScreen
+    var labelManagerOpen by remember { mutableStateOf(false) }
     var labelPickerOpen by remember { mutableStateOf(false) }
     var nextActionsPickerOpen by remember { mutableStateOf(false) }
     var labelPickerSlot by remember { mutableStateOf<Int?>(null) }
@@ -209,6 +210,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
     var colorOpen by remember { mutableStateOf(false) }
     var shoppingOpen by remember { mutableStateOf(false) }
+    var shoppingCompletion by remember { mutableStateOf<Pair<Long, List<Long>>?>(null) }
     var archiveOpen by remember { mutableStateOf(false) }
     var deletingProjectId by remember { mutableStateOf<Long?>(null) }
     var recentOpen by remember { mutableStateOf(false) }
@@ -229,6 +231,10 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     subproject?.let { draft ->
         CreateSubprojectDialog(draft, viewModel::setSubprojectTitle, viewModel::submitSubproject, viewModel::dismissCreateSubproject)
     }
+
+    if (labelManagerOpen) LabelManagerDialog(state.labels,
+        onSave = viewModel::saveManagedLabel, onDelete = viewModel::deleteManagedLabel,
+        onDismiss = { labelManagerOpen = false })
 
     if (labelPickerOpen) {
         val slot = labelPickerSlot
@@ -410,6 +416,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 SavedFiltersPage(savedFilters, savedFilterRows, viewModel::openSavedFilter, viewModel::refreshSavedFilters,
                     viewModel::navigateUp, viewModel::navigateHome) { row ->
                     TaskRowItem(row = row,
+                        onNextHold = if (state.labels.any { it.title.equals("wait", true) }) ({ viewModel.nextToWait(row.task) }) else null,
                         dueLabel = row.dueDate?.let { DueLabels.label(it, state.today, words, locale) },
                         onCheckedChange = { checked -> if (checked) viewModel.complete(row.task) else viewModel.uncomplete(row.task) },
                         onOpen = { editTarget = row.task },
@@ -468,6 +475,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 onSend = ::capture,
                 onSignOut = viewModel::requestSignOut,
                 onRecent = { viewModel.openRecentTasks(); recentOpen = true },
+                onManageLabels = { labelManagerOpen = true },
                 onConfigureContext = { labelPickerOpen = true },
                 onConfigureNextActions = { nextActionsPickerOpen = true },
                 showNextActionsOption = currentProject == null && openLabel == null,
@@ -560,6 +568,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                         Box(Modifier.animateItem()) {
                                             TaskRowItem(
                                                 row = row,
+                                                onNextHold = if (state.labels.any { it.title.equals("wait", true) }) ({ viewModel.nextToWait(row.task) }) else null,
                                                 dueLabel = row.dueDate?.let {
                                                     DueLabels.label(it, state.today, words, locale)
                                                 },
@@ -684,6 +693,13 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     }
                     Text(stringResource(R.string.shopping_explanation))
                     Text(stringResource(R.string.shopping_quantity_hint))
+                    if (projectId in state.shoppingProjects) {
+                        val openIds = state.rows.filter { !it.completed && it.task.projectId == projectId }.map { it.task.id }
+                        TextButton(enabled = openIds.isNotEmpty(), onClick = {
+                            shoppingCompletion = projectId to openIds
+                            shoppingOpen = false
+                        }) { Text("Complete all items…") }
+                    }
                 }
             },
             confirmButton = {
@@ -692,6 +708,19 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     shoppingOpen = false
                 }) { Text(stringResource(R.string.ok)) }
             },
+        )
+    }
+
+    shoppingCompletion?.let { (projectId, ids) ->
+        AlertDialog(
+            onDismissRequest = { shoppingCompletion = null },
+            title = { Text("Complete all ${ids.size} items?") },
+            text = { Text("Mark these shopping items completed. You can undo each one by unchecking it before leaving the list.") },
+            confirmButton = { TextButton(onClick = {
+                shoppingCompletion = null
+                viewModel.completeShoppingItems(projectId, ids)
+            }) { Text("Complete all") } },
+            dismissButton = { TextButton(onClick = { shoppingCompletion = null }) { Text("Cancel") } },
         )
     }
 
@@ -899,6 +928,7 @@ private fun CaptureBar(
     onSend: () -> Unit,
     onSignOut: () -> Unit,
     onRecent: () -> Unit,
+    onManageLabels: () -> Unit,
     onConfigureContext: () -> Unit,
     onConfigureNextActions: () -> Unit,
     showNextActionsOption: Boolean,
@@ -969,6 +999,7 @@ private fun CaptureBar(
                     text = { Text(stringResource(R.string.recent_tasks)) },
                     onClick = { menuOpen = false; onRecent() },
                 )
+                DropdownMenuItem(text = { Text("Manage labels…") }, onClick = { menuOpen = false; onManageLabels() })
                 if (showNextActionsOption) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.next_actions_label)) },
@@ -1333,6 +1364,7 @@ private fun TaskRowItem(
     onCheckedChange: (Boolean) -> Unit,
     onOpen: () -> Unit,
     onLongPress: () -> Unit = {},
+    onNextHold: (() -> Unit)? = null,
     selected: Boolean = false,
     selecting: Boolean = false,
     working: Boolean,
@@ -1428,7 +1460,8 @@ private fun TaskRowItem(
                     }
                 }
                 if (row.labels.isNotEmpty()) {
-                    LabelChips(row.labels, dimmed = row.completed, modifier = Modifier.padding(top = 4.dp))
+                    LabelChips(row.labels, dimmed = row.completed, modifier = Modifier.padding(top = 4.dp),
+                        onNextHold = onNextHold?.takeUnless { selecting || row.completed }, onClick = onOpen)
                 }
             }
             if (row.hasAttachments) AttachmentIndicator()
