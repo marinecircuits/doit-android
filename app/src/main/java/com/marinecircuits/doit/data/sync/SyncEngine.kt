@@ -78,6 +78,16 @@ class SyncEngine(
         onSynced()
     }
 
+    suspend fun saveLabel(id: Long?, title: String, color: String) = mutex.withLock {
+        val credentials = checkNotNull(settings.credentials()) { "Not connected" }
+        com.marinecircuits.doit.data.LabelManagement(db, settings, apiFor(credentials)).save(id, title, color)
+    }
+
+    suspend fun deleteLabel(id: Long) = mutex.withLock {
+        val credentials = checkNotNull(settings.credentials()) { "Not connected" }
+        com.marinecircuits.doit.data.LabelManagement(db, settings, apiFor(credentials)).delete(id)
+    }
+
     suspend fun sync(): SyncResult = mutex.withLock {
         val result = runSync()
         _lastResult.value = result
@@ -588,7 +598,7 @@ class SyncEngine(
             db.tasks().upsertAll(
                 pulled.map { it.toEntity(fallbackCreatedAt = db.tasks().get(it.id)?.createdAt, generation = generation) },
             )
-            pulled.forEach { task -> db.taskLabels().set(task.id, task.labels.map { it.title }) }
+            pulled.forEach { task -> db.taskLabels().setFromServer(task.id, task.labels.map { it.title }) }
             db.tasks().deleteNotSeenIn(generation)
             db.taskLabels().deleteOrphans()
         }

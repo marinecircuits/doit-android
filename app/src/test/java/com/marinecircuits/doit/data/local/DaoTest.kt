@@ -3,6 +3,7 @@ package com.marinecircuits.doit.data.local
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.flow.first
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -61,4 +62,28 @@ class DaoTest {
         assertEquals(42L, db.pendingChanges().all().single().taskId)
         assertEquals(42L, db.tasks().minId())
     }
+    @Test
+    fun serverLabelsKeepSurvivorsInOrderAndAppendNewLabels() = runTest {
+        db.taskLabels().set(1, listOf("next", "work", "old"))
+        db.taskLabels().setFromServer(1, listOf("new", "work", "next", "new"))
+        assertEquals(listOf("next", "work", "new"), db.taskLabels().forTask(1))
+        db.taskLabels().setFromServer(1, listOf("new", "next"))
+        assertEquals(listOf("next", "new"), db.taskLabels().forTask(1))
+        db.taskLabels().setFromServer(1, emptyList())
+        assertEquals(emptyList<String>(), db.taskLabels().forTask(1))
+    }
+
+    @Test
+    fun attachmentPresenceIncludesUploadsButExcludesPendingRemoval() = runTest {
+        db.attachments().insert(AttachmentEntity(taskId = 1, filename = "a", pending = "upload"))
+        db.attachments().insert(AttachmentEntity(taskId = 1, filename = "b"))
+        db.attachments().insert(AttachmentEntity(taskId = 2, filename = "c", pending = "delete"))
+        db.attachments().insert(AttachmentEntity(taskId = 3, filename = "d", pending = "cancel"))
+        assertEquals(listOf(1L), db.attachments().observeTaskIds().first())
+        db.attachments().changeTaskId(1, 99)
+        assertEquals(listOf(99L), db.attachments().observeTaskIds().first())
+        db.attachments().deleteForTask(99)
+        assertEquals(emptyList<Long>(), db.attachments().observeTaskIds().first())
+    }
+
 }

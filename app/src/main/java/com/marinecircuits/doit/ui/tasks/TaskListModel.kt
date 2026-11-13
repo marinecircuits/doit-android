@@ -31,6 +31,7 @@ data class TaskRow(
     val description: String = "",
     /** One address per icon. The description text is not a link. */
     val links: List<String> = emptyList(),
+    val hasAttachments: Boolean = false,
 )
 
 /** A label on a row; [hexColor] is empty for a label without a colour or one the app doesn't know. */
