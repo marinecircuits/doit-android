@@ -104,9 +104,11 @@ jobs:
         run: ./gradlew --stacktrace assembleRelease
 
       - name: Check the APK is signed with the marinecircuits key
+        env:
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
-          SHORT_SHA="${GITHUB_SHA::7}"
+          SHORT_SHA="${COMMIT_SHA::7}"
           echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
           cp app/build/outputs/apk/release/app-release.apk "doit-release-$SHORT_SHA.apk"
           "$BUILD_TOOLS/apksigner" verify --print-certs "doit-release-$SHORT_SHA.apk" | tee signer.txt
