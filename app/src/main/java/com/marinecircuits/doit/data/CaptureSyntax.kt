@@ -109,8 +109,30 @@ object CaptureSyntax {
     fun token(name: String, kind: Kind): String =
         if (name.any { it.isWhitespace() }) "${kind.prefix}\"$name\" " else "${kind.prefix}$name "
 
-    // A name always resolves to the first active project in the cached project order, including subprojects.
-    // Suggest that same project only, so tapping a duplicate name cannot silently select another project.
-    private fun availableProjects(projects: List<ProjectEntity>): List<ProjectEntity> =
-        projects.filterNot { it.archived }.distinctBy { it.title.lowercase() }
+    /** Duplicate names use full paths; identical paths also include the stable project ID. */
+    private fun availableProjects(projects: List<ProjectEntity>): List<ProjectEntity> {
+        val active = projects.filter { !it.archived && it.id > 0 }
+        val byId = projects.associateBy { it.id }
+        val counts = active.groupingBy { it.title.lowercase() }.eachCount()
+        fun path(project: ProjectEntity): String {
+            val parts = mutableListOf(project.title)
+            val seen = mutableSetOf(project.id)
+            var parent = byId[project.parentProjectId]
+            while (parent != null && seen.add(parent.id)) {
+                parts.add(0, parent.title)
+                parent = byId[parent.parentProjectId]
+            }
+            return parts.joinToString(" / ")
+        }
+        var choices = active.map { project ->
+            project.copy(title = if (counts.getValue(project.title.lowercase()) > 1) path(project) else project.title)
+        }
+        // A real project can itself be named like a path or an ID-qualified suggestion.
+        // Recheck collisions rather than letting a map silently choose the wrong project.
+        while (true) {
+            val collisions = choices.groupingBy { it.title.lowercase() }.eachCount().filterValues { it > 1 }.keys
+            if (collisions.isEmpty()) return choices
+            choices = choices.map { if (it.title.lowercase() in collisions) it.copy(title = "${it.title} [${it.id}]") else it }
+        }
+    }
 }

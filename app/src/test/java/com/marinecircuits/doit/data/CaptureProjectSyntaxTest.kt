@@ -118,10 +118,36 @@ class CaptureProjectSyntaxTest {
     }
 
     @Test
-    fun duplicateNamesSuggestAndResolveTheSameFirstActiveProject() {
-        val duplicates = listOf(projects[1].copy(id = 9, archived = true)) + projects + projects[1].copy(id = 10, title = "work")
-        assertEquals(2L, CaptureSyntax.parse("Buy #work", labels, duplicates).projectId)
-        assertEquals(listOf("Work"), CaptureSyntax.suggestionsAt("#wo", 3, labels, duplicates).map { it.title })
+    fun duplicateNamesUsePathsAndRoundTripToTheSelectedProject() {
+        val duplicates = projects + listOf(
+            ProjectEntity(6, "Home", false, 6.0),
+            ProjectEntity(7, "Shopping", false, 7.0, parentProjectId = 2),
+            ProjectEntity(8, "Shopping", false, 8.0, parentProjectId = 6),
+            ProjectEntity(9, "Shopping", true, 9.0),
+        )
+        val suggestions = CaptureSyntax.suggestionsAt("#shop", 5, labels, duplicates)
+        assertEquals(listOf("Work / Shopping", "Home / Shopping"), suggestions.map { it.title })
+        suggestions.zip(listOf(7L, 8L)).forEach { (suggestion, id) ->
+            val token = CaptureSyntax.token(suggestion.title, Kind.PROJECT)
+            assertEquals(id, CaptureSyntax.parse("Buy $token", labels, duplicates).projectId)
+            assertEquals(CaptureSyntax.Destination.Project(id), CaptureSyntax.destination(token, labels, duplicates))
+        }
+        assertNull(CaptureSyntax.parse("Buy #Shopping", labels, duplicates).projectId)
+    }
+
+    @Test
+    fun identicalFullPathsAndRealPathNamesCannotSelectTheWrongProject() {
+        val duplicates = listOf(
+            ProjectEntity(1, "Work", false, 0.0),
+            ProjectEntity(2, "Shopping", false, 1.0, parentProjectId = 1),
+            ProjectEntity(3, "Shopping", false, 2.0, parentProjectId = 1),
+            ProjectEntity(4, "Work / Shopping [2]", false, 3.0),
+        )
+        val suggestions = CaptureSyntax.suggestionsAt("#", 1, labels, duplicates)
+        assertEquals(4, suggestions.map { it.title.lowercase() }.toSet().size)
+        suggestions.zip(duplicates).forEach { (suggestion, project) ->
+            assertEquals(project.id, CaptureSyntax.parse(CaptureSyntax.token(suggestion.title, Kind.PROJECT), labels, duplicates).projectId)
+        }
     }
 
     @Test
