@@ -1,3 +1,20 @@
+## 0.39.0 (2026-11-13)
+
+### Feat
+
+- complete all shopping items with confirmation and individual undo
+- hold the next label to change it to wait
+- create, rename, recolor and delete labels (online, with label permissions)
+- show attachment indicators on task rows
+- change due dates directly from task rows
+
+### Fix
+
+- preserve task label order after sync and saved-filter refreshes
+- capture tasks into the open project, with Inbox as fallback
+- distinguish duplicate project names using full paths
+- remember the server address after logout without retaining credentials
+
 ## 0.38.0 (2026-11-09)
 
 ### Feat
