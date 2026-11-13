@@ -184,6 +184,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     val captureSchedule = remember { ScheduleState() }
     captureSchedule.changeText = { captureText = it }
     var scrollToTaskId by remember { mutableStateOf<Long?>(null) }
+    var dateTarget by remember { mutableStateOf<TaskRow?>(null) }
     var editTarget by remember { mutableStateOf<TaskEntity?>(null) }
     var selectedTaskIds by remember { mutableStateOf(setOf<Long>()) }
     var bulkMoveOpen by remember { mutableStateOf(false) }
@@ -417,6 +418,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     viewModel::navigateUp, viewModel::navigateHome) { row ->
                     TaskRowItem(row = row,
                         onNextHold = if (state.labels.any { it.title.equals("wait", true) }) ({ viewModel.nextToWait(row.task) }) else null,
+                        onDateClick = { dateTarget = row },
                         dueLabel = row.dueDate?.let { DueLabels.label(it, state.today, words, locale) },
                         onCheckedChange = { checked -> if (checked) viewModel.complete(row.task) else viewModel.uncomplete(row.task) },
                         onOpen = { editTarget = row.task },
@@ -569,6 +571,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                                             TaskRowItem(
                                                 row = row,
                                                 onNextHold = if (state.labels.any { it.title.equals("wait", true) }) ({ viewModel.nextToWait(row.task) }) else null,
+                                                onDateClick = { dateTarget = row },
                                                 dueLabel = row.dueDate?.let {
                                                     DueLabels.label(it, state.today, words, locale)
                                                 },
@@ -664,6 +667,12 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
     }
 
+    dateTarget?.let { row ->
+        PickDateDialog(initial = row.dueDate, onPicked = { day ->
+            viewModel.reschedule(row.task, day)
+            dateTarget = null
+        }, onDismiss = { dateTarget = null })
+    }
     ScheduleDialogs(captureSchedule)
 
     if (recentOpen) {
@@ -1358,13 +1367,14 @@ private fun TokenRejectedBanner(onEnterNewToken: () -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
-private fun TaskRowItem(
+internal fun TaskRowItem(
     row: TaskRow,
     dueLabel: String?,
     onCheckedChange: (Boolean) -> Unit,
     onOpen: () -> Unit,
     onLongPress: () -> Unit = {},
     onNextHold: (() -> Unit)? = null,
+    onDateClick: () -> Unit = {},
     selected: Boolean = false,
     selecting: Boolean = false,
     working: Boolean,
@@ -1437,6 +1447,7 @@ private fun TaskRowItem(
                         if (repeat.active || dueLabel != null) {
                             Row(
                                 Modifier
+                                    .clickable(enabled = !selecting && !row.completed, onClickLabel = "Change due date", onClick = onDateClick)
                                     .background(if (row.overdue) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainer,
                                         RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 5.dp),
                                 verticalAlignment = Alignment.CenterVertically,
