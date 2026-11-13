@@ -209,6 +209,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
     }
     var colorOpen by remember { mutableStateOf(false) }
     var shoppingOpen by remember { mutableStateOf(false) }
+    var shoppingCompletion by remember { mutableStateOf<Pair<Long, List<Long>>?>(null) }
     var archiveOpen by remember { mutableStateOf(false) }
     var deletingProjectId by remember { mutableStateOf<Long?>(null) }
     var recentOpen by remember { mutableStateOf(false) }
@@ -684,6 +685,13 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     }
                     Text(stringResource(R.string.shopping_explanation))
                     Text(stringResource(R.string.shopping_quantity_hint))
+                    if (projectId in state.shoppingProjects) {
+                        val openIds = state.rows.filter { !it.completed && it.task.projectId == projectId }.map { it.task.id }
+                        TextButton(enabled = openIds.isNotEmpty(), onClick = {
+                            shoppingCompletion = projectId to openIds
+                            shoppingOpen = false
+                        }) { Text("Complete all items…") }
+                    }
                 }
             },
             confirmButton = {
@@ -692,6 +700,19 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                     shoppingOpen = false
                 }) { Text(stringResource(R.string.ok)) }
             },
+        )
+    }
+
+    shoppingCompletion?.let { (projectId, ids) ->
+        AlertDialog(
+            onDismissRequest = { shoppingCompletion = null },
+            title = { Text("Complete all ${ids.size} items?") },
+            text = { Text("Mark these shopping items completed. You can undo each one by unchecking it before leaving the list.") },
+            confirmButton = { TextButton(onClick = {
+                shoppingCompletion = null
+                viewModel.completeShoppingItems(projectId, ids)
+            }) { Text("Complete all") } },
+            dismissButton = { TextButton(onClick = { shoppingCompletion = null }) { Text("Cancel") } },
         )
     }
 

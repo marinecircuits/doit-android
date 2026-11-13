@@ -762,4 +762,22 @@ class TasksViewModelTest {
         waitUntil { viewModel.state.value.status == listOf(StatusPart.Offline, StatusPart.Waiting(1)) }
         assertTrue(viewModel.state.value.syncedOnce)
     }
+    @Test
+    fun completeShoppingItemsIsScopedAndIndividuallyUndoable() {
+        seedProjects()
+        runBlocking { settings.setShoppingProject(2, true) }
+        waitUntil { 2L in viewModel.state.value.shoppingProjects }
+        viewModel.openProject(2)
+        waitUntil { viewModel.state.value.path.lastOrNull()?.id == 2L }
+        val item = viewModel.state.value.rows.first().task
+        viewModel.completeShoppingItems(3, listOf(item.id)) // wrong project: no-op
+        assertFalse(runBlocking { db.tasks().get(item.id) }!!.done)
+        viewModel.completeShoppingItems(2, listOf(item.id))
+        waitUntil { row(item.id)?.completed == true && runBlocking { db.tasks().get(item.id) }?.done == true }
+        assertTrue(runBlocking { db.tasks().open() }.any { it.projectId == 3L })
+        viewModel.uncomplete(item)
+        waitUntil { row(item.id)?.completed == false }
+        assertFalse(runBlocking { db.tasks().get(item.id) }!!.done)
+    }
+
 }
