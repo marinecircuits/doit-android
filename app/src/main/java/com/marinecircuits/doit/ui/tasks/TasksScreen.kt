@@ -142,7 +142,6 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.produceState
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
@@ -430,7 +429,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
                 }
             } else {
             val headerTitle = openLabel?.title ?: if (isContext) stringResource(R.string.context_title) else currentProject?.title
-            if (searchQuery == null && headerTitle == null) HomeHeader(state.today, locale, viewModel::openSavedFilters)
+            if (searchQuery == null && headerTitle == null) HomeHeader(viewModel::openSavedFilters)
             if (searchQuery == null) headerTitle?.let { ProjectHeader(if (currentProject != null && currentProject.id in state.shoppingProjects) "🛒 $it" else it, onBack = viewModel::navigateUp, onHome = viewModel::navigateHome) }
             if (searchQuery == null && selectedTaskIds.isNotEmpty()) {
                 Row(
@@ -822,7 +821,7 @@ fun TasksScreen(viewModel: TasksViewModel, focusCaptureRequests: Int, onEnterNew
 }
 
 @Composable
-private fun HomeHeader(today: LocalDate, locale: Locale, onOpenFilters: () -> Unit) {
+private fun HomeHeader(onOpenFilters: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -830,16 +829,12 @@ private fun HomeHeader(today: LocalDate, locale: Locale, onOpenFilters: () -> Un
     ) {
         DoitWordmark()
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(horizontalAlignment = Alignment.End) {
-            Text(today.format(DateTimeFormatter.ofPattern("EEE, d MMM", locale)),
-                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
             Text(stringResource(R.string.home_tagline), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        IconButton(onClick = onOpenFilters) {
-            Icon(painterResource(R.drawable.ic_filter), contentDescription = stringResource(R.string.saved_filters),
-                tint = MaterialTheme.colorScheme.primary)
-        }
+            IconButton(onClick = onOpenFilters) {
+                Icon(painterResource(R.drawable.ic_filter), contentDescription = stringResource(R.string.saved_filters),
+                    tint = MaterialTheme.colorScheme.primary)
+            }
         }
     }
 }
