@@ -1206,8 +1206,6 @@ private fun ProjectTiles(
                 horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(stringResource(if (largeTiles) R.string.your_projects else R.string.subprojects_heading),
                     style = MaterialTheme.typography.titleMedium)
-                Text(tiles.size.toString(), style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         if (homeLabels != null && tiles.isEmpty()) {
