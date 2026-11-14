@@ -976,17 +976,17 @@ private fun CaptureBar(
             singleLine = true,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = if (searchMode) ImeAction.Search else ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { onSend() }, onSearch = { onSend() }),
-            trailingIcon = {
-                FilledIconButton(onClick = onSend, enabled = if (searchMode) hasSearchResult else text.text.isNotBlank(),
+            trailingIcon = if (searchMode) { {
+                FilledIconButton(onClick = onSend, enabled = hasSearchResult,
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.padding(end = 4.dp),
                     colors = IconButtonDefaults.filledIconButtonColors(
                         disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                         disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )) {
-                    Icon(painterResource(if (searchMode) R.drawable.ic_arrow_up_right else R.drawable.ic_add), contentDescription = stringResource(if (searchMode) R.string.search_open else R.string.capture_send))
+                    Icon(painterResource(R.drawable.ic_arrow_up_right), contentDescription = stringResource(R.string.search_open))
                 }
-            },
+            } } else null,
             modifier = Modifier
                 .weight(1f)
                 .onPreviewKeyEvent(onSearchKey)
