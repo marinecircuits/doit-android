@@ -1,3 +1,9 @@
+## 0.39.1 (2026-11-14)
+
+### Fix
+
+- remove project total from top-right heading
+
 ## 0.39.0 (2026-11-13)
 
 ### Feat
