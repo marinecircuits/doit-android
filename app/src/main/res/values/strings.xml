@@ -46,8 +46,8 @@
     <string name="back">Back</string>
     <string name="home">Home</string>
     <string name="menu">More options</string>
-    <string name="app_info">About &amp; server</string>
-    <string name="app_info_issue">About &amp; server • sync issue</string>
+    <string name="app_info">About & server</string>
+    <string name="app_info_issue">About & server • sync issue</string>
     <string name="app_version">Version %1$s</string>
     <string name="server_info_address">Server: %1$s</string>
     <string name="server_info_unavailable">Unavailable</string>
@@ -113,6 +113,7 @@
     <string name="edit_clear_date">Clear</string>
     <string name="edit_project">Project</string>
     <string name="edit_delete">Delete task</string>
+    <string name="mark_complete">Mark as complete</string>
     <string name="promote_task">Promote to project</string>
     <string name="promote_title">Promote to project</string>
     <string name="promote_name">Name</string>
