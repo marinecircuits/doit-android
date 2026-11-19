@@ -1,3 +1,10 @@
+## 0.39.2 (2026-11-14)
+
+### Fix
+
+- remove redundant add-task plus button (#131)
+- remove current date from home header (#130)
+
 ## 0.39.1 (2026-11-14)
 
 ### Fix
